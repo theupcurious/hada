@@ -26,17 +26,13 @@ export default function ChatPage() {
   const [isThinking, setIsThinking] = useState(false);
   const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
   const [greetingText, setGreetingText] = useState("Hello");
-  const scrollAreaRootRef = useRef<HTMLDivElement>(null);
+  const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
   const supabase = createClient();
 
-  const scrollToBottom = () => {
-    const viewport = scrollAreaRootRef.current?.querySelector(
-      '[data-slot="scroll-area-viewport"]'
-    ) as HTMLDivElement | null;
-    if (!viewport) return;
-    viewport.scrollTop = viewport.scrollHeight;
+  const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
+    endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
   };
 
   const autosizeTextarea = () => {
@@ -62,9 +58,9 @@ export default function ChatPage() {
   }, [router, supabase]);
 
   useEffect(() => {
-    // Ensure the newest message is visible in the Radix viewport.
-    requestAnimationFrame(scrollToBottom);
-  }, [messages]);
+    // Ensure the newest message (or loader) is visible.
+    requestAnimationFrame(() => scrollToBottom("auto"));
+  }, [messages, isLoading, isThinking]);
 
   useEffect(() => {
     autosizeTextarea();
@@ -211,7 +207,7 @@ export default function ChatPage() {
         <div className="h-full flex flex-col max-w-3xl mx-auto px-4">
 
           {/* Messages Area */}
-          <div ref={scrollAreaRootRef} className="flex-1 py-4">
+          <div className="flex-1 py-4">
             <ScrollArea className="h-full">
               <div className="space-y-6 pb-4">
                 {messages.length === 0 ? (
@@ -275,6 +271,11 @@ export default function ChatPage() {
                         </Avatar>
                         <div className="flex-1 pt-1">
                           <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                          {message.role === "assistant" && message.source && (
+                            <p className="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500">
+                              via {message.source}
+                            </p>
+                          )}
                         </div>
                       </motion.div>
                     ))}
@@ -300,6 +301,7 @@ export default function ChatPage() {
                     </div>
                   </motion.div>
                 )}
+                <div ref={endOfMessagesRef} />
               </div>
             </ScrollArea>
           </div>
