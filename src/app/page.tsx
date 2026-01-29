@@ -76,8 +76,8 @@ export default function Home() {
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black dark:bg-white">
                   <span className="text-sm font-bold text-white dark:text-black">H</span>
                 </div>
-                <div className="flex-1 space-y-3">
-                  <div className="rounded-2xl rounded-tl-sm bg-zinc-50 px-4 py-2 dark:bg-zinc-800/50">
+                <div className="flex-1 space-y-3 text-left">
+                  <div className="inline-block max-w-[80%] rounded-2xl rounded-tl-sm bg-zinc-50 px-4 py-2 dark:bg-zinc-800/50">
                     <p className="text-sm">I found 3 salons near you with Friday availability:</p>
                   </div>
                   <div className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-700">
