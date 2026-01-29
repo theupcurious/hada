@@ -15,7 +15,7 @@ const LLM_API_KEY =
   (LLM_PROVIDER === 'anthropic' ? process.env.ANTHROPIC_API_KEY : undefined) ||
   (LLM_PROVIDER === 'openai' ? process.env.OPENAI_API_KEY : undefined);
 const MINIMAX_BASE_URL = (process.env.MINIMAX_BASE_URL || 'https://api.minimax.io/v1').replace(/\/+$/, '');
-const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'MiniMax-Text-01';
+const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'MiniMax-M2.1';
 
 export interface MoltbotResponse {
   content: string;
