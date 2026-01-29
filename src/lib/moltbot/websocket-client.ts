@@ -174,7 +174,7 @@ class MoltbotConnection {
             params: {
                 message,
                 sessionKey: sessionId || 'default',
-                idem: id,
+                idempotencyKey: id,
             },
         };
 
