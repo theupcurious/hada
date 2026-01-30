@@ -5,6 +5,18 @@ export interface MessageMetadata {
   thinking?: string;
   runId?: string;
   gatewayError?: { code: string; message: string };
+  cards?: any[];
+  confirmation?: {
+    pending?: boolean;
+    function?: {
+      name?: string;
+      arguments?: Record<string, any>;
+    };
+    confirmationData?: any;
+    created_at?: string;
+    resolved_at?: string;
+    cancelled?: boolean;
+  };
 }
 
 /**
