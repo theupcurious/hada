@@ -44,6 +44,27 @@ export type GatewaySendResult =
 let activeConnection: MoltbotConnection | null = null;
 let connectionPromise: Promise<MoltbotConnection> | null = null;
 
+// Reconnect state with exponential backoff
+let reconnectAttempts = 0;
+let lastConnectionError: Date | null = null;
+const MAX_BACKOFF_MS = 30000;
+const BASE_BACKOFF_MS = 1000;
+
+function getBackoffDelay(): number {
+    const delay = Math.min(BASE_BACKOFF_MS * Math.pow(2, reconnectAttempts), MAX_BACKOFF_MS);
+    return delay;
+}
+
+function resetBackoff(): void {
+    reconnectAttempts = 0;
+    lastConnectionError = null;
+}
+
+function recordConnectionError(): void {
+    reconnectAttempts++;
+    lastConnectionError = new Date();
+}
+
 class MoltbotConnection {
     private ws: WebSocket | null = null;
     private requestId = 0;
@@ -212,6 +233,7 @@ class MoltbotConnection {
 
 /**
  * Get or create a connection to the Moltbot gateway
+ * Uses exponential backoff on repeated connection failures.
  */
 async function getConnection(): Promise<MoltbotConnection> {
     // Return existing connection if healthy
@@ -224,15 +246,26 @@ async function getConnection(): Promise<MoltbotConnection> {
         return connectionPromise;
     }
 
+    // Check if we should wait due to backoff
+    if (lastConnectionError && reconnectAttempts > 0) {
+        const backoffDelay = getBackoffDelay();
+        const timeSinceError = Date.now() - lastConnectionError.getTime();
+        if (timeSinceError < backoffDelay) {
+            throw new Error(`Connection backoff: retry in ${Math.ceil((backoffDelay - timeSinceError) / 1000)}s`);
+        }
+    }
+
     // Create new connection
     connectionPromise = (async () => {
         const conn = new MoltbotConnection();
         try {
             await conn.connect();
             activeConnection = conn;
+            resetBackoff(); // Success - reset backoff
             return conn;
         } catch (error) {
             activeConnection = null;
+            recordConnectionError(); // Failure - increment backoff
             throw error;
         } finally {
             connectionPromise = null;

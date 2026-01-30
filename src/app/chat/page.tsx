@@ -6,8 +6,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
+import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState, useRef, useCallback } from "react";
 
 interface Message {
@@ -46,6 +48,7 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
   const supabase = createClient();
+  const { status: connectionStatus } = useHealthStatus(30000); // Poll every 30s
 
   const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
@@ -285,9 +288,38 @@ export default function ChatPage() {
             <span className="text-sm font-bold text-white dark:text-black">H</span>
           </div>
           <span className="font-semibold">Hada</span>
+          {/* Connection status indicator */}
+          <Link
+            href="/settings"
+            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+            title={`Status: ${connectionStatus}`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                connectionStatus === "connected"
+                  ? "bg-green-500"
+                  : connectionStatus === "degraded"
+                  ? "bg-yellow-500"
+                  : connectionStatus === "connecting"
+                  ? "bg-yellow-500 animate-pulse"
+                  : "bg-red-500"
+              }`}
+            />
+            <span className="hidden sm:inline">
+              {connectionStatus === "connected" && "Online"}
+              {connectionStatus === "degraded" && "Fallback"}
+              {connectionStatus === "connecting" && "Connecting"}
+              {connectionStatus === "disconnected" && "Offline"}
+            </span>
+          </Link>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-zinc-500 hidden sm:block">{user?.email}</span>
+          <Link href="/settings">
+            <Button variant="ghost" size="sm">
+              Settings
+            </Button>
+          </Link>
           <Button variant="ghost" size="sm" onClick={handleSignOut}>
             Sign out
           </Button>
