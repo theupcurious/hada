@@ -1,5 +1,5 @@
 services:
-  moltbot:
+  openclaw:
     build:
       context: ./moltbot
       dockerfile: Dockerfile
@@ -8,11 +8,10 @@ services:
     env_file:
       - .env.local
     environment:
-      - LLM_PROVIDER=${LLM_PROVIDER:-minimax}
-      - MINIMAX_BASE_URL=${MINIMAX_BASE_URL:-https://api.minimax.io/v1}
-      - MINIMAX_MODEL=${MINIMAX_MODEL:-MiniMax-Text-01}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - OPENCLAW_AUTH_TOKEN=${OPENCLAW_AUTH_TOKEN:-hada-dev-token-12345}
     volumes:
-      - moltbot-data:/root/.moltbot/data
+      - openclaw-data:/root/.openclaw/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
@@ -21,4 +20,4 @@ services:
       retries: 3
 
 volumes:
-  moltbot-data:
+  openclaw-data:
