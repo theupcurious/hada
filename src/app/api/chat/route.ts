@@ -40,9 +40,12 @@ export async function POST(request: NextRequest) {
     );
 
     // Try function calling first for calendar/email operations
+    console.log('[Chat API] Starting function call detection for:', message);
     const functionCallResult = await detectFunctionCalls(message, user.id);
+    console.log('[Chat API] Function call result:', functionCallResult);
 
     if (functionCallResult.shouldUseFunctions && functionCallResult.functions) {
+      console.log('[Chat API] Executing functions:', functionCallResult.functions);
       // Execute functions and format response
       try {
         const results = await Promise.all(
