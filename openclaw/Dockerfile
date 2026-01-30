@@ -35,6 +35,10 @@ RUN mkdir -p /root/.openclaw
 # Copy configuration
 COPY config/openclaw.json /root/.openclaw/openclaw.json
 
+# Copy and install MCP server
+COPY mcp-server /app/mcp-server
+RUN cd /app/mcp-server && npm install
+
 # Expose Gateway port
 EXPOSE 18789
 
