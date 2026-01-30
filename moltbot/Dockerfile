@@ -43,4 +43,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:18789/health || exit 1
 
 # Start Gateway (gateway:dev skips channel integrations)
-CMD ["pnpm", "run", "gateway:dev"]
+# --bind 0.0.0.0 allows connections from other Railway services
+CMD ["sh", "-c", "OPENCLAW_SKIP_CHANNELS=1 node dist/cli/openclaw.mjs gateway --port 18789 --bind 0.0.0.0 --verbose"]
