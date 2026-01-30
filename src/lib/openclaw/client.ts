@@ -130,7 +130,6 @@ async function fallbackToLLM(
   userId: string,
   userName?: string
 ): Promise<OpenClawResponse> {
-): Promise<OpenClawResponse> {
   if (!LLM_API_KEY) {
     return {
       content: "I'm not fully configured yet. Please set up the LLM API key in environment variables.",
