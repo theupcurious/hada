@@ -234,11 +234,16 @@ export async function executeFunction(
     throw new Error(`Unknown function: ${functionCall.name}`);
   }
 
+  const token = process.env.OPENCLAW_API_TOKEN;
+  console.log("[Execute Function] Token present:", !!token, "Length:", token?.length || 0);
+  console.log("[Execute Function] Calling:", url);
+  console.log("[Execute Function] User ID:", userId);
+
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENCLAW_API_TOKEN || ""}`,
+      Authorization: `Bearer ${token || ""}`,
       "X-Session-Key": userId,
     },
     body: JSON.stringify(functionCall.arguments),
