@@ -21,7 +21,7 @@ WORKDIR /app
 RUN git clone --depth 1 https://github.com/moltbot/moltbot.git .
 
 # Use the repo's pinned pnpm version when available
-RUN corepack prepare "$(node -p \"require('./package.json').packageManager || 'pnpm@9'\")" --activate
+RUN corepack prepare "$(node -p 'require("./package.json").packageManager || "pnpm@9"')" --activate
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
