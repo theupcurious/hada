@@ -11,14 +11,17 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable corepack (pnpm version is set after clone based on packageManager)
+RUN corepack enable
 
 # Set working directory
 WORKDIR /app
 
 # Clone moltbot from GitHub
 RUN git clone --depth 1 https://github.com/moltbot/moltbot.git .
+
+# Use the repo's pinned pnpm version when available
+RUN corepack prepare "$(node -p \"require('./package.json').packageManager || 'pnpm@9'\")" --activate
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
