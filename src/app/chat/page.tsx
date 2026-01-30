@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 
 interface Message {
   id: string;
@@ -16,7 +16,19 @@ interface Message {
   content: string;
   thinking?: string;
   source?: string;
-  timestamp: Date;
+  created_at: string;
+}
+
+interface ApiMessage {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: string;
+  metadata: {
+    source?: string;
+    thinking?: string;
+  } | null;
+  created_at: string;
 }
 
 export default function ChatPage() {
@@ -26,7 +38,11 @@ export default function ChatPage() {
   const [isThinking, setIsThinking] = useState(false);
   const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
   const [greetingText, setGreetingText] = useState("Hello");
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -34,6 +50,68 @@ export default function ChatPage() {
   const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
   };
+
+  const apiMessageToMessage = (msg: ApiMessage): Message => ({
+    id: msg.id,
+    role: msg.role,
+    content: msg.content,
+    thinking: msg.metadata?.thinking,
+    source: msg.metadata?.source,
+    created_at: msg.created_at,
+  });
+
+  const loadHistory = useCallback(async (before?: string) => {
+    try {
+      const url = new URL("/api/conversations/messages", window.location.origin);
+      url.searchParams.set("limit", "25");
+      if (before) {
+        url.searchParams.set("before", before);
+      }
+
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        throw new Error("Failed to load messages");
+      }
+
+      const data = await response.json();
+      const loadedMessages: Message[] = data.messages.map(apiMessageToMessage);
+
+      if (before) {
+        // Prepend older messages
+        setMessages((prev) => [...loadedMessages, ...prev]);
+      } else {
+        // Initial load
+        setMessages(loadedMessages);
+      }
+
+      setHasMoreHistory(data.hasMore);
+    } catch (error) {
+      console.error("Failed to load history:", error);
+    }
+  }, []);
+
+  const loadMoreHistory = useCallback(async () => {
+    if (isLoadingMore || !hasMoreHistory || messages.length === 0) return;
+
+    setIsLoadingMore(true);
+    const oldestMessage = messages[0];
+
+    // Store scroll position before loading
+    const scrollArea = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
+    const scrollHeightBefore = scrollArea?.scrollHeight || 0;
+
+    await loadHistory(oldestMessage.id);
+
+    // Restore scroll position after messages are prepended
+    requestAnimationFrame(() => {
+      if (scrollArea) {
+        const scrollHeightAfter = scrollArea.scrollHeight;
+        scrollArea.scrollTop = scrollHeightAfter - scrollHeightBefore;
+      }
+    });
+
+    setIsLoadingMore(false);
+  }, [isLoadingMore, hasMoreHistory, messages, loadHistory]);
 
   const autosizeTextarea = () => {
     const el = textareaRef.current;
@@ -43,7 +121,7 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    const getUser = async () => {
+    const initialize = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/auth/login");
@@ -53,9 +131,13 @@ export default function ChatPage() {
         email: user.email,
         name: user.user_metadata?.name,
       });
+
+      // Load message history
+      await loadHistory();
+      setIsLoadingHistory(false);
     };
-    getUser();
-  }, [router, supabase]);
+    initialize();
+  }, [router, supabase, loadHistory]);
 
   useEffect(() => {
     // Ensure the newest message (or loader) is visible.
@@ -69,11 +151,12 @@ export default function ChatPage() {
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
+    const tempId = `temp-${Date.now()}`;
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: tempId,
       role: "user",
       content: input.trim(),
-      timestamp: new Date(),
+      created_at: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -94,22 +177,31 @@ export default function ChatPage() {
 
       const data = await response.json();
 
+      // Update user message with real ID from database
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === tempId
+            ? { ...msg, id: data.userMessageId || msg.id }
+            : msg
+        )
+      );
+
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: data.id || `temp-${Date.now() + 1}`,
         role: "assistant",
         content: data.content || data.error || "Sorry, I encountered an error.",
         thinking: data.thinking,
         source: data.source,
-        timestamp: new Date(),
+        created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Chat error:", error);
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `error-${Date.now()}`,
         role: "assistant",
         content: "Sorry, I'm having trouble connecting. Please try again.",
-        timestamp: new Date(),
+        created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -208,9 +300,28 @@ export default function ChatPage() {
 
           {/* Messages Area */}
           <div className="flex-1 py-4">
-            <ScrollArea className="h-full">
+            <ScrollArea
+              className="h-full"
+              ref={scrollAreaRef}
+              onScrollCapture={(e) => {
+                const target = e.target as HTMLElement;
+                // Load more when scrolled near top (within 100px)
+                if (target.scrollTop < 100 && hasMoreHistory && !isLoadingMore) {
+                  loadMoreHistory();
+                }
+              }}
+            >
               <div className="space-y-6 pb-4">
-                {messages.length === 0 ? (
+                {isLoadingMore && (
+                  <div className="flex justify-center py-2">
+                    <span className="text-sm text-zinc-400">Loading earlier messages...</span>
+                  </div>
+                )}
+                {isLoadingHistory ? (
+                  <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                    <span className="text-sm text-zinc-400">Loading...</span>
+                  </div>
+                ) : messages.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}

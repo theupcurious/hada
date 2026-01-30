@@ -77,7 +77,7 @@ async function tryGatewayWebSocket(
   try {
     const result = await sendMessageViaWebSocket(message, sessionId);
 
-    if (result?.error) {
+    if (result && 'error' in result) {
       return {
         error: {
           code: result.error.code,
@@ -86,7 +86,7 @@ async function tryGatewayWebSocket(
       };
     }
 
-    if (result?.content) {
+    if (result && 'content' in result) {
       const processed = processThinkingTags(result.content);
       return {
         response: {

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { sendMessage, checkHealth } from '@/lib/moltbot/client';
+import { getOrCreateConversation, saveMessage } from '@/lib/db/conversations';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { message, conversationId } = body;
+    const { message } = body;
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -26,23 +27,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate session ID from user + conversation
-    const sessionId = conversationId || `${user.id}-default`;
+    // Get or create the user's conversation
+    const conversation = await getOrCreateConversation(supabase, user.id);
 
-    // Send message (tries Gateway first, falls back to direct LLM)
-    const response = await sendMessage(message, sessionId, user.id);
+    // Save user message to database
+    const userMessage = await saveMessage(
+      supabase,
+      conversation.id,
+      'user',
+      message
+    );
 
-    // Store message in database (optional, for persistence)
-    // TODO: Implement conversation storage
+    // Send message to moltbot (sessionKey = userId for single persistent session)
+    const response = await sendMessage(message, user.id, user.id);
+
+    // Save assistant message to database
+    const assistantMessage = await saveMessage(
+      supabase,
+      conversation.id,
+      'assistant',
+      response.content,
+      {
+        source: response.source,
+        thinking: response.thinking,
+        gatewayError: response.gatewayError,
+      }
+    );
 
     return NextResponse.json({
+      id: assistantMessage.id,
       content: response.content,
       thinking: response.thinking,
       role: 'assistant',
-      sessionId,
+      conversationId: conversation.id,
       source: response.source,
       error: response.error,
       gatewayError: response.gatewayError,
+      userMessageId: userMessage.id,
     });
   } catch (error) {
     console.error('Chat API error:', error);

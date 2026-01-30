@@ -42,23 +42,27 @@ Hada is "Bot as a Service" (BaaS) - anyone can sign up and get their own AI assi
 
 ## Phase 2: Moltbot Integration
 
-**Status:** Not Started
+**Status:** In Progress
 
 **Goal:** Connect the UI to moltbot for actual AI capabilities
 
 ### Tasks
 
-- [ ] Create Dockerfile for moltbot
+- [x] Create Dockerfile for moltbot
   - Base image with Node 22+
   - Configure for headless server operation
   - Set up environment variables
 - [ ] Deploy moltbot container to Railway
-- [ ] Build WebSocket bridge service
+- [x] Build WebSocket bridge service
   - Proxy WebSocket from Next.js to moltbot Gateway
   - Handle authentication mapping
-- [ ] Implement user session isolation
-  - Namespace conversations by user ID
-  - Store context per user
+- [x] Implement user session isolation
+  - Namespace conversations by user ID (sessionKey = userId)
+  - Store context per user (moltbot handles context, DB for display)
+- [x] Conversation persistence
+  - Messages stored to Supabase
+  - Load last 25 messages on page load
+  - Lazy load older messages on scroll
 - [ ] Add health monitoring
   - Instance health checks
   - Auto-restart on failure
