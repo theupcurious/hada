@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
 import { useHealthStatus } from "@/lib/hooks/use-health-status";
-import { CalendarEventCard } from "@/components/chat/calendar-event-card";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -18,7 +17,6 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
-  cards?: any[];
   created_at: string;
 }
 
@@ -29,7 +27,6 @@ interface ApiMessage {
   content: string;
   metadata: {
     thinking?: string;
-    cards?: any[];
   } | null;
   created_at: string;
 }
@@ -142,7 +139,6 @@ export default function ChatPage() {
     role: msg.role,
     content: msg.content,
     thinking: msg.metadata?.thinking,
-    cards: msg.metadata?.cards,
     created_at: msg.created_at,
   });
 
@@ -277,7 +273,6 @@ export default function ChatPage() {
         role: "assistant",
         content: data.content || data.error || "Sorry, I encountered an error.",
         thinking: data.thinking,
-        cards: data.cards,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -495,31 +490,8 @@ export default function ChatPage() {
                             {message.role === "assistant" ? "H" : user?.name?.[0] || "U"}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 pt-1 space-y-3">
+                        <div className="flex-1 pt-1">
                           <MessageContent content={message.content} />
-                          {/* Render calendar cards */}
-                          {message.cards?.map((card, idx) => {
-                            if (card.type === "calendar_event" && card.data) {
-                              return (
-                                <CalendarEventCard
-                                  key={`${message.id}-card-${idx}`}
-                                  event={card.data}
-                                  actions={card.actions}
-                                />
-                              );
-                            }
-                            // Handle list of events
-                            if (card.type === "calendar_events_list" && card.data?.events) {
-                              return card.data.events.map((event: any, eventIdx: number) => (
-                                <CalendarEventCard
-                                  key={`${message.id}-card-${idx}-event-${eventIdx}`}
-                                  event={event}
-                                  actions={["reschedule", "cancel"]}
-                                />
-                              ));
-                            }
-                            return null;
-                          })}
                         </div>
                       </motion.div>
                     ))}

@@ -30,11 +30,7 @@ export async function authenticateToolRequest(
   const authHeader = request.headers.get("Authorization");
   const expectedToken = process.env.OPENCLAW_API_TOKEN;
 
-  console.log("[Tool Auth] Auth header:", authHeader);
-  console.log("[Tool Auth] Expected token present:", !!expectedToken, "Length:", expectedToken?.length || 0);
-
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    console.log("[Tool Auth] FAILED: Missing or invalid Authorization header");
     return {
       success: false,
       error: {
