@@ -1,6 +1,10 @@
 {
-  "agent": {
-    "model": "minimax/MiniMax-M2.1"
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "minimax/MiniMax-M2.1"
+      }
+    }
   },
   "models": {
     "providers": {
