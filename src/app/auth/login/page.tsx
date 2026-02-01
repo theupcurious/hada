@@ -6,16 +6,37 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showVerifyBanner, setShowVerifyBanner] = useState(false);
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resendError, setResendError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  useEffect(() => {
+    const verifyParam = searchParams.get("verify");
+    const emailParam = searchParams.get("email");
+    if (emailParam && email !== emailParam) {
+      setEmail(emailParam);
+    }
+    if (verifyParam === "1") {
+      setShowVerifyBanner(true);
+      if (emailParam) {
+        setVerifyMessage(`We sent a verification link to ${emailParam}.`);
+      } else {
+        setVerifyMessage("We sent a verification link to your email.");
+      }
+    }
+  }, [searchParams, email]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,11 +49,44 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError(error.message);
+      const message = error.message || "Sign in failed";
+      setError(message);
+      if (message.toLowerCase().includes("confirm") || message.toLowerCase().includes("verified")) {
+        setShowVerifyBanner(true);
+        setVerifyMessage("Please confirm your email address to continue.");
+      }
       setLoading(false);
     } else {
       router.push("/chat");
     }
+  };
+
+  const handleResendVerification = async () => {
+    const targetEmail = email.trim();
+    if (!targetEmail) {
+      setResendError("Enter your email to resend the verification link.");
+      setResendStatus("error");
+      return;
+    }
+
+    setResendStatus("sending");
+    setResendError(null);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: targetEmail,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) {
+      setResendError(error.message);
+      setResendStatus("error");
+      return;
+    }
+
+    setResendStatus("sent");
+    setVerifyMessage(`We sent a new verification link to ${targetEmail}.`);
   };
 
   const handleGoogleLogin = async () => {
@@ -64,6 +118,40 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
+          {showVerifyBanner && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-medium">Verify your email to finish signup</p>
+              <p className="mt-1 text-amber-700">
+                {verifyMessage ?? "Check your inbox for a verification link."}
+              </p>
+              {resendStatus === "sent" && (
+                <p className="mt-2 text-emerald-700">
+                  Verification email sent.
+                </p>
+              )}
+              {resendError && (
+                <p className="mt-2 text-red-600">{resendError}</p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleResendVerification}
+                  disabled={resendStatus === "sending"}
+                >
+                  {resendStatus === "sending" ? "Sending..." : "Resend link"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowVerifyBanner(false)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          )}
           <div>
             <Input
               type="email"

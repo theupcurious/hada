@@ -37,7 +37,11 @@ export default function SignUpPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      router.push("/chat");
+      const params = new URLSearchParams({
+        verify: "1",
+        email,
+      });
+      router.push(`/auth/login?${params.toString()}`);
     }
   };
 
