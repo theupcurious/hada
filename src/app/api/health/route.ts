@@ -1,9 +1,9 @@
-import { checkHealth } from '@/lib/openclaw/client';
-import { GATEWAY_URL } from '@/lib/openclaw/config';
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { PROVIDERS } from "@/lib/chat/providers";
+import type { LLMProviderName } from "@/lib/types/database";
 
 export interface HealthStatus {
-  status: 'healthy' | 'degraded' | 'unhealthy';
+  status: "healthy" | "degraded" | "unhealthy";
   gateway: {
     connected: boolean;
     url: string;
@@ -16,34 +16,22 @@ export interface HealthStatus {
   timestamp: string;
 }
 
-/**
- * GET /api/health
- * Returns the health status of the bot server and its dependencies.
- */
 export async function GET(): Promise<NextResponse<HealthStatus>> {
-  const gatewayConnected = await checkHealth();
-  const llmConfigured = !!process.env.LLM_API_KEY;
-  const llmProvider = process.env.LLM_PROVIDER || 'minimax';
-
-  let status: HealthStatus['status'];
-  if (gatewayConnected) {
-    status = 'healthy';
-  } else if (llmConfigured) {
-    status = 'degraded'; // Gateway down but fallback available
-  } else {
-    status = 'unhealthy';
-  }
+  const provider = String(process.env.LLM_PROVIDER || "minimax").toLowerCase() as LLMProviderName;
+  const selected = PROVIDERS[provider] ? provider : "minimax";
+  const keyEnv = PROVIDERS[selected].apiKeyEnv;
+  const llmConfigured = Boolean(process.env[keyEnv] || process.env.LLM_API_KEY);
 
   return NextResponse.json({
-    status,
+    status: llmConfigured ? "healthy" : "unhealthy",
     gateway: {
-      connected: gatewayConnected,
-      url: GATEWAY_URL,
+      connected: llmConfigured,
+      url: "agent-loop",
       lastCheck: new Date().toISOString(),
     },
     llmFallback: {
       available: llmConfigured,
-      provider: llmConfigured ? llmProvider : null,
+      provider: llmConfigured ? selected : null,
     },
     timestamp: new Date().toISOString(),
   });

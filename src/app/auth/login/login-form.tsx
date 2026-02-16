@@ -5,36 +5,29 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function LoginForm() {
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const emailFromQuery = searchParams.get("email") || "";
+  const verifyFromQuery = searchParams.get("verify") === "1";
+
+  const [email, setEmail] = useState(emailFromQuery);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showVerifyBanner, setShowVerifyBanner] = useState(false);
-  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+  const [showVerifyBanner, setShowVerifyBanner] = useState(verifyFromQuery);
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(
+    verifyFromQuery
+      ? emailFromQuery
+        ? `We sent a verification link to ${emailFromQuery}.`
+        : "We sent a verification link to your email."
+      : null,
+  );
   const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [resendError, setResendError] = useState<string | null>(null);
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClient();
-
-  useEffect(() => {
-    const verifyParam = searchParams.get("verify");
-    const emailParam = searchParams.get("email");
-    if (emailParam && email !== emailParam) {
-      setEmail(emailParam);
-    }
-    if (verifyParam === "1") {
-      setShowVerifyBanner(true);
-      if (emailParam) {
-        setVerifyMessage(`We sent a verification link to ${emailParam}.`);
-      } else {
-        setVerifyMessage("We sent a verification link to your email.");
-      }
-    }
-  }, [searchParams, email]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

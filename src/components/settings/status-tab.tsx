@@ -22,7 +22,7 @@ export function StatusTab() {
       <div>
         <h2 className="text-2xl font-semibold">Status</h2>
         <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-          Monitor your bot server connection and health.
+          Monitor agent runtime and provider health.
         </p>
       </div>
 
@@ -32,23 +32,23 @@ export function StatusTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={`h-3 w-3 rounded-full ${config.color} animate-pulse`} />
-              <CardTitle className="text-lg">Bot Server</CardTitle>
+              <CardTitle className="text-lg">Agent Runtime</CardTitle>
             </div>
             <Badge variant={config.badgeVariant}>{config.label}</Badge>
           </div>
           <CardDescription>
-            {status === "connected" && "Your assistant is ready and connected to the gateway."}
-            {status === "degraded" && "Gateway unavailable. Using fallback LLM provider."}
-            {status === "disconnected" && "Unable to connect. Please check your configuration."}
-            {status === "connecting" && "Establishing connection..."}
+            {status === "connected" && "Your assistant is ready."}
+            {status === "degraded" && "Runtime available with limited configuration."}
+            {status === "disconnected" && "No valid provider key found."}
+            {status === "connecting" && "Checking health..."}
           </CardDescription>
         </CardHeader>
       </Card>
 
-      {/* Gateway Details */}
+      {/* Runtime Details */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Gateway Connection</CardTitle>
+          <CardTitle className="text-base">Runtime Connection</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between text-sm">
@@ -59,7 +59,7 @@ export function StatusTab() {
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-500 dark:text-zinc-400">URL</span>
+            <span className="text-zinc-500 dark:text-zinc-400">Endpoint</span>
             <code className="text-xs bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded">
               {health?.gateway.url || "—"}
             </code>
@@ -71,12 +71,12 @@ export function StatusTab() {
         </CardContent>
       </Card>
 
-      {/* LLM Fallback */}
+      {/* LLM Provider */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">LLM Fallback</CardTitle>
+          <CardTitle className="text-base">LLM Provider</CardTitle>
           <CardDescription>
-            Direct LLM provider used when gateway is unavailable.
+            Active provider configuration used by the agent loop.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

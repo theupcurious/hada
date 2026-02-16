@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
 import { useHealthStatus } from "@/lib/hooks/use-health-status";
-import { CalendarEventCard } from "@/components/chat/calendar-event-card";
+import { CalendarEventCard, type CalendarEventCardProps } from "@/components/chat/calendar-event-card";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -18,12 +18,12 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
-  cards?: any[];
+  cards?: ChatCard[];
   confirmation?: {
     pending: boolean;
     function?: {
       name: string;
-      arguments: Record<string, any>;
+      arguments: Record<string, unknown>;
     };
   };
   created_at: string;
@@ -36,17 +36,41 @@ interface ApiMessage {
   content: string;
   metadata: {
     thinking?: string;
-    cards?: any[];
+    cards?: ChatCard[];
     confirmation?: {
       pending?: boolean;
       function?: {
         name?: string;
-        arguments?: Record<string, any>;
+        arguments?: Record<string, unknown>;
       };
     };
   } | null;
   created_at: string;
 }
+
+type CalendarEventCardData = CalendarEventCardProps["event"];
+
+interface CalendarEventCardPayload {
+  type: "calendar_event";
+  data?: CalendarEventCardData;
+  actions?: string[];
+}
+
+interface CalendarEventsListPayload {
+  type: "calendar_events_list";
+  data?: {
+    events?: CalendarEventCardData[];
+  };
+}
+
+type ChatCard =
+  | CalendarEventCardPayload
+  | CalendarEventsListPayload
+  | {
+      type?: string;
+      data?: unknown;
+      actions?: string[];
+    };
 
 function renderInlineBold(text: string) {
   const parts = text.split("**");
@@ -128,6 +152,20 @@ function MessageContent({ content }: { content: string }) {
   flushList();
 
   return <div className="text-sm leading-relaxed space-y-2">{blocks}</div>;
+}
+
+function isCalendarEventData(value: unknown): value is CalendarEventCardData {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const event = value as Record<string, unknown>;
+  return (
+    typeof event.id === "string" &&
+    typeof event.summary === "string" &&
+    typeof event.start === "string" &&
+    typeof event.end === "string"
+  );
 }
 
 export default function ChatPage() {
@@ -546,7 +584,7 @@ export default function ChatPage() {
                           <MessageContent content={message.content} />
                           {/* Render calendar cards */}
                           {message.cards?.map((card, idx) => {
-                            if (card.type === "calendar_event" && card.data) {
+                            if (card.type === "calendar_event" && isCalendarEventData(card.data)) {
                               return (
                                 <CalendarEventCard
                                   key={`${message.id}-card-${idx}`}
@@ -556,14 +594,20 @@ export default function ChatPage() {
                               );
                             }
                             // Handle list of events
-                            if (card.type === "calendar_events_list" && card.data?.events) {
-                              return card.data.events.map((event: any, eventIdx: number) => (
-                                <CalendarEventCard
-                                  key={`${message.id}-card-${idx}-event-${eventIdx}`}
-                                  event={event}
-                                  actions={["reschedule", "cancel"]}
-                                />
-                              ));
+                            if (
+                              card.type === "calendar_events_list" &&
+                              Array.isArray((card.data as { events?: unknown[] } | undefined)?.events)
+                            ) {
+                              const events = (card.data as { events: unknown[] }).events;
+                              return events
+                                .filter((event) => isCalendarEventData(event))
+                                .map((event, eventIdx: number) => (
+                                  <CalendarEventCard
+                                    key={`${message.id}-card-${idx}-event-${eventIdx}`}
+                                    event={event}
+                                    actions={["reschedule", "cancel"]}
+                                  />
+                                ));
                             }
                             return null;
                           })}

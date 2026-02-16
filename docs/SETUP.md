@@ -39,30 +39,25 @@ npm install
 2. Copy these values:
    - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    - **anon/public key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - **service_role key** → `SUPABASE_SERVICE_ROLE_KEY`
 
-#### Run Database Migration
+#### Run Database Migrations
 
 1. Go to **SQL Editor** in Supabase dashboard
 2. Click "New query"
-3. Copy the contents of `supabase/migrations/001_initial_schema.sql`
-4. Paste and click "Run"
+3. Copy the contents of each migration file in `supabase/migrations/` in order
+4. Paste and click "Run" for each
 5. You should see "Success. No rows returned"
 
 #### Enable Google OAuth (Optional)
 
 1. Go to **Authentication** → **Providers**
 2. Find **Google** and enable it
-3. You'll need to set up a Google Cloud project:
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create a new project
-   - Enable the Google+ API
-   - Create OAuth 2.0 credentials
-   - Add authorized redirect URI: `https://<your-supabase-url>/auth/v1/callback`
-4. Enter your Google Client ID and Secret in Supabase
+3. Set up a Google Cloud project with OAuth 2.0 credentials
+4. Add authorized redirect URI: `https://<your-supabase-url>/auth/v1/callback`
+5. Enter your Google Client ID and Secret in Supabase
 
-### 3. Set Up Google Calendar & Gmail Integration (Phase 3)
-
-To enable Google Calendar and Gmail features, you need separate OAuth credentials:
+### 3. Set Up Google Calendar & Gmail Integration (Optional)
 
 #### Create Google Cloud Project
 
@@ -77,29 +72,26 @@ To enable Google Calendar and Gmail features, you need separate OAuth credential
 
 1. Go to **APIs & Services** → **Credentials**
 2. Click **Create Credentials** → **OAuth 2.0 Client ID**
-3. Configure OAuth consent screen (if not done):
+3. Configure OAuth consent screen:
    - User Type: **External**
    - App name: **Hada**
-   - User support email: your email
    - Scopes: Add `calendar` and `gmail.modify`
-   - Test users: Add your email for testing
+   - Test users: Add your email
 4. Create OAuth Client ID:
    - Application type: **Web application**
-   - Name: **Hada Web App**
    - Authorized redirect URIs:
      - Development: `http://localhost:3000/api/auth/google/callback`
      - Production: `https://your-domain.com/api/auth/google/callback`
 5. Copy **Client ID** and **Client Secret**
 
-#### Run Additional Migration
+### 4. Set Up Telegram Bot (Optional)
 
-Run the Phase 3 migration in Supabase SQL Editor:
+1. Open Telegram and message [@BotFather](https://t.me/BotFather)
+2. Send `/newbot` and follow the prompts
+3. Copy the **bot token** → `TELEGRAM_BOT_TOKEN`
+4. Generate a random secret for webhook verification → `TELEGRAM_WEBHOOK_SECRET`
 
-```sql
--- Copy contents of supabase/migrations/002_add_user_permissions.sql
-```
-
-### 4. Configure Environment
+### 5. Configure Environment
 
 ```bash
 cp .env.local.example .env.local
@@ -114,13 +106,34 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
-# Google OAuth (Phase 3 - for Calendar & Gmail integration)
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-google-client-secret
+# LLM Provider (at least one required)
+LLM_PROVIDER=minimax
+MINIMAX_API_KEY=your-minimax-api-key
+
+# Optional: Additional LLM providers
+# ANTHROPIC_API_KEY=
+# OPENAI_API_KEY=
+# GEMINI_API_KEY=
+# MOONSHOT_API_KEY=
+# DEEPSEEK_API_KEY=
+# GROQ_API_KEY=
+
+# Google OAuth (optional - for Calendar & Gmail)
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+
+# Telegram (optional)
+# TELEGRAM_BOT_TOKEN=
+# TELEGRAM_WEBHOOK_SECRET=
+
+# Web Search (optional)
+# SEARCH_PROVIDER=tavily
+# SEARCH_API_KEY=
 ```
 
-### 4. Start Development Server
+### 6. Start Development Server
 
 ```bash
 npm run dev
@@ -154,18 +167,24 @@ In Railway dashboard:
 
 1. Click on your service
 2. Go to **Variables** tab
-3. Add:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-   ```
+3. Add all required environment variables from `.env.local`
 
-### 4. Configure Domain (Optional)
+### 4. Configure Domain
 
 1. Go to **Settings** tab
 2. Under **Domains**, click "Generate Domain" or add a custom domain
 
-### 5. Update Supabase Redirect URLs
+### 5. Set Up Telegram Webhook (if using Telegram)
+
+After deployment, register your webhook URL with Telegram:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://your-domain.com/api/webhooks/telegram", "secret_token": "<YOUR_WEBHOOK_SECRET>"}'
+```
+
+### 6. Update Supabase Redirect URLs
 
 If using OAuth:
 
@@ -190,6 +209,13 @@ If using OAuth:
 
 - Ensure you're running the migration in the SQL Editor, not CLI
 - Check for any existing tables that might conflict
+- Run migrations in order (001, 002, 003, 004...)
+
+### Telegram bot not responding
+
+- Verify webhook is registered: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
+- Check webhook URL is publicly accessible
+- Verify `TELEGRAM_WEBHOOK_SECRET` matches what was set in `setWebhook`
 
 ### Build fails on Railway
 
@@ -202,4 +228,4 @@ After setup, you can:
 
 1. Create an account at `/auth/signup`
 2. Access the chat interface at `/chat`
-3. Start building Phase 2 (OpenClaw integration)
+3. Connect integrations at `/settings`

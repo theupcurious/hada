@@ -1,35 +1,102 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
+import type { LLMProviderName, UserSettings } from "@/lib/types/database";
 
 interface UserProfile {
+  id: string;
   email: string;
   name: string | null;
   tier: string;
   created_at: string;
+  settings: UserSettings;
 }
 
+const PROVIDER_OPTIONS: Array<{ value: LLMProviderName; label: string }> = [
+  { value: "minimax", label: "MiniMax" },
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Anthropic" },
+  { value: "gemini", label: "Gemini" },
+  { value: "kimi", label: "Kimi (Moonshot)" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "groq", label: "Groq" },
+];
+
 export function AccountTab() {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const supabase = createClient();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [provider, setProvider] = useState<LLMProviderName>("minimax");
+  const [model, setModel] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setProfile({
-          email: user.email || "",
-          name: user.user_metadata?.name || null,
-          tier: "free", // TODO: fetch from users table
-          created_at: user.created_at,
-        });
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return;
       }
+
+      const { data } = await supabase
+        .from("users")
+        .select("id, email, name, tier, created_at, settings")
+        .eq("id", user.id)
+        .single();
+
+      const loaded = {
+        id: user.id,
+        email: user.email || "",
+        name: user.user_metadata?.name || data?.name || null,
+        tier: data?.tier || "free",
+        created_at: user.created_at,
+        settings: (data?.settings || {}) as UserSettings,
+      };
+
+      setProfile(loaded);
+      setProvider((loaded.settings.llm_provider as LLMProviderName) || "minimax");
+      setModel(typeof loaded.settings.llm_model === "string" ? loaded.settings.llm_model : "");
+      setTimezone(typeof loaded.settings.timezone === "string" ? loaded.settings.timezone : "");
     };
-    loadProfile();
+
+    void loadProfile();
   }, [supabase]);
+
+  async function saveSettings() {
+    if (!profile) return;
+    setSaving(true);
+    setSaveMessage(null);
+
+    const nextSettings: UserSettings = {
+      ...(profile.settings || {}),
+      llm_provider: provider,
+      llm_model: model.trim() || null,
+      timezone: timezone.trim() || null,
+    };
+
+    const { error } = await supabase
+      .from("users")
+      .update({ settings: nextSettings })
+      .eq("id", profile.id);
+
+    if (error) {
+      setSaveMessage("Failed to save model settings.");
+      setSaving(false);
+      return;
+    }
+
+    setProfile({ ...profile, settings: nextSettings });
+    setSaveMessage("Settings saved.");
+    setSaving(false);
+  }
 
   const tierConfig = {
     free: { label: "Free", color: "secondary" as const },
@@ -43,12 +110,11 @@ export function AccountTab() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold">Account</h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-          Manage your account settings and subscription.
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          Manage account details and model preferences.
         </p>
       </div>
 
-      {/* Profile Card */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Profile</CardTitle>
@@ -70,44 +136,67 @@ export function AccountTab() {
         </CardContent>
       </Card>
 
-      {/* Subscription Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">Subscription</CardTitle>
-              <CardDescription>Your current plan and usage.</CardDescription>
+              <CardDescription>Your current plan.</CardDescription>
             </div>
             <Badge variant={tier.color}>{tier.label}</Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 p-4">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              {profile?.tier === "free" ? (
-                <>You&apos;re on the free plan. Upgrade to unlock more features.</>
-              ) : (
-                <>Thank you for subscribing! You have full access to all features.</>
-              )}
-            </p>
-          </div>
-          {/* Placeholder for upgrade button */}
-          {profile?.tier === "free" && (
-            <p className="text-xs text-zinc-400">Billing coming soon.</p>
-          )}
+        <CardContent>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            {profile?.tier === "free"
+              ? "You're on the free plan."
+              : "You have full paid plan access."}
+          </p>
         </CardContent>
       </Card>
 
-      {/* Danger Zone */}
-      <Card className="border-red-200 dark:border-red-900/50">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-base text-red-600 dark:text-red-400">Danger Zone</CardTitle>
-          <CardDescription>Irreversible account actions.</CardDescription>
+          <CardTitle className="text-base">Model Preferences</CardTitle>
+          <CardDescription>Choose default provider/model used by your agent loop.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Account deletion will be available in a future update.
-          </p>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Provider</label>
+            <select
+              className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+              value={provider}
+              onChange={(event) => setProvider(event.target.value as LLMProviderName)}
+            >
+              {PROVIDER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Model (optional override)</label>
+            <Input
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              placeholder="Leave blank for provider default"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Timezone (optional)</label>
+            <Input
+              value={timezone}
+              onChange={(event) => setTimezone(event.target.value)}
+              placeholder="e.g. America/Los_Angeles"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-500">{saveMessage || ""}</span>
+            <Button size="sm" onClick={saveSettings} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

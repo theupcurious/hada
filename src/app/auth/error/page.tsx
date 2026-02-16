@@ -1,18 +1,19 @@
 import Link from "next/link";
 
 type ErrorPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     error?: string;
     error_code?: string;
     error_description?: string;
-  };
+  }>;
 };
 
-export default function AuthErrorPage({ searchParams }: ErrorPageProps) {
-  const errorDescription = searchParams?.error_description
-    ? decodeURIComponent(searchParams.error_description)
+export default async function AuthErrorPage({ searchParams }: ErrorPageProps) {
+  const resolvedParams = await searchParams;
+  const errorDescription = resolvedParams?.error_description
+    ? decodeURIComponent(resolvedParams.error_description)
     : null;
-  const errorCode = searchParams?.error_code ?? null;
+  const errorCode = resolvedParams?.error_code ?? null;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 dark:bg-zinc-950">

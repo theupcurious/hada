@@ -1,89 +1,99 @@
 # Hada
 
-Your AI assistant that actually does things. Hada manages your calendar, drafts emails, books appointments, does research, and handles tasks - like having a brilliant executive assistant available 24/7.
+Hada is an AI assistant web app with a built-in agent loop. It supports web chat, Telegram chat, long-term memory, tool usage (calendar/search/fetch/scheduling), and scheduled task execution.
+
+## Current Architecture
+
+- Next.js 16 (App Router) + React 19 + TypeScript
+- Supabase (Auth + Postgres + RLS)
+- Built-in agent loop in `src/lib/chat/agent-loop.ts`
+- Multi-provider LLM support via `src/lib/chat/providers.ts`
+- Shared message pipeline in `src/lib/chat/process-message.ts`
+- Telegram channel via webhook + deep-link account linking
+
+## Key Features
+
+- Persistent per-user conversation history
+- Long-term memory (`user_memories`)
+- Context management with sliding window + compaction
+- Web tools:
+  - `web_search`
+  - `web_fetch`
+- Calendar tools (Google integration)
+- Scheduled one-time and recurring tasks (`/api/cron`)
+- Telegram integration (bidirectional)
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- A Supabase account (free tier works)
-- Railway account (for deployment)
+- Node.js 20.9+ (`package.json` engines)
+- Supabase project
+- At least one LLM API key
 
-### Local Development
+### Install
 
-1. Clone the repo and install dependencies:
-   ```bash
-   npm install
-   ```
-
-2. Set up Supabase:
-   - Create a new project at [supabase.com](https://supabase.com)
-   - Go to Project Settings > API to get your URL and anon key
-   - Run the migration in `supabase/migrations/001_initial_schema.sql` via the SQL Editor
-   - Enable Google OAuth in Authentication > Providers (optional)
-
-3. Create `.env.local`:
-   ```bash
-   cp .env.local.example .env.local
-   # Edit with your Supabase credentials
-   ```
-
-4. Start the dev server:
-   ```bash
-   npm run dev
-   ```
-
-5. Open [http://localhost:3000](http://localhost:3000)
-
-### Deploy to Railway
-
-1. Push to GitHub
-2. Create a new project in Railway
-3. Connect your GitHub repo
-4. Add environment variables:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-5. Deploy!
-
-## Project Structure
-
-```
-src/
-├── app/                 # Next.js App Router pages
-│   ├── auth/           # Authentication pages
-│   ├── chat/           # Main chat interface
-│   └── page.tsx        # Landing page
-├── components/ui/      # shadcn/ui components
-├── lib/
-│   ├── supabase/       # Supabase client utilities
-│   └── types/          # TypeScript type definitions
-supabase/
-└── migrations/         # Database migrations
+```bash
+npm install
 ```
 
-## Chat Formatting
+### Configure environment
 
-The chat UI renders a small subset of Markdown for readability:
-- `**bold**` for emphasis
-- `-` or `*` for bullet lists
-- `#` / `##` / `###` headings are shown as styled section titles (hashes are not displayed)
+```bash
+cp .env.local.example .env.local
+```
 
-## Tech Stack
+Fill required values in `.env.local`:
 
-- **Framework:** Next.js 14 (App Router)
-- **Styling:** Tailwind CSS + shadcn/ui
-- **Database:** Supabase (PostgreSQL)
-- **Auth:** Supabase Auth
-- **Animations:** Framer Motion
-- **Deployment:** Railway
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_APP_URL`
+- `LLM_PROVIDER` and matching API key (for example `MINIMAX_API_KEY`)
 
-## Roadmap
+Optional:
 
-- [ ] Phase 1: Foundation (current)
-- [ ] Phase 2: OpenClaw Integration
-- [ ] Phase 3: Core Integrations (Calendar, Email)
-- [ ] Phase 4: Polish & Beta
-- [ ] Phase 5: Monetization
-- [ ] Phase 6: Scale
-- [ ] Phase 7: Skills Platform
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_WEBHOOK_SECRET` / `TELEGRAM_BOT_USERNAME`
+- `SEARCH_PROVIDER` / `SEARCH_API_KEY`
+- `CRON_SECRET`
+
+### Database setup
+
+Run migrations in Supabase SQL editor:
+
+- `supabase/migrations/001_initial_schema.sql`
+- `supabase/migrations/002_add_user_permissions.sql`
+- `supabase/migrations/004_agent_and_telegram.sql`
+
+### Run locally
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+## Build & Lint
+
+```bash
+npm run lint
+npm run build
+```
+
+If Turbopack build is restricted in your environment, use:
+
+```bash
+npx next build --webpack
+```
+
+## Important Paths
+
+- `src/app/api/chat/route.ts` - web chat API
+- `src/app/api/webhooks/telegram/route.ts` - Telegram webhook
+- `src/app/api/cron/route.ts` - scheduled task runner
+- `src/lib/chat/agent-loop.ts` - core runtime loop
+- `src/lib/chat/tools/` - tool implementations
+- `src/lib/telegram/` - Telegram utilities
+- `docs/ROADMAP.md` - product roadmap
+- `CHANGELOG.md` - change history

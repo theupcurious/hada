@@ -1,339 +1,95 @@
 # Product Roadmap
 
+## Snapshot (February 16, 2026)
+
+Hada has moved from an OpenClaw-based gateway architecture to a built-in agent runtime.
+Core web chat, Telegram channel support, long-term memory, web tools, and scheduled task execution are now in place.
+
 ## Vision
 
-Hada is "Bot as a Service" (BaaS) - anyone can sign up and get their own AI assistant that actually does things. Like having a brilliant executive assistant available 24/7.
-
-## Pricing
-
-| Tier | Price | Target User |
-|------|-------|-------------|
-| Free | $0/month | Trying it out |
-| Paid | $20/month | Regular users |
-| Pro | $50/month | Power users, businesses |
+Hada is "Bot as a Service" (BaaS): each user gets an assistant that can reason, use tools, remember context, and act across channels.
 
 ---
 
-## Phase 1: Foundation ✅
+## Completed Milestones
 
-**Status:** Complete
+### Phase 1: Foundation ✅
+- Next.js 16 app with TypeScript and Tailwind v4
+- Supabase auth and base schema with RLS
+- Web chat UI and settings experience
 
-**Goal:** Basic app infrastructure with auth and UI
+### Phase 2: AI Chat ✅
+- Conversation persistence and message history
+- Health/status endpoints and polling
+- Initial provider integration and tool-enabled chat flows
 
-### Deliverables
+### Phase 3: Agent Loop & Core Runtime ✅
+- Built-in async agent loop with tool execution
+- Multi-provider registry (MiniMax, Anthropic, OpenAI, Gemini, Kimi, DeepSeek, Groq)
+- Layered system prompt assembly
+- Sliding window + conversation compaction support
+- Shared `processMessage()` pipeline used across channels
+- OpenClaw dependency removed
 
-- [x] Next.js 16 project with TypeScript
-- [x] Tailwind CSS + shadcn/ui components
-- [x] Supabase authentication (email + Google OAuth)
-- [x] Database schema with RLS
-- [x] Landing page with hero and features
-- [x] Login/signup pages
-- [x] Basic chat UI
-- [x] Railway deployment config
+### Phase 4: Telegram Integration ✅
+- Telegram webhook route and bot API wrapper
+- Account linking via short-lived deep-link tokens
+- Inbound message handling and live response editing
+- MarkdownV2 formatting utilities
+- Telegram connect flow in Settings
 
-### Key Files
-
-- `src/app/page.tsx` - Landing page
-- `src/app/chat/page.tsx` - Chat interface
-- `src/app/auth/*` - Authentication pages
-- `supabase/migrations/001_initial_schema.sql` - Database schema
-
----
-
-## Phase 2: OpenClaw Integration
-
-**Status:** Complete ✅
-
-**Goal:** Connect the UI to OpenClaw for actual AI capabilities
-
-### Tasks
-
-- [x] Create Dockerfile for OpenClaw
-  - Base image with Node 22+
-  - Configure for headless server operation (--bind lan)
-  - Set up environment variables
-- [x] Deploy OpenClaw container to Railway
-  - Migrated from legacy gateway to openclaw/openclaw repo
-  - Fixed config format (agents.defaults.model.primary)
-  - Gateway binds to 0.0.0.0 for internal networking
-- [x] Build WebSocket bridge service
-  - Proxy WebSocket from Next.js to OpenClaw Gateway
-  - Handle authentication mapping (OPENCLAW_GATEWAY_TOKEN)
-- [x] Implement user session isolation
-  - Namespace conversations by user ID (sessionKey = userId)
-  - Store context per user (OpenClaw handles context, DB for display)
-- [x] Conversation persistence
-  - Messages stored to Supabase
-  - Load last 25 messages on page load
-  - Lazy load older messages on scroll
-- [x] Add health monitoring
-  - /api/health endpoint with detailed status
-  - Connection status indicator in chat header
-  - Auto-reconnect with exponential backoff
-- [x] Settings page
-  - Status tab with gateway/fallback health
-  - Integrations tab placeholder
-  - Account tab placeholder
-
-### Architecture
-
-```
-Next.js App ──WebSocket──▶ OpenClaw Gateway (Railway)
-     │                           │
-     │                           ▼
-     │                    Session Router
-     │                    (user → instance)
-     ▼
-  Supabase
-(conversations, messages)
-```
-
-### Success Criteria
-
-- ✅ Users can chat with OpenClaw through Hada UI
-- ✅ Messages persist to database
-- ✅ Sessions survive page refresh
-- ✅ Fallback to direct LLM when gateway unavailable
+### Phase 5: Web Tools & Scheduling (MVP) ✅
+- `web_search` tool (provider-based: tavily/serpapi/brave)
+- `web_fetch` tool
+- `schedule_task` tool
+- Cron execution route for due tasks
+- Scheduled delivery support to Telegram
 
 ---
 
-## Phase 3: Core Integrations
+## Active Priorities
 
-**Status:** Not Started
+### Phase 6: Reliability & UX Polish (In Progress)
+- Improve response formatting normalization across providers
+- Tighten tool-call protocol sanitization and fallback parsing
+- Harden error surfacing and recovery in agent loop
+- Add richer UI rendering for structured outputs
+- Improve onboarding and integration setup guidance
 
-**Goal:** Calendar and email integration for real assistant value
-
-### Tasks
-
-- [ ] Google OAuth with Calendar + Gmail scopes
-- [ ] Microsoft OAuth for Outlook users (optional)
-- [ ] Calendar integration
-  - Fetch and display events
-  - Create new events
-  - Modify/delete events
-  - Check availability
-- [ ] Email integration
-  - Fetch recent emails
-  - Draft responses
-  - Send emails
-  - Summarize threads
-- [ ] Rich message cards in chat
-  - Calendar event cards
-  - Email preview cards
-  - Action buttons
-- [ ] Task/reminder system
-  - Create and track tasks
-  - Schedule reminders
-  - Follow-up notifications
-
-### UI Components
-
-```
-┌────────────────────────────────────────┐
-│ 📅 Meeting: Team Standup               │
-│ Tomorrow, 10:00 AM - 10:30 AM          │
-│ [Join Meeting] [Reschedule] [Cancel]   │
-└────────────────────────────────────────┘
-
-┌────────────────────────────────────────┐
-│ 📧 From: John Smith                    │
-│ Subject: Q4 Planning                   │
-│ "Hi, can we schedule a call to..."     │
-│ [Reply] [Archive] [Forward]            │
-└────────────────────────────────────────┘
-```
-
-### Success Criteria
-
-- Users can view/create calendar events through chat
-- Users can read/send emails through chat
-- Actions happen with one tap (not confirmation dialogs)
+### Phase 7: Google/Microsoft Integrations (In Progress)
+- Expand calendar capabilities (availability and richer edits)
+- Gmail read/send workflows
+- Microsoft OAuth and Outlook parity
 
 ---
 
-## Phase 4: Polish
+## Next Milestones
 
-**Status:** Not Started
+### Phase 8: Monetization
+- Stripe checkout and customer portal
+- Tier-based limits and feature gating
+- Usage metering and billing visibility
 
-**Goal:** Beta-ready product with excellent UX
+### Phase 9: Scale
+- Mobile app surfaces
+- Additional channels (WhatsApp, Slack)
+- Operational dashboards and alerting
 
-### Tasks
-
-- [ ] Onboarding flow
-  - Welcome screen
-  - OAuth connection prompts
-  - Sample conversation starter
-  - Tips for first-time users
-- [ ] Morning briefing
-  - Scheduled daily summary (configurable time)
-  - Today's calendar overview
-  - Important emails
-  - Pending tasks
-  - Weather (optional)
-- [ ] Mobile-responsive design
-  - Touch-friendly interactions
-  - Bottom navigation on mobile
-  - Swipe gestures
-- [ ] Error handling UX
-  - Graceful failure messages
-  - Retry mechanisms
-  - Offline indicators
-  - Connection status
-- [ ] Usage tracking (internal)
-  - API cost per user
-  - Message volume
-  - Feature usage analytics
-
-### Success Criteria
-
-- 10 beta users actively using for 2+ weeks
-- Average 5+ conversations per user per week
-- <1% error rate on core actions
-
----
-
-## Phase 5: Monetization
-
-**Status:** Not Started
-
-**Goal:** Revenue generation with Stripe
-
-### Tasks
-
-- [ ] Stripe integration
-  - Products: Free, Paid ($20), Pro ($50)
-  - Checkout flow
-  - Customer portal
-  - Webhooks for subscription events
-- [ ] Tier-based access control
-  - Feature gating by tier
-  - Usage limits
-  - Upgrade prompts
-- [ ] Usage metering
-  - Track LLM API usage per user
-  - Soft limits (warning)
-  - Hard limits (block)
-- [ ] Billing dashboard
-  - Current plan display
-  - Usage visualization
-  - Invoice history
-  - Payment method management
-
-### Pricing Features
-
-| Feature | Free | Paid | Pro |
-|---------|------|------|-----|
-| Messages/day | 20 | Unlimited | Unlimited |
-| Calendar | View only | Full access | Full access |
-| Email | Read only | Full access | Full access |
-| Instance | Shared | Shared | Dedicated |
-| Support | Community | Email | Priority |
-
-### Success Criteria
-
-- Payment flow works end-to-end
-- Users can upgrade/downgrade
-- Usage limits enforced correctly
-
----
-
-## Phase 6: Scale
-
-**Status:** Not Started
-
-**Goal:** Support growth and premium features
-
-### Tasks
-
-- [ ] Multi-instance orchestration
-  - Spin up dedicated instances for Pro
-  - Instance pooling for shared tiers
-  - Auto-scaling based on demand
-  - Graceful instance shutdown
-- [ ] Mobile apps (React Native)
-  - iOS app
-  - Android app
-  - Push notifications
-  - Biometric auth
-- [ ] Voice input
-  - Web Speech API
-  - Mobile native speech
-  - Voice commands
-- [ ] Messaging integrations
-  - WhatsApp Business API
-  - Telegram Bot API
-  - Slack workspace app
-
-### Success Criteria
-
-- Pro users get dedicated instances
-- Mobile apps in app stores
-- At least one messaging platform integrated
-
----
-
-## Phase 7: Skills Platform
-
-**Status:** Not Started
-
-**Goal:** Extensible capabilities beyond core features
-
-### Tasks
-
-- [ ] Skills architecture
-  - Define skill interface (triggers, actions, permissions)
-  - Skill registry and discovery
-  - Sandboxed execution environment
-  - Skill state management
-- [ ] Operator skill builder
-  - Admin UI for creating skills
-  - Skill templates
-  - Testing sandbox
-- [ ] User integrations
-  - "Connect your apps" UI
-  - OAuth flows for third-party services
-  - Custom API connections (Zapier-like)
-- [ ] Marketplace foundation
-  - Developer documentation
-  - Skill submission process
-  - Review and approval workflow
-  - Revenue sharing model
-
-### Example Skills
-
-| Skill | Capability |
-|-------|------------|
-| Tax Prep | Connect to tax software, gather documents, file |
-| Travel | Search flights/hotels, book with approval |
-| Expenses | Scan receipts, categorize, submit reports |
-| Shopping | Research products, compare prices, order |
-| Health | Book appointments, medication reminders |
-| Social | Draft posts, schedule, respond to comments |
-
-### Success Criteria
-
-- At least 5 operator-built skills live
-- Users can connect third-party apps
-- Developer documentation complete
+### Phase 10: Skills Platform
+- Skill interface and registry
+- Sandboxed skill execution model
+- Developer-facing docs and examples
 
 ---
 
 ## Success Metrics
 
 ### Technical
+- Median response latency < 3s for non-tool turns
+- Stable tool execution with low failure rate
+- Long-running conversations remain within context budget
 
-- App loads in <2 seconds
-- Message response in <3 seconds
-- 99.9% uptime
-
-### Business
-
-- 100 paying users within 6 months
-- $2,000 MRR within 6 months
-- <5% monthly churn
-
-### User
-
-- 4.5+ star rating
-- 50% weekly active users
-- Net Promoter Score >40
+### Product
+- Multi-week retention for active users
+- Strong weekly usage across web + Telegram
+- High reliability for scheduled and integration-driven actions

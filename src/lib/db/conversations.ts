@@ -1,23 +1,10 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { Conversation, Message } from '@/lib/types/database';
-
-export interface MessageMetadata {
-  thinking?: string;
-  runId?: string;
-  gatewayError?: { code: string; message: string };
-  cards?: any[];
-  confirmation?: {
-    pending?: boolean;
-    function?: {
-      name?: string;
-      arguments?: Record<string, any>;
-    };
-    confirmationData?: any;
-    created_at?: string;
-    resolved_at?: string;
-    cancelled?: boolean;
-  };
-}
+import type {
+  Conversation,
+  Message,
+  MessageMetadata,
+  MessageRole,
+} from '@/lib/types/database';
 
 /**
  * Get the user's conversation, or create one if it doesn't exist.
@@ -60,7 +47,7 @@ export async function getOrCreateConversation(
 export async function saveMessage(
   supabase: SupabaseClient,
   conversationId: string,
-  role: 'user' | 'assistant',
+  role: MessageRole,
   content: string,
   metadata?: MessageMetadata
 ): Promise<Message> {
@@ -93,12 +80,13 @@ export async function getRecentMessages(
   limit: number = 25,
   before?: string
 ): Promise<{ messages: Message[]; hasMore: boolean }> {
+  const fetchLimit = limit * 4 + 10;
   let query = supabase
     .from('messages')
     .select('*')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
-    .limit(limit + 1); // Fetch one extra to check if there are more
+    .limit(fetchLimit);
 
   if (before) {
     // Get the timestamp of the "before" message to paginate
@@ -119,13 +107,13 @@ export async function getRecentMessages(
     throw new Error(`Failed to fetch messages: ${error.message}`);
   }
 
-  const messages = (data || []) as Message[];
-  const hasMore = messages.length > limit;
+  const filtered = ((data || []) as Message[]).filter((message) => {
+    const metadata = message.metadata as MessageMetadata | null;
+    return metadata?.type !== 'compaction';
+  });
 
-  // Remove the extra message we fetched for pagination check
-  if (hasMore) {
-    messages.pop();
-  }
+  const hasMore = filtered.length > limit;
+  const messages = hasMore ? filtered.slice(0, limit) : filtered;
 
   // Reverse to chronological order (oldest first)
   return {
