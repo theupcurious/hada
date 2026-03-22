@@ -26,6 +26,8 @@ export default function LoginForm() {
   );
   const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [resendError, setResendError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -78,6 +80,30 @@ export default function LoginForm() {
 
     setResendStatus("sent");
     setVerifyMessage(`We sent a new verification link to ${targetEmail}.`);
+  };
+
+  const handleForgotPassword = async () => {
+    const targetEmail = email.trim();
+    if (!targetEmail) {
+      setError("Enter your email address first, then click Forgot password.");
+      return;
+    }
+    setResetLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      });
+      if (error) {
+        setError(error.message);
+      } else {
+        setResetSent(true);
+      }
+    } catch {
+      setError("Could not send reset email. Check your internet connection and try again.");
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -161,6 +187,23 @@ export default function LoginForm() {
               required
             />
           </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={resetLoading}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              {resetLoading ? "Sending..." : "Forgot password?"}
+            </button>
+          </div>
+
+          {resetSent && (
+            <div className="rounded-lg border border-border/80 bg-card/70 p-3 text-sm text-muted-foreground backdrop-blur-sm">
+              Check your inbox — we sent a password reset link to <span className="font-medium text-foreground">{email}</span>.
+            </div>
+          )}
 
           {error && (
             <p className="text-sm text-red-500">{error}</p>
