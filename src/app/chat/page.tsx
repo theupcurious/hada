@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
 import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { CalendarEventCard, type CalendarEventCardProps } from "@/components/chat/calendar-event-card";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -408,7 +409,7 @@ export default function ChatPage() {
 
   const inputForm = (
     <form onSubmit={handleSubmit}>
-      <div className="relative rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="relative rounded-2xl border border-border/80 bg-card/70 shadow-sm backdrop-blur-sm">
         <textarea
           ref={textareaRef}
           value={input}
@@ -481,8 +482,9 @@ export default function ChatPage() {
             </span>
           </Link>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-500 hidden sm:block">{user?.email}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground hidden sm:block">{user?.email}</span>
+          <ThemeToggle />
           <Link href="/settings">
             <Button variant="ghost" size="sm">
               Settings
@@ -548,7 +550,7 @@ export default function ChatPage() {
                             setInput(suggestion);
                             requestAnimationFrame(() => textareaRef.current?.focus());
                           }}
-                          className="rounded-xl border border-zinc-200 bg-white p-4 text-left text-sm transition-all hover:bg-zinc-50 hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                          className="rounded-lg border border-border/80 bg-card/70 p-4 text-left text-sm backdrop-blur-sm transition-all hover:bg-card/90 hover:border-border"
                         >
                           {suggestion}
                         </button>
@@ -666,7 +668,7 @@ export default function ChatPage() {
 
           {/* Input Area - Fixed at bottom when there are messages */}
           {messages.length > 0 && (
-            <div className="shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800">
+            <div className="shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 bg-background/90 border-t border-border/70 backdrop-blur-sm">
               {inputForm}
             </div>
           )}

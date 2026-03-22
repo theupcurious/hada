@@ -1,37 +1,18 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { ThemeBootstrap } from "@/components/theme/theme-bootstrap";
 import "./globals.css";
 
-const geistSans = localFont({
-  variable: "--font-geist-sans",
+const dmSans = DM_Sans({
+  subsets: ["latin"],
   display: "swap",
-  src: [
-    { path: "./fonts/geist/geist-100.ttf", weight: "100", style: "normal" },
-    { path: "./fonts/geist/geist-200.ttf", weight: "200", style: "normal" },
-    { path: "./fonts/geist/geist-300.ttf", weight: "300", style: "normal" },
-    { path: "./fonts/geist/geist-400.ttf", weight: "400", style: "normal" },
-    { path: "./fonts/geist/geist-500.ttf", weight: "500", style: "normal" },
-    { path: "./fonts/geist/geist-600.ttf", weight: "600", style: "normal" },
-    { path: "./fonts/geist/geist-700.ttf", weight: "700", style: "normal" },
-    { path: "./fonts/geist/geist-800.ttf", weight: "800", style: "normal" },
-    { path: "./fonts/geist/geist-900.ttf", weight: "900", style: "normal" },
-  ],
+  variable: "--font-body",
 });
 
-const geistMono = localFont({
-  variable: "--font-geist-mono",
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
   display: "swap",
-  src: [
-    { path: "./fonts/geist-mono/geist-mono-100.ttf", weight: "100", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-200.ttf", weight: "200", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-300.ttf", weight: "300", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-400.ttf", weight: "400", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-500.ttf", weight: "500", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-600.ttf", weight: "600", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-700.ttf", weight: "700", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-800.ttf", weight: "800", style: "normal" },
-    { path: "./fonts/geist-mono/geist-mono-900.ttf", weight: "900", style: "normal" },
-  ],
+  variable: "--font-display",
 });
 
 export const metadata: Metadata = {
@@ -45,10 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${dmSans.variable} ${plusJakarta.variable} font-sans antialiased`}
       >
+        <ThemeBootstrap />
         {children}
       </body>
     </html>

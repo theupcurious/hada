@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -32,7 +33,8 @@ export default function SettingsLayout({
           <span className="text-zinc-300 dark:text-zinc-700">/</span>
           <span className="text-zinc-500">Settings</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Link href="/chat">
             <Button variant="ghost" size="sm">
               Back to Chat
