@@ -12,7 +12,9 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Message {
   id: string;
@@ -73,86 +75,92 @@ type ChatCard =
       actions?: string[];
     };
 
-function renderInlineBold(text: string) {
-  const parts = text.split("**");
-  return parts.map((part, index) =>
-    index % 2 === 1 ? <strong key={`b-${index}`}>{part}</strong> : part
-  );
-}
-
 function MessageContent({ content }: { content: string }) {
-  const lines = content.split(/\r?\n/);
-  const blocks: ReactNode[] = [];
-  let paragraphBuffer: string[] = [];
-  let listItems: ReactNode[] = [];
-  let keyIndex = 0;
-
-  const flushParagraph = () => {
-    if (paragraphBuffer.length === 0) return;
-    const paragraphText = paragraphBuffer.join("\n");
-    blocks.push(
-      <p key={`p-${keyIndex++}`} className="whitespace-pre-wrap">
-        {renderInlineBold(paragraphText)}
-      </p>
-    );
-    paragraphBuffer = [];
-  };
-
-  const flushList = () => {
-    if (listItems.length === 0) return;
-    blocks.push(
-      <ul key={`ul-${keyIndex++}`} className="list-disc space-y-1 pl-5">
-        {listItems}
-      </ul>
-    );
-    listItems = [];
-  };
-
-  const addSpacer = () => {
-    blocks.push(<div key={`sp-${keyIndex++}`} className="h-2" />);
-  };
-
-  lines.forEach((line, index) => {
-    const headingMatch = line.match(/^\s{0,3}#{1,6}\s+(.*)$/);
-    const listMatch = line.match(/^\s*[-*]\s+(.*)$/);
-    if (headingMatch) {
-      flushParagraph();
-      flushList();
-      blocks.push(
-        <p key={`h-${keyIndex++}`} className="text-sm font-semibold">
-          {renderInlineBold(headingMatch[1])}
-        </p>
-      );
-      return;
-    }
-
-    if (listMatch) {
-      flushParagraph();
-      listItems.push(
-        <li key={`li-${keyIndex++}`}>
-          {renderInlineBold(listMatch[1])}
-        </li>
-      );
-      return;
-    }
-
-    if (line.trim() === "") {
-      flushParagraph();
-      flushList();
-      if (index !== 0 && index !== lines.length - 1) {
-        addSpacer();
-      }
-      return;
-    }
-
-    flushList();
-    paragraphBuffer.push(line);
-  });
-
-  flushParagraph();
-  flushList();
-
-  return <div className="text-sm leading-relaxed space-y-2">{blocks}</div>;
+  return (
+    <div className="text-sm leading-relaxed space-y-1 [&>*:last-child]:mb-0">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => (
+            <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>
+          ),
+          ul: ({ children }) => (
+            <ul className="list-disc space-y-1 pl-5 mb-2">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="list-decimal space-y-1 pl-5 mb-2">{children}</ol>
+          ),
+          li: ({ children }) => <li className="leading-snug">{children}</li>,
+          h1: ({ children }) => (
+            <p className="font-semibold mb-1">{children}</p>
+          ),
+          h2: ({ children }) => (
+            <p className="font-semibold mb-1">{children}</p>
+          ),
+          h3: ({ children }) => (
+            <p className="font-semibold mb-1">{children}</p>
+          ),
+          h4: ({ children }) => (
+            <p className="font-semibold mb-1">{children}</p>
+          ),
+          h5: ({ children }) => (
+            <p className="font-semibold mb-1">{children}</p>
+          ),
+          h6: ({ children }) => (
+            <p className="font-semibold mb-1">{children}</p>
+          ),
+          pre: ({ children }) => (
+            <pre className="bg-zinc-100 dark:bg-zinc-800 rounded-lg p-3 overflow-x-auto text-xs font-mono mb-2 whitespace-pre">
+              {children}
+            </pre>
+          ),
+          code: ({ className, children }) => {
+            const isBlock = !!className;
+            return isBlock ? (
+              <code className={className}>{children}</code>
+            ) : (
+              <code className="bg-zinc-100 dark:bg-zinc-800 rounded px-1 py-0.5 text-xs font-mono">
+                {children}
+              </code>
+            );
+          },
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+            >
+              {children}
+            </a>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 italic text-zinc-500 dark:text-zinc-400 mb-2">
+              {children}
+            </blockquote>
+          ),
+          table: ({ children }) => (
+            <div className="overflow-x-auto mb-2">
+              <table className="text-xs border-collapse w-full">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => (
+            <th className="border border-zinc-300 dark:border-zinc-600 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 font-semibold text-left">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="border border-zinc-300 dark:border-zinc-600 px-3 py-1.5">
+              {children}
+            </td>
+          ),
+          hr: () => <hr className="my-3 border-zinc-200 dark:border-zinc-700" />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function isCalendarEventData(value: unknown): value is CalendarEventCardData {

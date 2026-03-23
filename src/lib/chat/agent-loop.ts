@@ -408,7 +408,6 @@ function sanitizeAssistantContent(text: string): string {
   // Clean up common parameter markers leaked by some providers.
   output = output.replace(/<!--\$[^>]+-->/g, "");
   output = output.replace(/<\/?parameter>/gi, "");
-  output = normalizeMarkdownTables(output);
   output = output.replace(/\n{3,}/g, "\n\n");
 
   return output.trim();
@@ -428,82 +427,4 @@ function toObject(value: unknown): Record<string, unknown> {
     return {};
   }
   return value as Record<string, unknown>;
-}
-
-function normalizeMarkdownTables(text: string): string {
-  const lines = text.split("\n");
-  const out: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (!isPotentialTableLine(lines[i]) || i + 1 >= lines.length || !isTableSeparatorLine(lines[i + 1])) {
-      out.push(lines[i]);
-      i += 1;
-      continue;
-    }
-
-    const tableLines: string[] = [lines[i], lines[i + 1]];
-    i += 2;
-    while (i < lines.length && isPotentialTableLine(lines[i])) {
-      tableLines.push(lines[i]);
-      i += 1;
-    }
-
-    const normalized = tableToBullets(tableLines);
-    out.push(normalized);
-  }
-
-  return out.join("\n");
-}
-
-function isPotentialTableLine(line: string): boolean {
-  return line.includes("|");
-}
-
-function isTableSeparatorLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed.includes("|")) {
-    return false;
-  }
-
-  const cells = parseTableRow(trimmed);
-  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
-}
-
-function parseTableRow(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim());
-}
-
-function tableToBullets(lines: string[]): string {
-  if (lines.length < 3) {
-    return lines.join("\n");
-  }
-
-  const header = parseTableRow(lines[0]);
-  const dataRows = lines.slice(2).map(parseTableRow).filter((row) => row.some((cell) => cell.length > 0));
-
-  if (!dataRows.length) {
-    return "";
-  }
-
-  const hasUsefulHeader = header.some((cell) => cell.length > 0);
-  if (dataRows.every((row) => row.length >= 2)) {
-    return dataRows
-      .map((row) => {
-        const left = row[0];
-        const right = row.slice(1).join(" | ");
-        if (!hasUsefulHeader || left) {
-          return `- ${left || "Value"}: ${right}`;
-        }
-        return `- ${right}`;
-      })
-      .join("\n");
-  }
-
-  return dataRows.map((row) => `- ${row.join(" | ")}`).join("\n");
 }
