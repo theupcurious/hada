@@ -24,7 +24,7 @@ export function createWebSearchTool(): AgentTool {
       },
       required: ["query"],
     },
-    async execute(args) {
+    async execute(args, options) {
       const query = String(args.query || "").trim();
       const maxResults = Math.max(
         1,
@@ -48,15 +48,18 @@ export function createWebSearchTool(): AgentTool {
       try {
         let results: SearchResult[] = [];
         if (provider === "serpapi") {
-          results = await searchSerpAPI(query, maxResults, apiKey);
+          results = await searchSerpAPI(query, maxResults, apiKey, options?.signal);
         } else if (provider === "brave") {
-          results = await searchBrave(query, maxResults, apiKey);
+          results = await searchBrave(query, maxResults, apiKey, options?.signal);
         } else {
-          results = await searchTavily(query, maxResults, apiKey);
+          results = await searchTavily(query, maxResults, apiKey, options?.signal);
         }
 
         return JSON.stringify({ success: true, provider, query, results });
       } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
         return JSON.stringify({
           success: false,
           error: error instanceof Error ? error.message : "Search failed",
@@ -90,9 +93,11 @@ async function searchTavily(
   query: string,
   maxResults: number,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<SearchResult[]> {
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/json",
     },
@@ -104,7 +109,7 @@ async function searchTavily(
   });
 
   if (!response.ok) {
-    throw new Error(`Tavily request failed: ${response.status}`);
+    throw new Error(await formatSearchError("Tavily request failed", response));
   }
 
   const data = await response.json();
@@ -119,6 +124,7 @@ async function searchSerpAPI(
   query: string,
   maxResults: number,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = new URL("https://serpapi.com/search");
   url.searchParams.set("engine", "google");
@@ -126,9 +132,9 @@ async function searchSerpAPI(
   url.searchParams.set("api_key", apiKey);
   url.searchParams.set("num", String(maxResults));
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), { signal });
   if (!response.ok) {
-    throw new Error(`SerpAPI request failed: ${response.status}`);
+    throw new Error(await formatSearchError("SerpAPI request failed", response));
   }
 
   const data = await response.json();
@@ -143,12 +149,14 @@ async function searchBrave(
   query: string,
   maxResults: number,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = new URL("https://api.search.brave.com/res/v1/web/search");
   url.searchParams.set("q", query);
   url.searchParams.set("count", String(maxResults));
 
   const response = await fetch(url.toString(), {
+    signal,
     headers: {
       Accept: "application/json",
       "X-Subscription-Token": apiKey,
@@ -156,7 +164,7 @@ async function searchBrave(
   });
 
   if (!response.ok) {
-    throw new Error(`Brave Search request failed: ${response.status}`);
+    throw new Error(await formatSearchError("Brave Search request failed", response));
   }
 
   const data = await response.json();
@@ -179,4 +187,25 @@ function toSearchResults(
       snippet: String(record[fields.snippet] || ""),
     };
   });
+}
+
+async function formatSearchError(prefix: string, response: Response): Promise<string> {
+  const body = await safeResponseText(response);
+  return body
+    ? `${prefix}: ${response.status} ${body.slice(0, 300)}`
+    : `${prefix}: ${response.status}`;
+}
+
+async function safeResponseText(response: Response): Promise<string> {
+  try {
+    return (await response.text()).trim();
+  } catch {
+    return "";
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
 }

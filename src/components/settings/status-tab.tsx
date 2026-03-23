@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,25 @@ import { useHealthStatus } from "@/lib/hooks/use-health-status";
 
 export function StatusTab() {
   const { status, health, isLoading, error, refresh } = useHealthStatus(10000);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const loadRole = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!response.ok) {
+          setIsAdmin(false);
+          return;
+        }
+        const data = (await response.json()) as { isAdmin?: boolean };
+        setIsAdmin(Boolean(data.isAdmin));
+      } catch {
+        setIsAdmin(false);
+      }
+    };
+
+    void loadRole();
+  }, []);
 
   const statusConfig = {
     connecting: { label: "Connecting", color: "bg-yellow-500", badgeVariant: "secondary" as const },
@@ -71,28 +91,29 @@ export function StatusTab() {
         </CardContent>
       </Card>
 
-      {/* LLM Provider */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">LLM Provider</CardTitle>
-          <CardDescription>
-            Active provider configuration used by the agent loop.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-500 dark:text-zinc-400">Status</span>
-            <span className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${health?.llmFallback.available ? "bg-green-500" : "bg-zinc-300"}`} />
-              {health?.llmFallback.available ? "Available" : "Not Configured"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-500 dark:text-zinc-400">Provider</span>
-            <span className="capitalize">{health?.llmFallback.provider || "—"}</span>
-          </div>
-        </CardContent>
-      </Card>
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">LLM Provider</CardTitle>
+            <CardDescription>
+              Active provider configuration used by the agent loop.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400">Status</span>
+              <span className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${health?.llmFallback.available ? "bg-green-500" : "bg-zinc-300"}`} />
+                {health?.llmFallback.available ? "Available" : "Not Configured"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400">Provider</span>
+              <span className="capitalize">{health?.llmFallback.provider || "—"}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Error Display */}
       {error && (

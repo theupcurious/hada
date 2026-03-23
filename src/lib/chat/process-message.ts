@@ -5,6 +5,7 @@ import { assembleConversationContext, maybeCompactConversation } from "@/lib/cha
 import { resolveProviderSelection } from "@/lib/chat/providers";
 import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { getOrCreateConversation, saveMessage } from "@/lib/db/conversations";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { AgentEvent, MessageMetadata, MessageSource } from "@/lib/types/database";
@@ -62,7 +63,10 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     tools,
   });
 
-  const provider = resolveProviderSelection(builtPrompt.userSettings);
+  const allowModelOverrides = isAdminEmail(builtPrompt.userEmail);
+  const provider = resolveProviderSelection(
+    allowModelOverrides ? builtPrompt.userSettings : undefined,
+  );
   const context = await assembleConversationContext({
     supabase,
     conversationId: conversation.id,

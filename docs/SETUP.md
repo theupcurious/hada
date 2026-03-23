@@ -111,6 +111,8 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 # LLM Provider (at least one required)
 LLM_PROVIDER=minimax
 MINIMAX_API_KEY=your-minimax-api-key
+# Optional: allow per-user provider/model overrides for listed admin emails
+# ADMIN_USER_EMAILS=admin@example.com,ops@example.com
 
 # Optional: Additional LLM providers
 # ANTHROPIC_API_KEY=

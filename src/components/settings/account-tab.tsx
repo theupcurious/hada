@@ -33,6 +33,7 @@ export function AccountTab() {
   const [provider, setProvider] = useState<LLMProviderName>("minimax");
   const [model, setModel] = useState("");
   const [timezone, setTimezone] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -44,6 +45,18 @@ export function AccountTab() {
 
       if (!user) {
         return;
+      }
+
+      try {
+        const roleResponse = await fetch("/api/auth/me", { cache: "no-store" });
+        if (roleResponse.ok) {
+          const roleData = (await roleResponse.json()) as { isAdmin?: boolean };
+          setIsAdmin(Boolean(roleData.isAdmin));
+        } else {
+          setIsAdmin(false);
+        }
+      } catch {
+        setIsAdmin(false);
       }
 
       const { data } = await supabase
@@ -77,10 +90,15 @@ export function AccountTab() {
 
     const nextSettings: UserSettings = {
       ...(profile.settings || {}),
-      llm_provider: provider,
-      llm_model: model.trim() || null,
       timezone: timezone.trim() || null,
     };
+    if (isAdmin) {
+      nextSettings.llm_provider = provider;
+      nextSettings.llm_model = model.trim() || null;
+    } else {
+      delete nextSettings.llm_provider;
+      delete nextSettings.llm_model;
+    }
 
     const { error } = await supabase
       .from("users")
@@ -88,7 +106,7 @@ export function AccountTab() {
       .eq("id", profile.id);
 
     if (error) {
-      setSaveMessage("Failed to save model settings.");
+      setSaveMessage("Failed to save settings.");
       setSaving(false);
       return;
     }
@@ -111,7 +129,9 @@ export function AccountTab() {
       <div>
         <h2 className="text-2xl font-semibold">Account</h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Manage account details and model preferences.
+          {isAdmin
+            ? "Manage account details and model preferences."
+            : "Manage account details and preferences."}
         </p>
       </div>
 
@@ -157,32 +177,40 @@ export function AccountTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Model Preferences</CardTitle>
-          <CardDescription>Choose default provider/model used by your agent loop.</CardDescription>
+          <CardTitle className="text-base">Preferences</CardTitle>
+          <CardDescription>
+            {isAdmin
+              ? "Configure timezone and default provider/model used by your agent loop."
+              : "Configure your timezone preference."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Provider</label>
-            <select
-              className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
-              value={provider}
-              onChange={(event) => setProvider(event.target.value as LLMProviderName)}
-            >
-              {PROVIDER_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Model (optional override)</label>
-            <Input
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              placeholder="Leave blank for provider default"
-            />
-          </div>
+          {isAdmin && (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Provider</label>
+                <select
+                  className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+                  value={provider}
+                  onChange={(event) => setProvider(event.target.value as LLMProviderName)}
+                >
+                  {PROVIDER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Model (optional override)</label>
+                <Input
+                  value={model}
+                  onChange={(event) => setModel(event.target.value)}
+                  placeholder="Leave blank for provider default"
+                />
+              </div>
+            </>
+          )}
           <div className="space-y-2">
             <label className="text-sm font-medium">Timezone (optional)</label>
             <Input

@@ -13,6 +13,7 @@ let cachedBasePrompt: string | null = null;
 export interface BuildSystemPromptResult {
   prompt: string;
   userSettings: UserSettings;
+  userEmail: string | null;
   connectedIntegrations: string[];
 }
 
@@ -84,6 +85,7 @@ export async function buildSystemPrompt(options: {
   return {
     prompt: sections.join("\n\n"),
     userSettings,
+    userEmail: user?.email || null,
     connectedIntegrations,
   };
 }

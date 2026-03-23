@@ -16,7 +16,7 @@ export function createWebFetchTool(): AgentTool {
       },
       required: ["url"],
     },
-    async execute(args) {
+    async execute(args, options) {
       const rawUrl = String(args.url || "").trim();
       if (!rawUrl) {
         return JSON.stringify({ success: false, error: "url is required" });
@@ -35,6 +35,7 @@ export function createWebFetchTool(): AgentTool {
 
       try {
         const response = await fetch(url.toString(), {
+          signal: options?.signal,
           headers: {
             "User-Agent": "HadaBot/1.0 (+https://hada.app)",
             Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -61,6 +62,9 @@ export function createWebFetchTool(): AgentTool {
           truncated: extracted.length > MAX_FETCH_CHARS,
         });
       } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
         return JSON.stringify({
           success: false,
           error: error instanceof Error ? error.message : "fetch failed",
@@ -86,4 +90,10 @@ function htmlToText(html: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
 }
