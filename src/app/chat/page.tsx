@@ -30,6 +30,7 @@ interface Message {
     };
   };
   isError?: boolean;
+  isStreaming?: boolean;
   created_at: string;
 }
 
@@ -313,73 +314,123 @@ export default function ChatPage() {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
 
-    const tempId = `temp-${Date.now()}`;
-    const userMessage: Message = {
-      id: tempId,
-      role: "user",
-      content: messageText.trim(),
-      created_at: new Date().toISOString(),
-    };
+    const tempUserId = `temp-user-${Date.now()}`;
+    const tempAssistantId = `temp-assistant-${Date.now()}`;
 
-    setMessages((prev) => [...prev, userMessage]);
-    if (!overrideMessage) {
-      setInput("");
-    }
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: tempUserId,
+        role: "user" as const,
+        content: messageText.trim(),
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: tempAssistantId,
+        role: "assistant" as const,
+        content: "",
+        isStreaming: true,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    if (!overrideMessage) setInput("");
     setIsLoading(true);
+    setIsThinking(true);
 
     try {
-      setIsThinking(true);
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: userMessage.content,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: messageText.trim() }),
       });
 
-      const data = await response.json();
+      if (!response.ok || !response.body) {
+        const errData = await response.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error(String(errData.error ?? `Request failed: ${response.status}`));
+      }
 
-      // Update user message with real ID from database
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === tempId
-            ? { ...msg, id: data.userMessageId || msg.id }
-            : msg
-        )
-      );
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      const assistantMessage: Message = {
-        id: data.id || `temp-${Date.now() + 1}`,
-        role: "assistant",
-        content: data.content || data.error || "Sorry, I encountered an error.",
-        thinking: data.thinking,
-        cards: data.cards,
-        confirmation: data.confirmation?.pending
-          ? {
-              pending: true,
-              function: data.confirmation?.function
-                ? {
-                    name: data.confirmation.function.name || "",
-                    arguments: data.confirmation.function.arguments || {},
-                  }
-                : undefined,
-            }
-          : undefined,
-        isError: !!data.isError,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+
+          let event: Record<string, unknown>;
+          try {
+            event = JSON.parse(line.slice(6)) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+
+          if (event.type === "text_delta" && typeof event.content === "string") {
+            setIsThinking(false);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === tempAssistantId
+                  ? { ...msg, content: msg.content + event.content }
+                  : msg,
+              ),
+            );
+          } else if (event.type === "tool_call") {
+            setIsThinking(true);
+          } else if (event.type === "complete") {
+            const realAssistantId = String(event.id ?? tempAssistantId);
+            const realUserId = String(event.userMessageId ?? tempUserId);
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id === tempUserId) return { ...msg, id: realUserId };
+                if (msg.id === tempAssistantId) {
+                  return {
+                    ...msg,
+                    id: realAssistantId,
+                    isStreaming: false,
+                    isError: !!event.isError,
+                  };
+                }
+                return msg;
+              }),
+            );
+          } else if (event.type === "error") {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === tempAssistantId
+                  ? {
+                      ...msg,
+                      content: String(event.message ?? "Sorry, I encountered an error."),
+                      isStreaming: false,
+                      isError: true,
+                    }
+                  : msg,
+              ),
+            );
+          }
+        }
+      }
     } catch (error) {
       console.error("Chat error:", error);
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: "Sorry, I'm having trouble connecting. Please try again.",
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === tempAssistantId
+            ? {
+                ...msg,
+                content: error instanceof Error
+                  ? error.message
+                  : "Sorry, I'm having trouble connecting. Please try again.",
+                isStreaming: false,
+                isError: true,
+              }
+            : msg,
+        ),
+      );
     } finally {
       setIsLoading(false);
       setIsThinking(false);
@@ -597,6 +648,9 @@ export default function ChatPage() {
                         <div className="flex-1 pt-1 space-y-3">
                           <div className={message.isError ? "text-red-500 dark:text-red-400" : undefined}>
                             <MessageContent content={message.content} />
+                            {message.isStreaming && message.content && (
+                              <span className="inline-block h-4 w-0.5 bg-zinc-400 animate-pulse ml-0.5" />
+                            )}
                           </div>
                           {/* Render calendar cards */}
                           {message.cards?.map((card, idx) => {
@@ -656,7 +710,7 @@ export default function ChatPage() {
                   </AnimatePresence>
                 )}
 
-                {isLoading && (
+                {isLoading && isThinking && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -669,7 +723,7 @@ export default function ChatPage() {
                     </Avatar>
                     <div className="flex items-center gap-2 pt-2">
                       <span className="text-sm text-zinc-500 dark:text-zinc-400 italic">
-                        {isThinking ? "Thinking..." : "Typing..."}
+                        Thinking...
                       </span>
                       <span className="h-2 w-2 animate-pulse rounded-full bg-zinc-400" />
                     </div>
