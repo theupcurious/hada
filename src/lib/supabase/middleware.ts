@@ -46,7 +46,14 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthRoute) {
+  // Don't send users away from flows that need to stay on /auth (OAuth callback, password reset)
+  const authPath = request.nextUrl.pathname;
+  const allowAuthWhileSignedIn =
+    authPath.startsWith("/auth/callback") ||
+    authPath.startsWith("/auth/reset-password") ||
+    authPath.startsWith("/auth/error");
+
+  if (user && isAuthRoute && !allowAuthWhileSignedIn) {
     const url = request.nextUrl.clone();
     url.pathname = "/chat";
     return NextResponse.redirect(url);

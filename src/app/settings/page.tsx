@@ -40,25 +40,25 @@ export default function SettingsPage() {
       {/* Sidebar for desktop */}
       <Tabs defaultValue="status" className="flex h-full w-full" orientation="vertical">
         {/* Desktop sidebar */}
-        <div className="hidden md:flex w-56 shrink-0 flex-col border-r border-border/80 bg-card/70 p-4 backdrop-blur-sm">
+        <div className="hidden md:flex w-56 shrink-0 flex-col border-r border-border/60 bg-card/50 p-4 backdrop-blur-sm">
           <TabsList className="flex flex-col h-auto bg-transparent gap-1">
             <TabsTrigger
               value="status"
-              className="w-full justify-start px-3 py-2 text-left data-[state=active]:bg-muted"
+              className="w-full justify-start px-3 py-2 text-left rounded-lg transition-all duration-200 data-[state=active]:bg-muted data-[state=active]:border-l-2 data-[state=active]:border-l-violet-500 data-[state=active]:shadow-sm"
             >
               <StatusIcon className="mr-2 h-4 w-4" />
               Status
             </TabsTrigger>
             <TabsTrigger
               value="integrations"
-              className="w-full justify-start px-3 py-2 text-left data-[state=active]:bg-muted"
+              className="w-full justify-start px-3 py-2 text-left rounded-lg transition-all duration-200 data-[state=active]:bg-muted data-[state=active]:border-l-2 data-[state=active]:border-l-violet-500 data-[state=active]:shadow-sm"
             >
               <IntegrationsIcon className="mr-2 h-4 w-4" />
               Integrations
             </TabsTrigger>
             <TabsTrigger
               value="account"
-              className="w-full justify-start px-3 py-2 text-left data-[state=active]:bg-muted"
+              className="w-full justify-start px-3 py-2 text-left rounded-lg transition-all duration-200 data-[state=active]:bg-muted data-[state=active]:border-l-2 data-[state=active]:border-l-violet-500 data-[state=active]:shadow-sm"
             >
               <AccountIcon className="mr-2 h-4 w-4" />
               Account
@@ -67,11 +67,11 @@ export default function SettingsPage() {
         </div>
 
         {/* Mobile tabs */}
-        <div className="md:hidden w-full border-b border-border/80 bg-card/70 px-4 backdrop-blur-sm">
+        <div className="md:hidden w-full border-b border-border/60 bg-card/50 px-4 backdrop-blur-sm">
           <TabsList className="w-full justify-start bg-transparent">
-            <TabsTrigger value="status">Status</TabsTrigger>
-            <TabsTrigger value="integrations">Integrations</TabsTrigger>
-            <TabsTrigger value="account">Account</TabsTrigger>
+            <TabsTrigger value="status" className="transition-all duration-200 data-[state=active]:border-b-2 data-[state=active]:border-b-violet-500">Status</TabsTrigger>
+            <TabsTrigger value="integrations" className="transition-all duration-200 data-[state=active]:border-b-2 data-[state=active]:border-b-violet-500">Integrations</TabsTrigger>
+            <TabsTrigger value="account" className="transition-all duration-200 data-[state=active]:border-b-2 data-[state=active]:border-b-violet-500">Account</TabsTrigger>
           </TabsList>
         </div>
 

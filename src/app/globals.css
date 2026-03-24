@@ -142,3 +142,122 @@ html[data-theme="light"] {
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
+
+/* ── Glass-morphism utility ─────────────────────────────── */
+.glass {
+  background: oklch(0.205 0 0 / 60%);
+  backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid oklch(1 0 0 / 10%);
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 5%),
+    0 8px 40px oklch(0 0 0 / 30%);
+}
+html[data-theme="light"] .glass {
+  background: oklch(1 0 0 / 65%);
+  border-color: oklch(0 0 0 / 8%);
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 4%),
+    0 8px 40px oklch(0 0 0 / 8%);
+}
+
+/* ── Gradient text ──────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(
+    135deg,
+    oklch(0.7 0.18 270) 0%,
+    oklch(0.65 0.2 300) 50%,
+    oklch(0.6 0.15 240) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+html[data-theme="light"] .gradient-text {
+  background: linear-gradient(
+    135deg,
+    oklch(0.5 0.2 270) 0%,
+    oklch(0.45 0.22 300) 50%,
+    oklch(0.4 0.18 240) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Gradient background for brand CTAs ─────────────────── */
+.gradient-brand {
+  background: linear-gradient(
+    135deg,
+    oklch(0.55 0.2 270) 0%,
+    oklch(0.5 0.22 300) 100%
+  );
+}
+.gradient-brand:hover {
+  background: linear-gradient(
+    135deg,
+    oklch(0.6 0.22 270) 0%,
+    oklch(0.55 0.24 300) 100%
+  );
+}
+
+/* ── Avatar accent ring ─────────────────────────────────── */
+.avatar-accent-ring {
+  background: linear-gradient(
+    135deg,
+    oklch(0.6 0.18 270),
+    oklch(0.55 0.2 300)
+  );
+  padding: 1.5px;
+}
+
+/* ── Bouncing dots (thinking indicator) ─────────────────── */
+.bounce-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.bounce-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: oklch(0.55 0 0);
+  animation: bounce-dot 1.2s ease-in-out infinite;
+}
+.bounce-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.bounce-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* ── Keyframe animations ────────────────────────────────── */
+@keyframes bounce-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}

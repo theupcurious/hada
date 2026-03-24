@@ -472,7 +472,7 @@ export default function ChatPage() {
 
   const inputForm = (
     <form onSubmit={handleSubmit}>
-      <div className="relative rounded-2xl border border-border/80 bg-card/70 shadow-sm backdrop-blur-sm">
+      <div className="glass relative rounded-2xl">
         <textarea
           ref={textareaRef}
           value={input}
@@ -493,7 +493,7 @@ export default function ChatPage() {
           type="submit"
           disabled={isLoading || !input.trim()}
           size="sm"
-          className="absolute bottom-2 right-2 rounded-xl"
+          className="absolute bottom-2 right-2 rounded-xl gradient-brand text-white border-0 shadow-md shadow-violet-500/20 disabled:opacity-40"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -506,7 +506,7 @@ export default function ChatPage() {
         </Button>
       </div>
       <p className="mt-2 text-center text-xs text-zinc-400">
-        Enter to send, Shift+Enter for a new line. Hada can make mistakes - verify important information.
+        Enter to send, Shift+Enter for a new line. Hada can make mistakes — verify important information.
       </p>
     </form>
   );
@@ -514,10 +514,11 @@ export default function ChatPage() {
   return (
     <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
-      <header className="flex items-center justify-between bg-white/80 backdrop-blur-sm border-b border-zinc-200 px-4 py-3 dark:bg-zinc-900/80 dark:border-zinc-800">
+
+      <header className="flex items-center justify-between bg-white/70 backdrop-blur-md border-b border-zinc-200/80 px-4 py-3 dark:bg-zinc-900/60 dark:border-zinc-800/60">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-black dark:bg-white">
-            <span className="text-sm font-bold text-white dark:text-black">H</span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-md shadow-violet-500/20">
+            <span className="text-sm font-bold text-white">H</span>
           </div>
           <span className="font-semibold">Hada</span>
           {/* Connection status indicator */}
@@ -590,13 +591,17 @@ export default function ChatPage() {
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
                     className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4"
                   >
-                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-black dark:bg-white mb-6">
-                      <span className="text-2xl font-bold text-white dark:text-black">H</span>
+                    <div className="relative mb-6">
+                      <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-violet-500/20 via-indigo-500/15 to-purple-500/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
+                      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl gradient-brand shadow-lg shadow-violet-500/25">
+                        <span className="text-2xl font-bold text-white">H</span>
+                      </div>
                     </div>
                     <h1 className="text-3xl font-semibold">
-                      {greetingText}, {user?.name || "there"}
+                      <span className="gradient-text">{greetingText}</span>, {user?.name || "there"}
                     </h1>
                     <p className="mt-2 text-zinc-500 text-lg">What can I help you with today?</p>
 
@@ -613,7 +618,7 @@ export default function ChatPage() {
                             setInput(suggestion);
                             requestAnimationFrame(() => textareaRef.current?.focus());
                           }}
-                          className="rounded-lg border border-border/80 bg-card/70 p-4 text-left text-sm backdrop-blur-sm transition-all hover:bg-card/90 hover:border-border"
+                          className="glass rounded-xl p-4 text-left text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-violet-500/5"
                         >
                           {suggestion}
                         </button>
@@ -634,17 +639,21 @@ export default function ChatPage() {
                         exit={{ opacity: 0 }}
                         className="flex gap-3"
                       >
-                        <Avatar className="h-8 w-8 shrink-0">
-                          <AvatarFallback
-                            className={
-                              message.role === "assistant"
-                                ? "bg-black text-white dark:bg-white dark:text-black"
-                                : "bg-zinc-200 dark:bg-zinc-700"
-                            }
-                          >
-                            {message.role === "assistant" ? "H" : user?.name?.[0] || "U"}
-                          </AvatarFallback>
-                        </Avatar>
+                        {message.role === "assistant" ? (
+                          <div className="h-8 w-8 shrink-0 rounded-full avatar-accent-ring">
+                            <Avatar className="h-full w-full">
+                              <AvatarFallback className="gradient-brand text-white text-xs font-bold">
+                                H
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
+                        ) : (
+                          <Avatar className="h-8 w-8 shrink-0">
+                            <AvatarFallback className="bg-zinc-200 dark:bg-zinc-700">
+                              {user?.name?.[0] || "U"}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
                         <div className="flex-1 pt-1 space-y-3">
                           <div className={message.isError ? "text-red-500 dark:text-red-400" : undefined}>
                             <MessageContent content={message.content} />
@@ -716,16 +725,19 @@ export default function ChatPage() {
                     animate={{ opacity: 1 }}
                     className="flex gap-3"
                   >
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-black text-white dark:bg-white dark:text-black">
-                        H
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="h-8 w-8 shrink-0 rounded-full avatar-accent-ring">
+                      <Avatar className="h-full w-full">
+                        <AvatarFallback className="gradient-brand text-white text-xs font-bold">
+                          H
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
                     <div className="flex items-center gap-2 pt-2">
-                      <span className="text-sm text-zinc-500 dark:text-zinc-400 italic">
-                        Thinking...
-                      </span>
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-zinc-400" />
+                      <div className="bounce-dots">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -736,7 +748,7 @@ export default function ChatPage() {
 
           {/* Input Area - Fixed at bottom when there are messages */}
           {messages.length > 0 && (
-            <div className="shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 bg-background/90 border-t border-border/70 backdrop-blur-sm">
+            <div className="shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 bg-background/80 border-t border-border/50 backdrop-blur-md">
               {inputForm}
             </div>
           )}
