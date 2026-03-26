@@ -77,17 +77,9 @@ export default function SettingsPage() {
   return (
     <div className="h-full">
       <div className="flex h-full flex-col md:hidden">
-        <div className="border-b border-border/60 bg-card/50 px-3 py-4 backdrop-blur-sm">
-          <div className="mx-auto max-w-3xl">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">Settings</p>
-            <h1 className="mt-2 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
-              Make Hada feel right on your phone
-            </h1>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-              Switch between sections quickly, then edit details below without fighting the desktop layout.
-            </p>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur-sm">
+          <div className="-mx-3 overflow-x-auto px-3 pb-1">
+            <div className="flex min-w-max gap-2">
               {SETTINGS_TABS.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -98,17 +90,14 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "rounded-2xl border px-3 py-3 text-left transition-colors",
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors",
                       isActive
                         ? "border-teal-500/60 bg-teal-500/10 text-zinc-950 shadow-sm shadow-teal-500/10 dark:text-zinc-50"
-                        : "border-zinc-200/70 bg-white/70 text-zinc-700 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-300",
+                        : "border-zinc-200/70 bg-white/70 text-zinc-600 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-300",
                     )}
                   >
                     <Icon className="h-4 w-4" />
-                    <p className="mt-3 text-sm font-medium">{tab.label}</p>
-                    <p className="mt-1 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400">
-                      {tab.description}
-                    </p>
+                    <span>{tab.label}</span>
                   </button>
                 );
               })}
@@ -116,8 +105,17 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-3">
           <div className="mx-auto max-w-3xl">
+            <div className="mb-4">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">Settings</p>
+              <h1 className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+                {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label}
+              </h1>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.description}
+              </p>
+            </div>
             {activeTab === "status" ? <StatusTab /> : null}
             {activeTab === "integrations" ? <IntegrationsTab /> : null}
             {activeTab === "account" ? <AccountTab /> : null}

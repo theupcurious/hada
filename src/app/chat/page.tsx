@@ -248,6 +248,13 @@ export default function ChatPage() {
     endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
   };
 
+  const scrollToTop = () => {
+    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
+    if (viewport instanceof HTMLElement) {
+      viewport.scrollTop = 0;
+    }
+  };
+
   const apiMessageToMessage = (msg: ApiMessage): Message => ({
     id: msg.id,
     role: msg.role,
@@ -666,9 +673,14 @@ export default function ChatPage() {
   }, [router, supabase, loadHistory]);
 
   useEffect(() => {
+    if (!showConversation) {
+      requestAnimationFrame(scrollToTop);
+      return;
+    }
+
     // Ensure the newest message (or loader) is visible.
     requestAnimationFrame(() => scrollToBottom("auto"));
-  }, [messages, isLoading, isThinking]);
+  }, [messages, isLoading, isThinking, showConversation]);
 
   useEffect(() => {
     autosizeTextarea();
@@ -1116,7 +1128,7 @@ export default function ChatPage() {
                     transition={{ duration: 0.25, ease: "easeOut" }}
                     className="flex min-h-full flex-col justify-start px-2 pb-6 pt-4 text-center sm:min-h-[60vh] sm:justify-center sm:px-4"
                   >
-                    <div className="relative mb-5 sm:mb-6">
+                    <div className="relative mb-5 hidden sm:block sm:mb-6">
                       <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-teal-400/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
                       <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl gradient-brand shadow-lg shadow-teal-500/25">
                         <span className="text-2xl font-bold text-white">H</span>
@@ -1127,7 +1139,11 @@ export default function ChatPage() {
                     </h1>
                     <p className="mt-2 max-w-md text-sm text-zinc-500 sm:text-lg">What can I help you with today?</p>
 
-                    <div className="mt-6 grid w-full max-w-2xl grid-cols-2 gap-2.5 sm:mt-8 sm:gap-3">
+                    <div className="mt-5 w-full max-w-2xl sm:mt-6">
+                      {inputForm}
+                    </div>
+
+                    <div className="mt-5 grid w-full max-w-2xl grid-cols-2 gap-2.5 sm:mt-8 sm:gap-3">
                       {starterPrompts.map((shortcut) => (
                         <button
                           key={shortcut.title}
@@ -1169,32 +1185,30 @@ export default function ChatPage() {
                             Open chat
                           </Button>
                         </div>
-                        {latestUserMessage ? (
-                          <div className="mt-4 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
-                            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
-                              Last request
-                            </p>
-                            <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                              {truncatePreview(latestUserMessage.content, 120)}
-                            </p>
-                          </div>
-                        ) : null}
-                        {latestAssistantMessage ? (
-                          <div className="mt-3 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
-                            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
-                              Last reply
-                            </p>
-                            <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                              {truncatePreview(latestAssistantMessage.content, 140)}
-                            </p>
-                          </div>
-                        ) : null}
+                        <div className="mt-4 hidden sm:block">
+                          {latestUserMessage ? (
+                            <div className="rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
+                              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                                Last request
+                              </p>
+                              <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                                {truncatePreview(latestUserMessage.content, 120)}
+                              </p>
+                            </div>
+                          ) : null}
+                          {latestAssistantMessage ? (
+                            <div className="mt-3 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
+                              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                                Last reply
+                              </p>
+                              <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                                {truncatePreview(latestAssistantMessage.content, 140)}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     ) : null}
-
-                    <div className="mt-8 w-full max-w-2xl">
-                      {inputForm}
-                    </div>
                   </motion.div>
                 ) : (
                   <AnimatePresence>

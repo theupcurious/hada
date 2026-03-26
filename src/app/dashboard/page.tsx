@@ -13,6 +13,7 @@ import {
   EllipsisVertical,
   LayoutDashboard,
   Loader2,
+  LogOut,
   MessageSquareText,
   PencilLine,
   Play,
@@ -82,9 +83,12 @@ type MemoryEditorState = {
   content: string;
 };
 
+type DashboardTabId = "activity" | "analytics" | "memories" | "tasks";
+
 const INITIAL_ACTIVITY_LIMIT = 25;
 
 export default function DashboardPage() {
+  const [activeTab, setActiveTab] = useState<DashboardTabId>("activity");
   const [user, setUser] = useState<{ name: string | null; email: string | null } | null>(null);
   const [activity, setActivity] = useState<LoadState<DashboardActivityResponse>>({
     available: true,
@@ -329,41 +333,52 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 sm:px-6 lg:px-8">
-      <header className="mb-6 flex flex-col gap-4 rounded-2xl border border-zinc-200/80 bg-white/80 px-4 py-4 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-900/70 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-3 sm:px-6 sm:py-5 lg:px-8">
+      <header className="mb-4 flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-900/70 sm:mb-6 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-500 text-white shadow-lg shadow-teal-500/20">
+          <div className="hidden h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-500 text-white shadow-lg shadow-teal-500/20 sm:flex">
             <LayoutDashboard className="h-5 w-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Dashboard</h1>
-              <Badge variant="outline" className="rounded-full border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300">
+              <h1 className="text-base font-semibold tracking-tight sm:text-xl">Dashboard</h1>
+              <Badge variant="outline" className="hidden rounded-full border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300 sm:inline-flex">
                 Control plane
               </Badge>
             </div>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="hidden text-sm text-zinc-500 dark:text-zinc-400 sm:block">
               Activity, analytics, memory, and task management in one place.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild variant="ghost" size="sm" className="rounded-full">
+        <div className="flex items-center gap-1.5 sm:flex-wrap sm:gap-2">
+          <Button asChild variant="ghost" size="icon" className="rounded-full sm:hidden">
+            <Link href="/chat" aria-label="Back to chat">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm" className="hidden rounded-full sm:inline-flex">
             <Link href="/chat">
               <ArrowLeft className="h-4 w-4" />
               Back to chat
             </Link>
           </Button>
           <ThemeToggle />
-          <Button variant="outline" size="sm" className="rounded-full" onClick={() => void loadActivity(true)}>
+          <Button variant="outline" size="icon" className="rounded-full sm:hidden" onClick={() => void loadActivity(true)} aria-label="Refresh dashboard">
+            <RefreshCw className={cn("h-4 w-4", activity.loading && "animate-spin")} />
+          </Button>
+          <Button variant="outline" size="sm" className="hidden rounded-full sm:inline-flex" onClick={() => void loadActivity(true)}>
             <RefreshCw className={cn("h-4 w-4", activity.loading && "animate-spin")} />
             Refresh
           </Button>
-          <Button variant="ghost" size="sm" className="rounded-full" onClick={handleSignOut}>
+          <Button variant="ghost" size="icon" className="rounded-full sm:hidden" onClick={handleSignOut} aria-label="Sign out">
+            <LogOut className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="hidden rounded-full sm:inline-flex" onClick={handleSignOut}>
             Sign out
           </Button>
-          <Avatar className="h-9 w-9">
+          <Avatar className="hidden h-9 w-9 sm:flex">
             <AvatarFallback className="bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
               {initials(user?.name || user?.email || "U")}
             </AvatarFallback>
@@ -371,7 +386,14 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
+      <section className="mb-4 grid gap-3 sm:hidden">
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard label="Runs" value={formatNumber(totalRuns)} hint="Recorded" icon={<MessageSquareText className="h-4 w-4" />} />
+          <MetricCard label="Success" value={`${dashboardSummary.successRate}%`} hint="Recent" icon={<CheckCircle2 className="h-4 w-4" />} />
+        </div>
+      </section>
+
+      <section className="hidden gap-4 sm:grid lg:grid-cols-[1.7fr_1fr]">
         <Card className="border-zinc-200/80 bg-white/85 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/75">
           <CardHeader className="pb-3">
             <CardDescription className="uppercase tracking-[0.24em] text-zinc-400">
@@ -410,8 +432,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <Tabs defaultValue="activity" className="mt-6">
-        <TabsList variant="line" className="mb-4 flex w-full flex-wrap gap-1 rounded-2xl border border-zinc-200 bg-white/70 p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/70">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DashboardTabId)} className="mt-2 sm:mt-6">
+        <div className="-mx-3 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
+          <TabsList variant="line" className="mb-4 flex min-w-max flex-nowrap justify-start gap-1 rounded-2xl border border-zinc-200 bg-white/70 p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/70 sm:w-full sm:min-w-0 sm:flex-wrap">
           <TabsTrigger value="activity" className="rounded-xl px-4">
             Activity
           </TabsTrigger>
@@ -424,7 +447,8 @@ export default function DashboardPage() {
           <TabsTrigger value="tasks" className="rounded-xl px-4">
             Tasks
           </TabsTrigger>
-        </TabsList>
+          </TabsList>
+        </div>
 
         <TabsContent value="activity">
           <Card className="border-zinc-200/80 bg-white/85 dark:border-zinc-800/80 dark:bg-zinc-900/75">
@@ -440,7 +464,7 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <ScrollArea className="h-[32rem] sm:h-[36rem]">
+              <ScrollArea className="h-auto sm:h-[36rem]">
                 <div className="space-y-3 p-4">
                   {activity.loading && activityRuns.length === 0 ? (
                     <StatePill icon={<Loader2 className="h-4 w-4 animate-spin" />} title="Loading activity" description="Pulling the latest runs from /api/dashboard/activity." />
