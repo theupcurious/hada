@@ -88,20 +88,20 @@ type ChatCard =
 
 function MessageContent({ content }: { content: string }) {
   return (
-    <div className="text-sm leading-relaxed space-y-1 [&>*:last-child]:mb-0">
+    <div className="min-w-0 break-words text-sm leading-relaxed space-y-1 [&>*:last-child]:mb-0">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           p: ({ children }) => (
-            <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>
+            <p className="mb-2 last:mb-0 whitespace-pre-wrap break-words">{children}</p>
           ),
           ul: ({ children }) => (
-            <ul className="list-disc space-y-1 pl-5 mb-2">{children}</ul>
+            <ul className="list-disc space-y-1 pl-5 mb-2 break-words">{children}</ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal space-y-1 pl-5 mb-2">{children}</ol>
+            <ol className="list-decimal space-y-1 pl-5 mb-2 break-words">{children}</ol>
           ),
-          li: ({ children }) => <li className="leading-snug">{children}</li>,
+          li: ({ children }) => <li className="leading-snug break-words">{children}</li>,
           h1: ({ children }) => (
             <p className="font-semibold mb-1">{children}</p>
           ),
@@ -146,7 +146,7 @@ function MessageContent({ content }: { content: string }) {
             </a>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 italic text-zinc-500 dark:text-zinc-400 mb-2">
+            <blockquote className="border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 italic text-zinc-500 dark:text-zinc-400 mb-2 break-words">
               {children}
             </blockquote>
           ),
@@ -924,7 +924,7 @@ export default function ChatPage() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="flex gap-3"
+                        className="flex gap-3 min-w-0"
                       >
                         {message.role === "assistant" ? (
                           <div className="h-8 w-8 shrink-0 rounded-full avatar-accent-ring">
@@ -941,7 +941,7 @@ export default function ChatPage() {
                             </AvatarFallback>
                           </Avatar>
                         )}
-                        <div className="flex-1 pt-1 space-y-3">
+                        <div className="min-w-0 flex-1 pt-1 space-y-3">
                           {/* Agent trace timeline */}
                           {message.role === "assistant" && (message.traceEvents?.length || message.thinkingEvents?.length) ? (
                             <AgentTraceTimeline
@@ -953,23 +953,20 @@ export default function ChatPage() {
                             <TaskPlanCard plan={message.plan} activeStepId={message.activeStepId} />
                           ) : null}
                           <div className={message.isError ? "text-red-500 dark:text-red-400" : undefined}>
-                            <MessageContent content={message.content} />
-                            {message.isStreaming && message.content && (
-                              <span className="inline-block h-4 w-0.5 bg-zinc-400 animate-pulse ml-0.5" />
-                            )}
-                            {message.isStreaming &&
-                            !message.content &&
-                            !message.traceEvents?.length &&
-                            !message.thinkingEvents?.length &&
-                            !message.plan ? (
-                              <div className="flex items-center gap-2 pt-1">
+                            {message.isStreaming && !message.content ? (
+                              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-zinc-200/70 bg-zinc-50/80 px-3 py-1.5 text-xs text-zinc-500 dark:border-zinc-800/70 dark:bg-zinc-950/50 dark:text-zinc-400">
                                 <div className="bounce-dots">
                                   <span />
                                   <span />
                                   <span />
                                 </div>
+                                <span>{getStreamingStatusLabel(message)}</span>
                               </div>
                             ) : null}
+                            <MessageContent content={message.content} />
+                            {message.isStreaming && message.content && (
+                              <span className="inline-block h-4 w-0.5 bg-zinc-400 animate-pulse ml-0.5" />
+                            )}
                           </div>
                           {/* Render calendar cards */}
                           {message.cards?.map((card, idx) => {
@@ -1079,6 +1076,28 @@ function truncatePreview(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, maxLength).trimEnd()}…`;
+}
+
+function getStreamingStatusLabel(message: Message): string {
+  const traces = message.traceEvents || [];
+
+  if (traces.some((trace) => trace.status === "running")) {
+    return "Running tools...";
+  }
+
+  if (traces.length > 0) {
+    return "Reviewing results...";
+  }
+
+  if (message.plan) {
+    return "Working through the plan...";
+  }
+
+  if ((message.thinkingEvents || []).length > 0) {
+    return "Thinking...";
+  }
+
+  return "Starting...";
 }
 
 function nextEventOrder(ref: MutableRefObject<number>): number {
