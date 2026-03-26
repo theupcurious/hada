@@ -715,6 +715,8 @@ function sanitizeAssistantContent(text: string): string {
   output = output.replace(/\[TOOL_RESULT\][\s\S]*?\[\/TOOL_RESULT\]/gi, "");
   output = output.replace(/\[TOOL_CALL\][\s\S]*$/gi, "");
   output = output.replace(/\[TOOL_RESULT\][\s\S]*$/gi, "");
+  output = output.replace(/(?:^|\n)[^\n]*TOOL_(?:CALL|RESULT)[^\n]*(?=\n|$)/gi, "\n");
+  output = output.replace(/(?:^|\n)\s*\{?\s*(?:tool|name)\s*=>[\s\S]*$/gim, "\n");
   output = output.replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, "");
   output = output.replace(/<tool_calls>[\s\S]*$/gi, "");
 

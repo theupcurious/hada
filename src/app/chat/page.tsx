@@ -459,13 +459,24 @@ export default function ChatPage() {
                   agentName: typeof event.agentName === "string" ? event.agentName : undefined,
                   order,
                 };
+                const normalizeThinking = (value: string) => value.replace(/\s+/g, " ").trim();
 
                 if (
                   lastEvent &&
-                  lastEvent.content === nextThinking.content &&
+                  normalizeThinking(lastEvent.content) === normalizeThinking(nextThinking.content) &&
                   lastEvent.agentName === nextThinking.agentName
                 ) {
                   return thinkingEvents;
+                }
+
+                if (lastEvent && lastEvent.agentName === nextThinking.agentName) {
+                  return [
+                    ...thinkingEvents.slice(0, -1),
+                    {
+                      ...lastEvent,
+                      content: nextThinking.content,
+                    },
+                  ];
                 }
 
                 return [...thinkingEvents, nextThinking];
