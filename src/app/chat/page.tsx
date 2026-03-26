@@ -1126,7 +1126,7 @@ export default function ChatPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="flex min-h-full flex-col justify-start px-2 pb-6 pt-4 text-center sm:min-h-[60vh] sm:justify-center sm:px-4"
+                    className="flex min-h-full flex-col items-center justify-start px-2 pb-6 pt-4 text-center sm:min-h-[60vh] sm:justify-center sm:px-4"
                   >
                     <div className="relative mb-5 hidden sm:block sm:mb-6">
                       <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-teal-400/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
