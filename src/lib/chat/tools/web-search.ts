@@ -8,6 +8,9 @@ interface SearchResult {
   snippet: string;
 }
 
+const MAX_TITLE_CHARS = 120;
+const MAX_SNIPPET_CHARS = 240;
+
 export const webSearchManifest: ToolManifest = {
   name: "web_search",
   displayName: "Web Search",
@@ -66,7 +69,17 @@ export function createWebSearchTool(): AgentTool {
           results = await searchTavily(query, maxResults, apiKey, options?.signal);
         }
 
-        return JSON.stringify({ success: true, provider, query, results });
+        return JSON.stringify({
+          success: true,
+          provider,
+          query,
+          results: results.map((result, index) => ({
+            rank: index + 1,
+            title: clampText(result.title, MAX_TITLE_CHARS),
+            url: result.url,
+            snippet: clampText(result.snippet, MAX_SNIPPET_CHARS),
+          })),
+        });
       } catch (error) {
         if (isAbortError(error)) {
           throw error;
@@ -219,4 +232,13 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
     ? error.name === "AbortError"
     : error instanceof Error && error.name === "AbortError";
+}
+
+function clampText(value: string, maxChars: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxChars).trimEnd()}…`;
 }

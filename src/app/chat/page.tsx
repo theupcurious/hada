@@ -839,9 +839,9 @@ export default function ChatPage() {
                   </div>
                 ) : shouldShowLanding ? (
                   <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
                     className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4"
                   >
                     <div className="relative mb-6">
@@ -921,9 +921,10 @@ export default function ChatPage() {
                     {messages.map((message) => (
                       <motion.div
                         key={message.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
                         className="flex gap-3 min-w-0"
                       >
                         {message.role === "assistant" ? (
