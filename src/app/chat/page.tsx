@@ -701,10 +701,34 @@ export default function ChatPage() {
   }, []);
 
   const starterPrompts = [
-    "What's on my calendar today?",
-    "Draft an email to my team",
-    "Book a restaurant for Friday",
-    "Research the best project management tools",
+    {
+      title: "Brief me on my day",
+      subtitle: "Calendar, weather & priorities",
+      icon: "☀️",
+      prompt:
+        "Brief me on my day. Check my calendar for today's events, look up the current weather, recall anything you remember about my priorities or pending tasks, and give me a concise morning briefing with everything I need to know.",
+    },
+    {
+      title: "Research & summarize",
+      subtitle: "Deep dive with a written memo",
+      icon: "🔍",
+      prompt:
+        "Research the latest developments in AI agents and write me a structured summary memo. Search multiple sources, read the most relevant articles, and organize your findings into key themes with takeaways.",
+    },
+    {
+      title: "Plan my week",
+      subtitle: "Goals, calendar gaps & focus time",
+      icon: "📋",
+      prompt:
+        "Help me plan my week. Check my calendar for the upcoming week, recall my goals and priorities, identify open time blocks, and suggest a plan that balances my commitments with focused work time.",
+    },
+    {
+      title: "Catch me up",
+      subtitle: "Personalized news since last chat",
+      icon: "⚡",
+      prompt:
+        "Catch me up on what's happened since we last talked. Recall what topics I care about, search for the latest news and developments, and only tell me what's actually new — skip anything I already know.",
+    },
   ];
 
   const latestUserMessage = [...messages]
@@ -856,16 +880,23 @@ export default function ChatPage() {
                     <p className="mt-2 text-zinc-500 text-lg">What can I help you with today?</p>
 
                     <div className="mt-8 grid gap-3 sm:grid-cols-2 w-full max-w-xl">
-                      {starterPrompts.map((suggestion) => (
+                      {starterPrompts.map((shortcut) => (
                         <button
-                          key={suggestion}
-                          onClick={() => {
-                            setInput(suggestion);
-                            requestAnimationFrame(() => textareaRef.current?.focus());
-                          }}
-                          className="glass rounded-xl p-4 text-left text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-teal-500/5"
+                          key={shortcut.title}
+                          onClick={() => void sendMessage(shortcut.prompt)}
+                          className="glass group rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-teal-500/5"
                         >
-                          {suggestion}
+                          <div className="flex items-start gap-3">
+                            <span className="text-lg leading-none mt-0.5">{shortcut.icon}</span>
+                            <div>
+                              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                {shortcut.title}
+                              </p>
+                              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                {shortcut.subtitle}
+                              </p>
+                            </div>
+                          </div>
                         </button>
                       ))}
                     </div>
