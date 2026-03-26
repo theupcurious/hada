@@ -61,6 +61,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
   const completedStepTools = new Map<string, Set<string>>();
   let iterationCount = 0;
   let emptyResponseRecoveryAttempts = 0;
+  let deferredActionRecoveryAttempts = 0;
 
   try {
     while (true) {
@@ -112,6 +113,22 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
             return;
           }
 
+          if (
+            options.tools.length > 0 &&
+            isDeferredToolIntentResponse(visibleContent) &&
+            deferredActionRecoveryAttempts < 1
+          ) {
+            deferredActionRecoveryAttempts += 1;
+            llmMessages.push({
+              role: "system",
+              content:
+                "Your previous turn promised to use a tool or continue with an action, " +
+                "but you did not actually do it. Do not narrate the next step. " +
+                "Either call the needed tool now or give the final answer now.",
+            });
+            continue;
+          }
+
           if (visibleContent) {
             finalText += visibleContent;
             for (const chunk of chunkText(visibleContent, 140)) {
@@ -124,6 +141,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         }
 
         emptyResponseRecoveryAttempts = 0;
+        deferredActionRecoveryAttempts = 0;
 
         llmMessages.push({
           role: "assistant",
@@ -698,6 +716,23 @@ function extractThinkingContent(text: string): string | null {
   if (!text) return null;
   const match = text.match(/<think>([\s\S]*?)<\/think>/i);
   return match?.[1]?.trim() || null;
+}
+
+function isDeferredToolIntentResponse(text: string): boolean {
+  const normalized = text.replace(/\s+/g, " ").trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    /\blet me (search|check|look up|find|fetch|research|compare|dig deeper)\b/,
+    /\bi(?:'ll| will) (search|check|look up|find|fetch|research|compare)\b/,
+    /\bi(?:'m| am) going to (search|check|look up|find|fetch|research|compare)\b/,
+    /\bsearch for\b/,
+    /\bcheck for\b/,
+    /\blook up\b/,
+    /\bdig deeper\b/,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 function sanitizeAssistantContent(text: string): string {

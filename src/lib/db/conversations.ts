@@ -143,3 +143,30 @@ export async function getConversationId(
 
   return data.id;
 }
+
+/**
+ * Delete the user's latest conversation and all related messages.
+ * Returns true when a conversation was deleted, false when none existed.
+ */
+export async function clearLatestConversation(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  const conversationId = await getConversationId(supabase, userId);
+
+  if (!conversationId) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('conversations')
+    .delete()
+    .eq('id', conversationId)
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new Error(`Failed to clear conversation: ${error.message}`);
+  }
+
+  return true;
+}

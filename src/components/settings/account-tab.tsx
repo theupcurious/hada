@@ -36,6 +36,8 @@ export function AccountTab() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [clearingChat, setClearingChat] = useState(false);
+  const [clearChatMessage, setClearChatMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -114,6 +116,40 @@ export function AccountTab() {
     setProfile({ ...profile, settings: nextSettings });
     setSaveMessage("Settings saved.");
     setSaving(false);
+  }
+
+  async function clearChat() {
+    if (clearingChat) return;
+    if (!window.confirm("Clear your current chat history? This removes the current conversation and its messages.")) {
+      return;
+    }
+
+    setClearingChat(true);
+    setClearChatMessage(null);
+
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "DELETE",
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        cleared?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to clear chat.");
+      }
+
+      setClearChatMessage(
+        data.cleared ? "Chat cleared. Your next message will start a new conversation." : "No chat history to clear.",
+      );
+    } catch (error) {
+      setClearChatMessage(error instanceof Error ? error.message : "Failed to clear chat.");
+    } finally {
+      setClearingChat(false);
+    }
   }
 
   const tierConfig = {
@@ -223,6 +259,32 @@ export function AccountTab() {
             <span className="text-xs text-zinc-500">{saveMessage || ""}</span>
             <Button size="sm" onClick={saveSettings} disabled={saving}>
               {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-red-200/70 dark:border-red-900/40">
+        <CardHeader>
+          <CardTitle className="text-base">Chat History</CardTitle>
+          <CardDescription>
+            Reset your current conversation if you want to start fresh without prior context.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            This removes your current chat thread and its saved message history. A new conversation will be created automatically the next time you send a message.
+          </p>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-zinc-500">{clearChatMessage || ""}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
+              onClick={() => void clearChat()}
+              disabled={clearingChat}
+            >
+              {clearingChat ? "Clearing..." : "Clear chat"}
             </Button>
           </div>
         </CardContent>
