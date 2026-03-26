@@ -69,6 +69,29 @@ export async function saveMessage(
   return data as Message;
 }
 
+export async function updateMessageById(
+  supabase: SupabaseClient,
+  messageId: string,
+  content: string,
+  metadata?: MessageMetadata | null,
+): Promise<Message> {
+  const { data, error } = await supabase
+    .from("messages")
+    .update({
+      content,
+      metadata: metadata ?? null,
+    })
+    .eq("id", messageId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update message: ${error.message}`);
+  }
+
+  return data as Message;
+}
+
 /**
  * Get recent messages from a conversation with pagination.
  * Returns messages in chronological order (oldest first).

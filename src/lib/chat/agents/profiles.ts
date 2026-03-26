@@ -22,8 +22,8 @@ export const AGENT_PROFILES: Record<string, SubAgentProfile> = {
       "You are a focused research assistant. Your job is to find accurate, relevant information using web search and fetch tools. Be thorough but concise. Return structured findings with sources.",
     allowedTools: ["web_search", "web_fetch"],
     maxIterations: 6,
-    timeout: 300_000,
-    idleTimeout: 120_000,
+    timeout: 210_000,
+    idleTimeout: 150_000,
   },
   memory_manager: {
     name: "memory_manager",
@@ -33,8 +33,8 @@ export const AGENT_PROFILES: Record<string, SubAgentProfile> = {
       "You are a memory management assistant. Your job is to store and recall information accurately. When saving, choose clear topic names. When recalling, search broadly and summarize relevant findings.",
     allowedTools: ["save_memory", "recall_memory"],
     maxIterations: 3,
-    timeout: 90_000,
-    idleTimeout: 45_000,
+    timeout: 120_000,
+    idleTimeout: 75_000,
   },
   scheduler: {
     name: "scheduler",
@@ -50,8 +50,8 @@ export const AGENT_PROFILES: Record<string, SubAgentProfile> = {
       "schedule_task",
     ],
     maxIterations: 4,
-    timeout: 120_000,
-    idleTimeout: 60_000,
+    timeout: 180_000,
+    idleTimeout: 90_000,
   },
 };
 

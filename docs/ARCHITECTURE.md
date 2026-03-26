@@ -57,7 +57,9 @@ Storage / services
 ```text
 Chat UI
   → POST /api/chat
+  → long-lived request budget (`maxDuration = 600`)
   → processMessage()
+  → run budget selection (normal vs long-form research)
   → agentLoop()
   → LLM + tools
   → SSE events (text, tool, plan, delegation)
@@ -103,6 +105,7 @@ Cron trigger
 - resolving integrations and tool availability
 - building the system prompt
 - selecting the provider/model
+- selecting runtime budgets based on the request shape
 - running `agentLoop()`
 - persisting the assistant response
 - recording `agent_runs` telemetry
@@ -114,6 +117,7 @@ Cron trigger
 Current runtime behaviors:
 - calls the selected LLM with the available tool schema
 - executes tool calls sequentially
+- refreshes an idle-progress timer whenever real work advances
 - emits enriched events:
   - `text_delta`
   - `thinking`
@@ -127,9 +131,15 @@ Current runtime behaviors:
   - `delegation_completed`
   - `done`
   - `error`
-- supports timeout handling
+- supports hard timeout and idle timeout handling
 - supports per-loop error limits
 - supports per-loop iteration limits for delegated agents
+
+Current timeout policy:
+- normal interactive runs use a longer base budget with a separate idle timeout
+- long-form requests such as research/memo work receive a larger hard runtime budget
+- delegated specialist agents have their own profile-specific timeout budgets
+- active work is allowed to continue; stalled work is what times out quickly
 
 ## Orchestration Layers
 
@@ -158,6 +168,7 @@ Each delegated run:
 - builds a focused system prompt
 - filters the allowed tool set
 - runs a nested `agentLoop()`
+- applies profile-specific hard and idle timeout budgets
 - forwards child events tagged with `agentName`
 - returns the delegated result to the parent agent
 
@@ -172,6 +183,7 @@ Key UI elements:
 - `AgentTraceTimeline` for tool/reasoning execution
 - `TaskPlanCard` for plan progress
 - nested delegation trace groups for sub-agent work
+- responsive chat layout that keeps long links/code/tables viewable on narrow viewports
 
 ### Dashboard
 
@@ -182,6 +194,16 @@ Current sections:
 - tool analytics from `agent_runs.tool_calls`
 - memory browser/editor backed by `user_memories`
 - task manager backed by `scheduled_tasks`
+
+### Settings
+
+`/settings` is the user configuration surface.
+
+Current sections:
+- runtime/provider status
+- integrations management
+- account preferences and conversation reset
+- memory management backed by the same `user_memories` table used by the agent loop
 
 ## Data Model
 
@@ -199,6 +221,7 @@ Important non-persisted orchestration state:
 - active task plans
 - current step progress
 - delegated sub-agent event grouping
+- per-run timeout/idle budget selection
 
 ## Security Model
 
@@ -249,6 +272,7 @@ There are two observability layers:
 2. Persisted run telemetry:
 - `agent_runs` records per-run status, duration, previews, tool calls, and errors
 - dashboard analytics aggregate this for recent activity and tool usage
+- timed-out runs distinguish between runtime failure and explicit timeout conditions via final run status/error text
 
 ## Scaling Notes
 
@@ -256,3 +280,4 @@ There are two observability layers:
 - Context compaction keeps prompt size bounded over time.
 - Telemetry and dashboard queries are indexed by user and time.
 - Delegation currently runs sequentially inside a parent tool call; it does not fan out sub-agents in parallel inside the app runtime.
+- Long-running work still executes inside the request path today; timeout budgets are intentionally generous for research-style tasks, but the architecture can later move these into a background job model if needed.

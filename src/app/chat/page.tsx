@@ -13,7 +13,7 @@ import { TaskPlanCard } from "@/components/chat/task-plan-card";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import type { TaskPlan } from "@/lib/types/database";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, LogOut, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, type MutableRefObject } from "react";
@@ -24,6 +24,11 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  backgroundJob?: {
+    id: string;
+    status: "queued" | "running" | "completed" | "failed" | "timeout";
+    pending: boolean;
+  };
   thinking?: string;
   cards?: ChatCard[];
   traceEvents?: TraceEvent[];
@@ -50,6 +55,11 @@ interface ApiMessage {
   metadata: {
     thinking?: string;
     cards?: ChatCard[];
+    backgroundJob?: {
+      id?: string;
+      status?: "queued" | "running" | "completed" | "failed" | "timeout";
+      pending?: boolean;
+    };
     gatewayError?: { code: string; message: string };
     confirmation?: {
       pending?: boolean;
@@ -60,6 +70,31 @@ interface ApiMessage {
     };
   } | null;
   created_at: string;
+}
+
+interface BackgroundJobPollResponse {
+  job?: {
+    id: string;
+    status: "queued" | "running" | "completed" | "failed" | "timeout";
+    last_error?: string | null;
+  };
+  events?: Array<{
+    seq: number;
+    event: Record<string, unknown>;
+  }>;
+  assistantMessage?: {
+    id: string;
+    content: string;
+    metadata: {
+      backgroundJob?: {
+        id?: string;
+        status?: "queued" | "running" | "completed" | "failed" | "timeout";
+        pending?: boolean;
+      };
+      gatewayError?: { code?: string; message?: string };
+    } | null;
+  } | null;
+  error?: string;
 }
 
 type CalendarEventCardData = CalendarEventCardProps["event"];
@@ -203,6 +238,8 @@ export default function ChatPage() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const eventOrderRef = useRef(0);
+  const backgroundJobPollersRef = useRef(new Map<string, number>());
+  const backgroundJobCursorRef = useRef(new Map<string, number>());
   const router = useRouter();
   const supabase = createClient();
   const { status: connectionStatus } = useHealthStatus(30000); // Poll every 30s
@@ -228,6 +265,13 @@ export default function ChatPage() {
             : undefined,
         }
       : undefined,
+    backgroundJob: msg.metadata?.backgroundJob?.id
+      ? {
+          id: msg.metadata.backgroundJob.id,
+          status: msg.metadata.backgroundJob.status || "queued",
+          pending: msg.metadata.backgroundJob.pending !== false,
+        }
+      : undefined,
     isError: !!msg.metadata?.gatewayError,
     created_at: msg.created_at,
   });
@@ -235,6 +279,312 @@ export default function ChatPage() {
   const updateMessage = useCallback((messageId: string, updater: (message: Message) => Message) => {
     setMessages((prev) => prev.map((message) => (message.id === messageId ? updater(message) : message)));
   }, []);
+
+  const stopBackgroundJobPolling = useCallback((jobId: string) => {
+    const poller = backgroundJobPollersRef.current.get(jobId);
+    if (poller != null) {
+      window.clearInterval(poller);
+      backgroundJobPollersRef.current.delete(jobId);
+    }
+  }, []);
+
+  const applyAgentEventToMessage = useCallback((assistantMessageId: string, event: Record<string, unknown>) => {
+    if (event.type === "text_delta" && typeof event.content === "string") {
+      setIsThinking(false);
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        content: message.content + event.content,
+      }));
+      return;
+    }
+
+    if (event.type === "tool_call") {
+      setIsThinking(true);
+      const order = nextEventOrder(eventOrderRef);
+      const callId = typeof event.callId === "string" ? event.callId : `call_${Date.now()}`;
+      const name = typeof event.name === "string" ? event.name : "unknown";
+      const args = (event.args && typeof event.args === "object") ? event.args as Record<string, unknown> : {};
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        traceEvents: (() => {
+          const traces = message.traceEvents || [];
+          const existingIndex = traces.findIndex((trace) => trace.callId === callId);
+          const nextTrace = {
+            callId,
+            name,
+            args,
+            agentName: typeof event.agentName === "string" ? event.agentName : undefined,
+            order,
+            status: "running" as const,
+          };
+
+          if (existingIndex >= 0) {
+            return traces.map((trace, index) =>
+              index === existingIndex
+                ? {
+                    ...trace,
+                    ...nextTrace,
+                    order: trace.order ?? nextTrace.order,
+                  }
+                : trace,
+            );
+          }
+
+          return [...traces, nextTrace];
+        })(),
+      }));
+      return;
+    }
+
+    if (event.type === "tool_result") {
+      const callId = typeof event.callId === "string" ? event.callId : "";
+      const result = typeof event.result === "string" ? event.result : "";
+      const durationMs = typeof event.durationMs === "number" ? event.durationMs : undefined;
+      const truncated = !!event.truncated;
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        traceEvents: (message.traceEvents || []).map((trace) =>
+          trace.callId === callId
+            ? {
+                ...trace,
+                result,
+                durationMs,
+                truncated,
+                agentName:
+                  typeof event.agentName === "string" ? event.agentName : trace.agentName,
+                status: isToolErrorResult(result) ? "error" as const : "done" as const,
+              }
+            : trace,
+        ),
+      }));
+      return;
+    }
+
+    if (event.type === "thinking" && typeof event.content === "string") {
+      const order = nextEventOrder(eventOrderRef);
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        thinkingEvents: (() => {
+          const thinkingEvents = message.thinkingEvents || [];
+          const lastEvent = thinkingEvents[thinkingEvents.length - 1];
+          const nextThinking = {
+            content: event.content as string,
+            agentName: typeof event.agentName === "string" ? event.agentName : undefined,
+            order,
+          };
+          const normalizeThinking = (value: string) => value.replace(/\s+/g, " ").trim();
+
+          if (
+            lastEvent &&
+            normalizeThinking(lastEvent.content) === normalizeThinking(nextThinking.content) &&
+            lastEvent.agentName === nextThinking.agentName
+          ) {
+            return thinkingEvents;
+          }
+
+          if (lastEvent && lastEvent.agentName === nextThinking.agentName) {
+            return [
+              ...thinkingEvents.slice(0, -1),
+              {
+                ...lastEvent,
+                content: nextThinking.content,
+              },
+            ];
+          }
+
+          return [...thinkingEvents, nextThinking];
+        })(),
+      }));
+      return;
+    }
+
+    if (event.type === "delegation_started") {
+      const agentName = typeof event.agentName === "string" ? event.agentName : "subagent";
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        traceEvents: (() => {
+          const traces = [...(message.traceEvents || [])];
+          for (let i = traces.length - 1; i >= 0; i -= 1) {
+            const trace = traces[i];
+            if (
+              trace.name === "delegate_task" &&
+              trace.status === "running" &&
+              !trace.agentName
+            ) {
+              traces[i] = { ...trace, agentName };
+              return traces;
+            }
+          }
+
+          return [
+            ...traces,
+            {
+              callId: `delegation-${agentName}-${Date.now()}`,
+              name: "delegate_task",
+              args: {
+                agent: agentName,
+                task: typeof event.task === "string" ? event.task : "",
+              },
+              agentName,
+              order: nextEventOrder(eventOrderRef),
+              status: "running" as const,
+            },
+          ];
+        })(),
+      }));
+      return;
+    }
+
+    if (event.type === "delegation_completed") {
+      return;
+    }
+
+    if (event.type === "plan_created" && isTaskPlan(event.plan)) {
+      const plan = event.plan;
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        plan,
+        activeStepId: undefined,
+      }));
+      return;
+    }
+
+    if (event.type === "step_started") {
+      const stepId = typeof event.stepId === "string" ? event.stepId : "";
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        activeStepId: stepId,
+        plan: message.plan
+          ? {
+              ...message.plan,
+              steps: message.plan.steps.map((step) => ({
+                ...step,
+                status: step.id === stepId
+                  ? "running"
+                  : step.status === "running"
+                  ? "pending"
+                  : step.status,
+              })),
+            }
+          : message.plan,
+      }));
+      return;
+    }
+
+    if (event.type === "step_completed") {
+      const stepId = typeof event.stepId === "string" ? event.stepId : "";
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        activeStepId: message.activeStepId === stepId ? undefined : message.activeStepId,
+        plan: message.plan
+          ? {
+              ...message.plan,
+              steps: message.plan.steps.map((step) =>
+                step.id === stepId ? { ...step, status: "done" as const } : step,
+              ),
+            }
+          : message.plan,
+      }));
+      return;
+    }
+
+    if (event.type === "step_failed") {
+      const stepId = typeof event.stepId === "string" ? event.stepId : "";
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        activeStepId: message.activeStepId === stepId ? undefined : message.activeStepId,
+        plan: message.plan
+          ? {
+              ...message.plan,
+              steps: message.plan.steps.map((step) =>
+                step.id === stepId ? { ...step, status: "failed" as const } : step,
+              ),
+            }
+          : message.plan,
+      }));
+      return;
+    }
+
+    if (event.type === "error") {
+      updateMessage(assistantMessageId, (message) => ({
+        ...message,
+        content: String(event.message ?? "Sorry, I encountered an error."),
+        isStreaming: false,
+        isError: true,
+      }));
+    }
+  }, [updateMessage]);
+
+  const pollBackgroundJob = useCallback(async (jobId: string, assistantMessageId: string) => {
+    const cursor = backgroundJobCursorRef.current.get(jobId) || 0;
+    const response = await fetch(`/api/background-jobs/${jobId}?after=${cursor}`, {
+      cache: "no-store",
+    });
+    const data = (await response.json().catch(() => ({}))) as BackgroundJobPollResponse;
+
+    if (!response.ok || !data.job) {
+      throw new Error(data.error || "Failed to load background job state.");
+    }
+
+    for (const entry of data.events || []) {
+      backgroundJobCursorRef.current.set(
+        jobId,
+        Math.max(backgroundJobCursorRef.current.get(jobId) || 0, entry.seq),
+      );
+      applyAgentEventToMessage(assistantMessageId, entry.event);
+    }
+
+    updateMessage(assistantMessageId, (message) => ({
+      ...message,
+      backgroundJob: {
+        id: jobId,
+        status: data.job!.status,
+        pending: data.job!.status === "queued" || data.job!.status === "running",
+      },
+      isStreaming: data.job!.status === "queued" || data.job!.status === "running",
+    }));
+
+    if (data.job.status === "completed" || data.job.status === "failed" || data.job.status === "timeout") {
+      stopBackgroundJobPolling(jobId);
+      setIsLoading(false);
+      setIsThinking(false);
+
+      if (data.assistantMessage) {
+        updateMessage(assistantMessageId, (message) => ({
+          ...message,
+          id: data.assistantMessage?.id || message.id,
+          content: data.assistantMessage?.content || message.content,
+          backgroundJob: {
+            id: jobId,
+            status: data.job!.status,
+            pending: false,
+          },
+          isStreaming: false,
+          isError:
+            data.job!.status !== "completed" ||
+            !!data.assistantMessage?.metadata?.gatewayError,
+        }));
+      }
+    }
+  }, [applyAgentEventToMessage, stopBackgroundJobPolling, updateMessage]);
+
+  const ensureBackgroundJobPolling = useCallback((jobId: string, assistantMessageId: string) => {
+    if (backgroundJobPollersRef.current.has(jobId)) {
+      return;
+    }
+
+    void pollBackgroundJob(jobId, assistantMessageId).catch((error) => {
+      console.error("Background job polling failed:", error);
+    });
+
+    const timer = window.setInterval(() => {
+      void pollBackgroundJob(jobId, assistantMessageId).catch((error) => {
+        console.error("Background job polling failed:", error);
+      });
+    }, 2500);
+
+    backgroundJobPollersRef.current.set(jobId, timer);
+  }, [pollBackgroundJob]);
 
   const loadHistory = useCallback(async (before?: string) => {
     try {
@@ -324,6 +674,29 @@ export default function ChatPage() {
     autosizeTextarea();
   }, [input]);
 
+  useEffect(() => {
+    for (const message of messages) {
+      if (
+        message.role === "assistant" &&
+        message.backgroundJob?.id &&
+        message.backgroundJob.pending
+      ) {
+        ensureBackgroundJobPolling(message.backgroundJob.id, message.id);
+      } else if (message.backgroundJob?.id && !message.backgroundJob.pending) {
+        stopBackgroundJobPolling(message.backgroundJob.id);
+      }
+    }
+  }, [messages, ensureBackgroundJobPolling, stopBackgroundJobPolling]);
+
+  useEffect(() => {
+    return () => {
+      for (const poller of backgroundJobPollersRef.current.values()) {
+        window.clearInterval(poller);
+      }
+      backgroundJobPollersRef.current.clear();
+    };
+  }, []);
+
   const sendMessage = async (overrideMessage?: string) => {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
@@ -371,194 +744,7 @@ export default function ChatPage() {
       eventOrderRef.current = 0;
 
       const processStreamEvent = (event: Record<string, unknown>) => {
-        if (event.type === "text_delta" && typeof event.content === "string") {
-          setIsThinking(false);
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            content: message.content + event.content,
-          }));
-        } else if (event.type === "tool_call") {
-          setIsThinking(true);
-          const order = nextEventOrder(eventOrderRef);
-          const callId = typeof event.callId === "string" ? event.callId : `call_${Date.now()}`;
-          const name = typeof event.name === "string" ? event.name : "unknown";
-          const args = (event.args && typeof event.args === "object") ? event.args as Record<string, unknown> : {};
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            traceEvents: (() => {
-              const traces = message.traceEvents || [];
-              const existingIndex = traces.findIndex((trace) => trace.callId === callId);
-              const nextTrace = {
-                callId,
-                name,
-                args,
-                agentName: typeof event.agentName === "string" ? event.agentName : undefined,
-                order,
-                status: "running" as const,
-              };
-
-              if (existingIndex >= 0) {
-                return traces.map((trace, index) =>
-                  index === existingIndex
-                    ? {
-                        ...trace,
-                        ...nextTrace,
-                        order: trace.order ?? nextTrace.order,
-                      }
-                    : trace,
-                );
-              }
-
-              return [...traces, nextTrace];
-            })(),
-          }));
-        } else if (event.type === "tool_result") {
-          const callId = typeof event.callId === "string" ? event.callId : "";
-          const result = typeof event.result === "string" ? event.result : "";
-          const durationMs = typeof event.durationMs === "number" ? event.durationMs : undefined;
-          const truncated = !!event.truncated;
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            traceEvents: (message.traceEvents || []).map((trace) =>
-              trace.callId === callId
-                ? {
-                    ...trace,
-                    result,
-                    durationMs,
-                    truncated,
-                    agentName:
-                      typeof event.agentName === "string" ? event.agentName : trace.agentName,
-                    status: isToolErrorResult(result) ? "error" as const : "done" as const,
-                  }
-                : trace,
-            ),
-          }));
-        } else if (event.type === "thinking" && typeof event.content === "string") {
-          const order = nextEventOrder(eventOrderRef);
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            thinkingEvents: (() => {
-              const thinkingEvents = message.thinkingEvents || [];
-              const lastEvent = thinkingEvents[thinkingEvents.length - 1];
-              const nextThinking = {
-                content: event.content as string,
-                agentName: typeof event.agentName === "string" ? event.agentName : undefined,
-                order,
-              };
-              const normalizeThinking = (value: string) => value.replace(/\s+/g, " ").trim();
-
-              if (
-                lastEvent &&
-                normalizeThinking(lastEvent.content) === normalizeThinking(nextThinking.content) &&
-                lastEvent.agentName === nextThinking.agentName
-              ) {
-                return thinkingEvents;
-              }
-
-              if (lastEvent && lastEvent.agentName === nextThinking.agentName) {
-                return [
-                  ...thinkingEvents.slice(0, -1),
-                  {
-                    ...lastEvent,
-                    content: nextThinking.content,
-                  },
-                ];
-              }
-
-              return [...thinkingEvents, nextThinking];
-            })(),
-          }));
-        } else if (event.type === "delegation_started") {
-          const agentName = typeof event.agentName === "string" ? event.agentName : "subagent";
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            traceEvents: (() => {
-              const traces = [...(message.traceEvents || [])];
-              for (let i = traces.length - 1; i >= 0; i -= 1) {
-                const trace = traces[i];
-                if (
-                  trace.name === "delegate_task" &&
-                  trace.status === "running" &&
-                  !trace.agentName
-                ) {
-                  traces[i] = { ...trace, agentName };
-                  return traces;
-                }
-              }
-
-              return [
-                ...traces,
-                {
-                  callId: `delegation-${agentName}-${Date.now()}`,
-                  name: "delegate_task",
-                  args: {
-                    agent: agentName,
-                    task: typeof event.task === "string" ? event.task : "",
-                  },
-                  agentName,
-                  order: nextEventOrder(eventOrderRef),
-                  status: "running" as const,
-                },
-              ];
-            })(),
-          }));
-        } else if (event.type === "delegation_completed") {
-          // The parent delegate_task tool_result closes the trace with the real callId.
-        } else if (event.type === "plan_created" && isTaskPlan(event.plan)) {
-          const plan = event.plan;
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            plan,
-            activeStepId: undefined,
-          }));
-        } else if (event.type === "step_started") {
-          const stepId = typeof event.stepId === "string" ? event.stepId : "";
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            activeStepId: stepId,
-            plan: message.plan
-              ? {
-                  ...message.plan,
-                  steps: message.plan.steps.map((step) => ({
-                    ...step,
-                    status: step.id === stepId
-                      ? "running"
-                      : step.status === "running"
-                      ? "pending"
-                      : step.status,
-                  })),
-                }
-              : message.plan,
-          }));
-        } else if (event.type === "step_completed") {
-          const stepId = typeof event.stepId === "string" ? event.stepId : "";
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            activeStepId: message.activeStepId === stepId ? undefined : message.activeStepId,
-            plan: message.plan
-              ? {
-                  ...message.plan,
-                  steps: message.plan.steps.map((step) =>
-                    step.id === stepId ? { ...step, status: "done" as const } : step,
-                  ),
-                }
-              : message.plan,
-          }));
-        } else if (event.type === "step_failed") {
-          const stepId = typeof event.stepId === "string" ? event.stepId : "";
-          updateMessage(tempAssistantId, (message) => ({
-            ...message,
-            activeStepId: message.activeStepId === stepId ? undefined : message.activeStepId,
-            plan: message.plan
-              ? {
-                  ...message.plan,
-                  steps: message.plan.steps.map((step) =>
-                    step.id === stepId ? { ...step, status: "failed" as const } : step,
-                  ),
-                }
-              : message.plan,
-          }));
-        } else if (event.type === "complete") {
+        if (event.type === "complete") {
           receivedTerminalEvent = true;
           const realAssistantId = String(event.id ?? tempAssistantId);
           const realUserId = String(event.userMessageId ?? tempUserId);
@@ -571,6 +757,7 @@ export default function ChatPage() {
                   id: realAssistantId,
                   isStreaming: false,
                   isError: !!event.isError,
+                  backgroundJob: undefined,
                 };
               }
               return msg;
@@ -590,6 +777,38 @@ export default function ChatPage() {
                 : msg,
             ),
           );
+        } else if (event.type === "background_job") {
+          receivedTerminalEvent = true;
+          const realAssistantId = String(event.assistantMessageId ?? tempAssistantId);
+          const realUserId = String(event.userMessageId ?? tempUserId);
+          const jobId = String(event.jobId ?? "");
+
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id === tempUserId) return { ...msg, id: realUserId };
+              if (msg.id === tempAssistantId) {
+                return {
+                  ...msg,
+                  id: realAssistantId,
+                  backgroundJob: jobId
+                    ? {
+                        id: jobId,
+                        status: "queued",
+                        pending: true,
+                      }
+                    : undefined,
+                  isStreaming: true,
+                };
+              }
+              return msg;
+            }),
+          );
+
+          if (jobId) {
+            ensureBackgroundJobPolling(jobId, realAssistantId);
+          }
+        } else {
+          applyAgentEventToMessage(tempAssistantId, event);
         }
       };
 
@@ -784,17 +1003,16 @@ export default function ChatPage() {
     <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
 
-      <header className="border-b border-zinc-200/80 bg-white/70 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/60 sm:px-4">
-        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+      <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-md shadow-teal-500/20">
               <span className="text-sm font-bold text-white">H</span>
             </div>
             <span className="truncate font-semibold">Hada</span>
-            {/* Connection status indicator */}
             <Link
               href="/settings"
-              className="flex items-center gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200/70 px-2 py-1 text-[11px] text-zinc-400 transition-colors hover:text-zinc-600 dark:border-zinc-800/70 dark:hover:text-zinc-300 sm:text-xs"
               title={`Status: ${connectionStatus}`}
             >
               <span
@@ -816,23 +1034,49 @@ export default function ChatPage() {
               </span>
             </Link>
           </div>
-          <div className="flex w-full items-center justify-end gap-1.5 sm:w-auto sm:gap-2">
-            <span className="hidden text-sm text-muted-foreground lg:block">{user?.email}</span>
+          <div className="flex items-center justify-end gap-1 sm:gap-1.5">
+            <span className="hidden text-sm text-muted-foreground xl:block">{user?.email}</span>
             <ThemeToggle />
-            <Link href="/dashboard">
+
+            <Link href="/dashboard" className="sm:hidden">
               <Button variant="ghost" size="icon" aria-label="Open dashboard">
                 <LayoutDashboard className="h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/settings">
-              <Button variant="ghost" size="sm" className="px-2 sm:px-3">
-                <span className="sm:hidden">Prefs</span>
-                <span className="hidden sm:inline">Settings</span>
+
+            <Link href="/dashboard" className="hidden sm:block">
+              <Button variant="ghost" size="sm" className="px-2.5">
+                <LayoutDashboard className="mr-2 h-4 w-4" />
+                Dashboard
               </Button>
             </Link>
-            <Button variant="ghost" size="sm" className="px-2 sm:px-3" onClick={handleSignOut}>
-              <span className="sm:hidden">Exit</span>
-              <span className="hidden sm:inline">Sign out</span>
+
+            <Link href="/settings" className="sm:hidden">
+              <Button variant="ghost" size="icon" aria-label="Open settings">
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </Link>
+
+            <Link href="/settings" className="hidden sm:block">
+              <Button variant="ghost" size="sm" className="px-2.5">
+                <Settings2 className="mr-2 h-4 w-4" />
+                Settings
+              </Button>
+            </Link>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="sm:hidden"
+              aria-label="Sign out"
+              onClick={handleSignOut}
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+
+            <Button variant="ghost" size="sm" className="hidden px-2.5 sm:inline-flex" onClick={handleSignOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
             </Button>
           </div>
         </div>
@@ -870,9 +1114,9 @@ export default function ChatPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="flex min-h-[60vh] flex-col items-center justify-center px-2 text-center sm:px-4"
+                    className="flex min-h-full flex-col justify-start px-2 pb-6 pt-4 text-center sm:min-h-[60vh] sm:justify-center sm:px-4"
                   >
-                    <div className="relative mb-6">
+                    <div className="relative mb-5 sm:mb-6">
                       <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-teal-400/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
                       <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl gradient-brand shadow-lg shadow-teal-500/25">
                         <span className="text-2xl font-bold text-white">H</span>
@@ -881,22 +1125,22 @@ export default function ChatPage() {
                     <h1 className="text-2xl font-semibold sm:text-3xl">
                       <span className="gradient-text">{greetingText}</span>, {user?.name || "there"}
                     </h1>
-                    <p className="mt-2 text-base text-zinc-500 sm:text-lg">What can I help you with today?</p>
+                    <p className="mt-2 max-w-md text-sm text-zinc-500 sm:text-lg">What can I help you with today?</p>
 
-                    <div className="mt-8 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+                    <div className="mt-6 grid w-full max-w-2xl grid-cols-2 gap-2.5 sm:mt-8 sm:gap-3">
                       {starterPrompts.map((shortcut) => (
                         <button
                           key={shortcut.title}
                           onClick={() => void sendMessage(shortcut.prompt)}
-                          className="glass group rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-teal-500/5"
+                          className="glass group rounded-xl p-3 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-teal-500/5 sm:p-4"
                         >
-                          <div className="flex items-start gap-3">
-                            <span className="text-lg leading-none mt-0.5">{shortcut.icon}</span>
+                          <div className="flex items-start gap-2.5 sm:gap-3">
+                            <span className="mt-0.5 text-base leading-none sm:text-lg">{shortcut.icon}</span>
                             <div>
-                              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                              <p className="text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">
                                 {shortcut.title}
                               </p>
-                              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                              <p className="mt-1 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400 sm:text-xs">
                                 {shortcut.subtitle}
                               </p>
                             </div>
@@ -906,8 +1150,8 @@ export default function ChatPage() {
                     </div>
 
                     {messages.length > 0 ? (
-                      <div className="mt-6 w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50">
-                        <div className="flex items-start justify-between gap-4">
+                      <div className="mt-5 w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                           <div>
                             <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                               Continue where you left off
@@ -919,6 +1163,7 @@ export default function ChatPage() {
                           <Button
                             size="sm"
                             variant="outline"
+                            className="w-full sm:w-auto"
                             onClick={() => setShowConversation(true)}
                           >
                             Open chat
@@ -930,7 +1175,7 @@ export default function ChatPage() {
                               Last request
                             </p>
                             <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                              {truncatePreview(latestUserMessage.content, 180)}
+                              {truncatePreview(latestUserMessage.content, 120)}
                             </p>
                           </div>
                         ) : null}
@@ -940,7 +1185,7 @@ export default function ChatPage() {
                               Last reply
                             </p>
                             <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                              {truncatePreview(latestAssistantMessage.content, 220)}
+                              {truncatePreview(latestAssistantMessage.content, 140)}
                             </p>
                           </div>
                         ) : null}
@@ -1115,6 +1360,14 @@ function truncatePreview(value: string, maxLength: number): string {
 }
 
 function getStreamingStatusLabel(message: Message): string {
+  if (message.backgroundJob?.status === "queued") {
+    return "Queued for background research...";
+  }
+
+  if (message.backgroundJob?.pending) {
+    return "Working in the background...";
+  }
+
   const traces = message.traceEvents || [];
 
   if (traces.some((trace) => trace.status === "running")) {

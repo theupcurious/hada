@@ -54,6 +54,11 @@ export interface MessageMetadata {
   thinking?: string;
   runId?: string;
   gatewayError?: { code: string; message: string };
+  backgroundJob?: {
+    id?: string;
+    status?: "queued" | "running" | "completed" | "failed" | "timeout";
+    pending?: boolean;
+  };
   cards?: unknown[];
   confirmation?: {
     pending?: boolean;
@@ -117,6 +122,33 @@ export interface ScheduledTask {
   description: string;
   enabled: boolean;
   last_run_at: string | null;
+  created_at: string;
+}
+
+export interface BackgroundJob {
+  id: string;
+  user_id: string;
+  conversation_id: string;
+  user_message_id: string;
+  assistant_message_id: string;
+  source: MessageSource;
+  request_text: string;
+  status: "queued" | "running" | "completed" | "failed" | "timeout";
+  processing_token: string | null;
+  attempts: number;
+  started_at: string | null;
+  finished_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BackgroundJobEvent {
+  id: string;
+  job_id: string;
+  user_id: string;
+  seq: number;
+  event: AgentEvent;
   created_at: string;
 }
 
@@ -286,6 +318,41 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Omit<ScheduledTask, "id" | "user_id" | "created_at">>;
+        Relationships: [];
+      };
+      background_jobs: {
+        Row: BackgroundJob;
+        Insert: {
+          id?: string;
+          user_id: string;
+          conversation_id: string;
+          user_message_id: string;
+          assistant_message_id: string;
+          source: MessageSource;
+          request_text: string;
+          status?: "queued" | "running" | "completed" | "failed" | "timeout";
+          processing_token?: string | null;
+          attempts?: number;
+          started_at?: string | null;
+          finished_at?: string | null;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<BackgroundJob, "id" | "user_id" | "conversation_id" | "user_message_id" | "assistant_message_id" | "created_at">>;
+        Relationships: [];
+      };
+      background_job_events: {
+        Row: BackgroundJobEvent;
+        Insert: {
+          id?: string;
+          job_id: string;
+          user_id: string;
+          seq: number;
+          event: AgentEvent;
+          created_at?: string;
+        };
+        Update: Partial<Omit<BackgroundJobEvent, "id" | "job_id" | "user_id" | "created_at">>;
         Relationships: [];
       };
       agent_runs: {

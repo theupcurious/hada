@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
+import { enqueueBackgroundJob, scheduleBackgroundJobProcessing } from "@/lib/background-jobs";
+import { isLongJobMessage } from "@/lib/chat/runtime-budgets";
 import { processMessage } from "@/lib/chat/process-message";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentEvent } from "@/lib/types/database";
 
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -39,6 +41,47 @@ export async function POST(request: NextRequest) {
           // Client disconnected — writes will fail silently.
         }
       };
+
+      if (isLongJobMessage(message)) {
+        void (async () => {
+          try {
+            const queued = await enqueueBackgroundJob({
+              supabase,
+              userId: user.id,
+              source: "web",
+              message,
+            });
+
+            scheduleBackgroundJobProcessing({
+              requestOrigin: request.nextUrl.origin,
+              jobId: queued.jobId,
+              processingToken: queued.processingToken,
+            });
+
+            emit({
+              type: "background_job",
+              jobId: queued.jobId,
+              status: "queued",
+              conversationId: queued.conversationId,
+              userMessageId: queued.userMessageId,
+              assistantMessageId: queued.assistantMessageId,
+            });
+          } catch (error) {
+            emit({
+              type: "error",
+              message:
+                error instanceof Error ? error.message : "Failed to queue background job.",
+            });
+          } finally {
+            try {
+              controller.close();
+            } catch {
+              // Already closed.
+            }
+          }
+        })();
+        return;
+      }
 
       processMessage({
         userId: user.id,

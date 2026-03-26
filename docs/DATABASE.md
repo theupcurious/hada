@@ -57,6 +57,10 @@ Example `settings` payload:
 }
 ```
 
+Notes:
+- `llm_provider` / `llm_model` are runtime preferences; model override behavior is gated by application logic, not by the schema itself.
+- `timezone` is used to personalize scheduling and time-aware responses.
+
 Example `permissions` payload:
 
 ```json
@@ -111,6 +115,10 @@ Common `metadata` fields:
 }
 ```
 
+Notes:
+- assistant messages may persist `gatewayError` when the run completes with a surfaced agent/runtime failure
+- plan/delegation progress is streamed live to the UI but not stored as first-class relational rows
+
 ### integrations
 
 OAuth/channel credentials for external providers.
@@ -142,6 +150,11 @@ Long-term memory entries keyed by topic.
 
 Constraint:
 - unique index on `(user_id, topic)`
+
+Usage notes:
+- this is the single durable memory store used by the agent loop, the Settings memory tab, and the Dashboard memory manager
+- chat history deletion does not delete `user_memories`
+- application-level validation keeps this table focused on durable user facts/preferences rather than long research summaries
 
 ### scheduled_tasks
 
@@ -193,6 +206,11 @@ Run-level telemetry for each agent execution. This powers the dashboard activity
 | metadata | jsonb | Extra metadata such as `runId` |
 | created_at | timestamptz | Row creation time |
 
+Notes:
+- `status = 'timeout'` is used when the run exceeds configured runtime/idle budgets
+- `tool_calls` is a compact per-run summary, not a full event log
+- full streaming trace state remains ephemeral in the live chat UI
+
 ## RLS Model
 
 User-owned tables enforce `auth.uid() = user_id` semantics:
@@ -227,4 +245,5 @@ CREATE INDEX idx_agent_runs_status ON agent_runs(user_id, status) WHERE status =
 ## Notes
 
 - Planning state and delegation trace state are ephemeral runtime constructs; they are not stored as first-class database tables.
+- Settings memory and Dashboard memory are both CRUD surfaces over `user_memories`; there is not a second agent-only memory table.
 - The TypeScript source of truth for runtime/database shapes is [src/lib/types/database.ts](/Users/james/Projects/Coding/hada/src/lib/types/database.ts).

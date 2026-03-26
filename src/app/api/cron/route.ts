@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { processQueuedBackgroundJobs } from "@/lib/background-jobs";
 import { processMessage } from "@/lib/chat/process-message";
 import { createAdminClient } from "@/lib/supabase/server";
 import { sendTelegramToUser } from "@/lib/telegram/send";
@@ -93,7 +94,20 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, processed, due: dueTasks.length, timestamp: now.toISOString() });
+  let processedBackgroundJobs = 0;
+  try {
+    processedBackgroundJobs = await processQueuedBackgroundJobs(3);
+  } catch (error) {
+    console.error("Background job processing failed", error);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    processed,
+    processedBackgroundJobs,
+    due: dueTasks.length,
+    timestamp: now.toISOString(),
+  });
 }
 
 export async function GET(request: NextRequest) {

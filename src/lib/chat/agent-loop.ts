@@ -27,8 +27,8 @@ export interface AgentLoopOptions {
   maxIterations?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 180_000;
-const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
+const DEFAULT_TIMEOUT_MS = 240_000;
+const DEFAULT_IDLE_TIMEOUT_MS = 150_000;
 const DEFAULT_MAX_ERRORS = 3;
 const TOOL_RESULT_LIMIT = 8_000;
 const PLAN_TASK_TOOL_NAME = "plan_task";

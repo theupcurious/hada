@@ -3,10 +3,11 @@ import { agentLoop } from "@/lib/chat/agent-loop";
 import { buildSystemPrompt } from "@/lib/chat/build-system-prompt";
 import { assembleConversationContext, maybeCompactConversation } from "@/lib/chat/context-manager";
 import { resolveProviderSelection } from "@/lib/chat/providers";
+import { resolveRunBudget } from "@/lib/chat/runtime-budgets";
 import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { getOrCreateConversation, saveMessage } from "@/lib/db/conversations";
+import { getOrCreateConversation, saveMessage, updateMessageById } from "@/lib/db/conversations";
 import { createAdminClient } from "@/lib/supabase/server";
 import type {
   AgentEvent,
@@ -22,6 +23,10 @@ export interface ProcessMessageOptions {
   source: MessageSource;
   supabase?: SupabaseClient;
   onEvent?: (event: AgentEvent) => Promise<void> | void;
+  conversationId?: string;
+  userMessageId?: string;
+  assistantMessageId?: string;
+  backgroundJobId?: string;
 }
 
 export interface ProcessMessageResult {
@@ -34,7 +39,9 @@ export interface ProcessMessageResult {
 
 export async function processMessage(options: ProcessMessageOptions): Promise<ProcessMessageResult> {
   const supabase = options.supabase || createAdminClient();
-  const conversation = await getOrCreateConversation(supabase, options.userId);
+  const conversation = options.conversationId
+    ? { id: options.conversationId }
+    : await getOrCreateConversation(supabase, options.userId);
   const runId = crypto.randomUUID();
   const agentRunStartedAt = Date.now();
   const toolCallLog: AgentRunToolCall[] = [];
@@ -51,16 +58,18 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     runId,
   });
 
-  const userMessage = await saveMessage(
-    supabase,
-    conversation.id,
-    "user",
-    options.message,
-    {
-      source: options.source,
-      runId,
-    },
-  );
+  const userMessage = options.userMessageId
+    ? { id: options.userMessageId }
+    : await saveMessage(
+        supabase,
+        conversation.id,
+        "user",
+        options.message,
+        {
+          source: options.source,
+          runId,
+        },
+      );
 
   const { data: integrations } = await supabase
     .from("integrations")
@@ -136,16 +145,32 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     const assistantMetadata: MessageMetadata = {
       source: options.source,
       runId,
+      ...(options.backgroundJobId
+        ? {
+            backgroundJob: {
+              id: options.backgroundJobId,
+              status: fatalError ? deriveAgentRunStatus(fatalError) : "completed",
+              pending: false,
+            },
+          }
+        : {}),
       ...(fatalError ? { gatewayError: { code: "AGENT_ERROR", message: fatalError } } : {}),
     };
 
-    const assistantMessage = await saveMessage(
-      supabase,
-      conversation.id,
-      "assistant",
-      responseText,
-      assistantMetadata,
-    );
+    const assistantMessage = options.assistantMessageId
+      ? await updateMessageById(
+          supabase,
+          options.assistantMessageId,
+          responseText,
+          assistantMetadata,
+        )
+      : await saveMessage(
+          supabase,
+          conversation.id,
+          "assistant",
+          responseText,
+          assistantMetadata,
+        );
 
     await maybeCompactConversation({
       supabase,
@@ -189,52 +214,6 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   }
 
   return result;
-}
-
-function resolveRunBudget(message: string): {
-  timeoutMs: number;
-  idleTimeoutMs: number;
-} {
-  const normalized = message.replace(/\s+/g, " ").trim().toLowerCase();
-
-  const longJobHints = [
-    "research",
-    "deep dive",
-    "write a memo",
-    "write me a memo",
-    "memo",
-    "report",
-    "analyze",
-    "analysis",
-    "compare",
-    "comparison",
-    "summarize",
-    "summary",
-    "search the web",
-    "search multiple sources",
-    "read the most relevant",
-    "latest developments",
-    "latest news",
-    "comprehensive",
-    "detailed",
-    "investigate",
-  ];
-
-  const isLongJob =
-    normalized.length >= 180 ||
-    longJobHints.some((hint) => normalized.includes(hint));
-
-  if (isLongJob) {
-    return {
-      timeoutMs: 600_000,
-      idleTimeoutMs: 180_000,
-    };
-  }
-
-  return {
-    timeoutMs: 180_000,
-    idleTimeoutMs: 90_000,
-  };
 }
 
 async function emitEvent(

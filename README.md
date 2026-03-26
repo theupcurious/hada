@@ -1,6 +1,6 @@
 # Hada
 
-Hada is an assistant application built around a local agent loop. It supports web chat, Telegram, long-term memory, scheduled tasks, live trace streaming, multi-step planning, specialist sub-agent delegation, and a dashboard control plane.
+Hada is an assistant application built around a local agent loop. It supports web chat, Telegram, long-term memory, scheduled tasks, live trace streaming, multi-step planning, specialist sub-agent delegation, a settings surface, and a dashboard control plane.
 
 ## Stack
 
@@ -15,6 +15,7 @@ Hada is an assistant application built around a local agent loop. It supports we
 
 - Persistent per-user conversation history
 - Inline chat execution traces with tool calls, reasoning, and latencies
+- Progress-aware timeout handling with larger budgets for long-form research/memo jobs
 - Multi-step task planning via `plan_task`
 - Specialist delegation via `delegate_task`
 - Long-term memory via `user_memories`
@@ -22,7 +23,9 @@ Hada is an assistant application built around a local agent loop. It supports we
 - Google Calendar tools
 - Scheduled one-time and recurring tasks
 - Telegram integration with account linking
+- Settings at `/settings` for runtime status, integrations, preferences, memory management, and chat reset
 - Dashboard at `/dashboard` for activity, analytics, memories, and tasks
+- Responsive chat/settings layouts tuned for mobile and narrow viewports
 
 ## Quick Start
 
@@ -50,9 +53,11 @@ Required values:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `NEXT_PUBLIC_APP_URL`
 - `LLM_PROVIDER`
-- matching provider API key, for example `MINIMAX_API_KEY`
+- a matching provider API key, for example `MINIMAX_API_KEY`
 
 Common optional values:
+- `LLM_API_KEY` as a shared fallback key
+- `ADMIN_USER_EMAILS`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `TELEGRAM_BOT_TOKEN`
@@ -60,7 +65,18 @@ Common optional values:
 - `TELEGRAM_BOT_USERNAME`
 - `SEARCH_PROVIDER`
 - `SEARCH_API_KEY`
+- provider-specific search keys such as `TAVILY_API_KEY`, `BRAVE_API_KEY`, or `SERPAPI_API_KEY`
 - `CRON_SECRET`
+
+Provider-specific LLM keys currently supported:
+- `MINIMAX_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `KIMI_API_KEY`
+- `MOONSHOT_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `GROQ_API_KEY`
 
 ### Database setup
 
@@ -80,6 +96,7 @@ npm run dev
 Open:
 - `http://localhost:3000/chat`
 - `http://localhost:3000/dashboard`
+- `http://localhost:3000/settings`
 
 ## Verification
 
@@ -109,5 +126,7 @@ npm run build
 
 ## Notes
 
+- The Settings memory tab and the Dashboard memory manager both operate on the same `user_memories` table the agent uses during runtime.
+- `/api/chat` is an SSE endpoint with a long request budget; normal runs and long-form runs use different timeout budgets internally.
 - Dashboard task `Run now` is intentionally guarded until immediate execution is wired through the scheduler path.
 - Next.js currently emits a `middleware` → `proxy` deprecation warning during build; the app still builds successfully.
