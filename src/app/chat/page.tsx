@@ -242,7 +242,10 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
-  const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
+  const [user, setUser] = useState<{ email?: string; name?: string; id?: string } | null>(null);
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [greetingText, setGreetingText] = useState("Hello");
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -671,15 +674,43 @@ export default function ChatPage() {
 
   useEffect(() => {
     const initialize = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
         router.push("/auth/login");
         return;
       }
-      setUser({
-        email: user.email,
-        name: user.user_metadata?.name,
-      });
+
+      // Load full user profile from DB
+      const { data: dbUser } = await supabase
+        .from("users")
+        .select("id, name, email, settings")
+        .eq("id", authUser.id)
+        .single();
+
+      const dbName = (dbUser as { name?: string | null } | null)?.name;
+      const displayName = dbName || authUser.user_metadata?.name || null;
+      const settings = (dbUser as { settings?: Record<string, unknown> } | null)?.settings || {};
+
+      setUser({ email: authUser.email, name: displayName ?? undefined, id: authUser.id });
+
+      // Auto-detect and silently save timezone if not set
+      if (!settings.timezone) {
+        const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (detectedTimezone) {
+          await supabase
+            .from("users")
+            .update({ settings: { ...settings, timezone: detectedTimezone } })
+            .eq("id", authUser.id);
+        }
+      }
+
+      // Show profile setup card for users with no name who haven't dismissed it
+      const dismissed = typeof window !== "undefined"
+        ? localStorage.getItem("hada_profile_setup_dismissed")
+        : null;
+      if (!displayName && !dismissed) {
+        setShowProfileSetup(true);
+      }
 
       // Load message history
       await loadHistory();
@@ -687,6 +718,24 @@ export default function ChatPage() {
     };
     initialize();
   }, [router, supabase, loadHistory]);
+
+  const handleProfileSave = async () => {
+    if (!user?.id) return;
+    setSavingProfile(true);
+    const name = profileName.trim();
+    if (name) {
+      await supabase.from("users").update({ name }).eq("id", user.id);
+      setUser((prev) => prev ? { ...prev, name } : prev);
+    }
+    localStorage.setItem("hada_profile_setup_dismissed", "1");
+    setShowProfileSetup(false);
+    setSavingProfile(false);
+  };
+
+  const handleProfileSkip = () => {
+    localStorage.setItem("hada_profile_setup_dismissed", "1");
+    setShowProfileSetup(false);
+  };
 
   useEffect(() => {
     if (!showConversation) {
@@ -1159,6 +1208,47 @@ export default function ChatPage() {
                     <div className="mt-5 w-full max-w-2xl sm:hidden">
                       {inputForm}
                     </div>
+
+                    {showProfileSetup && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="mt-5 w-full max-w-2xl rounded-2xl border border-teal-200/60 bg-teal-50/60 p-4 text-left shadow-sm backdrop-blur-sm dark:border-teal-900/40 dark:bg-teal-950/20 sm:mt-6"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Quick setup</p>
+                            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Help Hada personalise your experience.</p>
+                          </div>
+                          <button
+                            onClick={handleProfileSkip}
+                            className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                          >
+                            Skip
+                          </button>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="What should I call you?"
+                            value={profileName}
+                            onChange={(e) => setProfileName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") void handleProfileSave(); }}
+                            className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:border-teal-600 dark:focus:ring-teal-600"
+                            autoFocus
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => void handleProfileSave()}
+                            disabled={savingProfile}
+                            className="shrink-0"
+                          >
+                            {savingProfile ? "Saving…" : "Save"}
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
 
                     <div className="mt-5 grid w-full max-w-2xl grid-cols-2 gap-2.5 sm:mt-8 sm:gap-3">
                       {starterPrompts.map((shortcut) => (
