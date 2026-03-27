@@ -11,7 +11,6 @@ import { CalendarEventCard, type CalendarEventCardProps } from "@/components/cha
 import { DataTableCard } from "@/components/chat/data-table-card";
 import { AgentTraceTimeline, type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
 import { ScheduleViewCard } from "@/components/chat/schedule-view-card";
-import { SearchResultsCard } from "@/components/chat/search-results-card";
 import { TaskPlanCard } from "@/components/chat/task-plan-card";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import type { TaskPlan } from "@/lib/types/database";
@@ -20,8 +19,6 @@ import type {
   RichCard,
   ScheduleBlock,
   ScheduleViewCardPayload,
-  SearchResultItem,
-  SearchResultsCardPayload,
 } from "@/lib/types/cards";
 import { motion, AnimatePresence } from "framer-motion";
 import { LayoutDashboard, LogOut, Settings2 } from "lucide-react";
@@ -1359,20 +1356,6 @@ export default function ChatPage() {
                           {message.role === "assistant" && message.plan ? (
                             <TaskPlanCard plan={message.plan} activeStepId={message.activeStepId} />
                           ) : null}
-                          {/* Search result cards appear before text as sources */}
-                          {message.cards?.filter((c) => c.type === "search_results").map((card, idx) => {
-                            const data = card.data as SearchResultsCardPayload["data"] | undefined;
-                            if (data?.results?.length) {
-                              return (
-                                <SearchResultsCard
-                                  key={`${message.id}-src-${idx}`}
-                                  query={data.query || ""}
-                                  results={data.results as SearchResultItem[]}
-                                />
-                              );
-                            }
-                            return null;
-                          })}
                           <div className={`min-w-0 overflow-hidden ${message.isError ? "text-red-500 dark:text-red-400" : ""}`}>
                             {message.isStreaming && !message.content ? (
                               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-zinc-200/70 bg-zinc-50/80 px-3 py-1.5 text-xs text-zinc-500 dark:border-zinc-800/70 dark:bg-zinc-950/50 dark:text-zinc-400">
@@ -1389,8 +1372,7 @@ export default function ChatPage() {
                               <span className="inline-block h-4 w-0.5 bg-zinc-400 animate-pulse ml-0.5" />
                             )}
                           </div>
-                          {/* Non-search cards (calendar, table, schedule) after text */}
-                          {message.cards?.filter((c) => c.type !== "search_results").map((card, idx) => {
+                          {message.cards?.map((card, idx) => {
                             if (card.type === "calendar_event" && isCalendarEventData(card.data)) {
                               return (
                                 <CalendarEventCard
