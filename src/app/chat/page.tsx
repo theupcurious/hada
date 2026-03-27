@@ -996,32 +996,32 @@ export default function ChatPage() {
 
   const starterPrompts = [
     {
-      title: "Brief me on my day",
-      subtitle: "Calendar, weather & priorities",
+      title: "Today's briefing",
+      subtitle: "Top stories in tech",
       icon: "☀️",
       prompt:
-        "Brief me on my day. Check my calendar for today's events, look up the current weather, recall anything you remember about my priorities or pending tasks, and give me a concise morning briefing with everything I need to know.",
+        "Give me today's tech briefing. Search for the most important tech and AI news from today, read the top articles, and summarize the 5 most important stories with key takeaways. Keep it concise and scannable.",
     },
     {
-      title: "Research & summarize",
-      subtitle: "Deep dive with a written memo",
+      title: "Research a company",
+      subtitle: "Competitive intel memo",
       icon: "🔍",
       prompt:
-        "Research the latest developments in AI agents and write me a structured summary memo. Search multiple sources, read the most relevant articles, and organize your findings into key themes with takeaways.",
+        "I'd like a competitive intel report on a company. Ask me which company I'm interested in, then research it thoroughly — recent funding rounds, product launches, key executive hires, market positioning, and anything notable. Write it up as a structured memo.",
     },
     {
-      title: "Plan my week",
-      subtitle: "Goals, calendar gaps & focus time",
-      icon: "📋",
+      title: "Plan a trip",
+      subtitle: "Flights, stays & itinerary",
+      icon: "✈️",
       prompt:
-        "Help me plan my week. Check my calendar for the upcoming week, recall my goals and priorities, identify open time blocks, and suggest a plan that balances my commitments with focused work time.",
+        "Help me plan an amazing trip. Ask me where I want to go and when, then research the best flight options, top-rated hotels, must-see attractions, best restaurants, and local tips. Put it all together into a day-by-day itinerary I can actually follow.",
     },
     {
-      title: "Catch me up",
-      subtitle: "Personalized news since last chat",
-      icon: "⚡",
+      title: "Prep me for a meeting",
+      subtitle: "Talking points & context",
+      icon: "🎯",
       prompt:
-        "Catch me up on what's happened since we last talked. Recall what topics I care about, search for the latest news and developments, and only tell me what's actually new — skip anything I already know.",
+        "Help me prepare for an upcoming meeting. Ask me what the meeting is about and who I'm meeting with, then research the relevant topics, industry trends, and any recent news. Give me structured talking points, smart questions to ask, and key data points I can reference.",
     },
   ];
 
