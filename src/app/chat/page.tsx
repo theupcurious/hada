@@ -1078,11 +1078,11 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
+    <div className="flex h-dvh flex-col bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
 
       <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 sm:gap-3">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-md shadow-teal-500/20">
               <span className="text-sm font-bold text-white">H</span>
@@ -1162,7 +1162,7 @@ export default function ChatPage() {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto flex h-full max-w-5xl flex-col px-3 sm:px-4 md:px-6">
+        <div className="mx-auto flex h-full max-w-3xl flex-col px-3 sm:px-4 md:px-6">
 
           {/* Messages Area */}
           <div className="flex-1 min-h-0 py-4">
