@@ -1071,7 +1071,7 @@ export default function ChatPage() {
           </svg>
         </Button>
       </div>
-      <p className="mt-2 text-center text-xs text-zinc-400">
+      <p className="mt-2 hidden text-center text-xs text-zinc-400 sm:block">
         Enter to send, Shift+Enter for a new line. Hada can make mistakes — verify important information.
       </p>
     </form>
