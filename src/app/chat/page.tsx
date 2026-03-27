@@ -8,10 +8,21 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
 import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { CalendarEventCard, type CalendarEventCardProps } from "@/components/chat/calendar-event-card";
+import { DataTableCard } from "@/components/chat/data-table-card";
 import { AgentTraceTimeline, type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
+import { ScheduleViewCard } from "@/components/chat/schedule-view-card";
+import { SearchResultsCard } from "@/components/chat/search-results-card";
 import { TaskPlanCard } from "@/components/chat/task-plan-card";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import type { TaskPlan } from "@/lib/types/database";
+import type {
+  DataTableCardPayload,
+  RichCard,
+  ScheduleBlock,
+  ScheduleViewCardPayload,
+  SearchResultItem,
+  SearchResultsCardPayload,
+} from "@/lib/types/cards";
 import { motion, AnimatePresence } from "framer-motion";
 import { LayoutDashboard, LogOut, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -91,6 +102,7 @@ interface BackgroundJobPollResponse {
         status?: "queued" | "running" | "completed" | "failed" | "timeout";
         pending?: boolean;
       };
+      cards?: ChatCard[];
       gatewayError?: { code?: string; message?: string };
     } | null;
   } | null;
@@ -115,6 +127,7 @@ interface CalendarEventsListPayload {
 type ChatCard =
   | CalendarEventCardPayload
   | CalendarEventsListPayload
+  | RichCard
   | {
       type?: string;
       data?: unknown;
@@ -561,6 +574,9 @@ export default function ChatPage() {
           ...message,
           id: data.assistantMessage?.id || message.id,
           content: data.assistantMessage?.content || message.content,
+          cards: Array.isArray(data.assistantMessage?.metadata?.cards)
+            ? (data.assistantMessage.metadata.cards as ChatCard[])
+            : message.cards,
           backgroundJob: {
             id: jobId,
             status: data.job!.status,
@@ -767,6 +783,7 @@ export default function ChatPage() {
                 return {
                   ...msg,
                   id: realAssistantId,
+                  cards: Array.isArray(event.cards) ? (event.cards as ChatCard[]) : msg.cards,
                   isStreaming: false,
                   isError: !!event.isError,
                   backgroundJob: undefined,
@@ -1293,6 +1310,44 @@ export default function ChatPage() {
                                     actions={["reschedule", "cancel"]}
                                   />
                                 ));
+                            }
+                            if (card.type === "search_results") {
+                              const data = card.data as SearchResultsCardPayload["data"] | undefined;
+                              if (data?.results?.length) {
+                                return (
+                                  <SearchResultsCard
+                                    key={`${message.id}-card-${idx}`}
+                                    query={data.query || ""}
+                                    results={data.results as SearchResultItem[]}
+                                  />
+                                );
+                              }
+                            }
+                            if (card.type === "schedule_view") {
+                              const data = card.data as ScheduleViewCardPayload["data"] | undefined;
+                              if (data?.blocks?.length) {
+                                return (
+                                  <ScheduleViewCard
+                                    key={`${message.id}-card-${idx}`}
+                                    title={data.title || "Schedule"}
+                                    timeframe={data.timeframe || ""}
+                                    blocks={data.blocks as ScheduleBlock[]}
+                                  />
+                                );
+                              }
+                            }
+                            if (card.type === "data_table") {
+                              const data = card.data as DataTableCardPayload["data"] | undefined;
+                              if (data?.headers?.length && data?.rows?.length) {
+                                return (
+                                  <DataTableCard
+                                    key={`${message.id}-card-${idx}`}
+                                    title={data.title}
+                                    headers={data.headers}
+                                    rows={data.rows}
+                                  />
+                                );
+                              }
                             }
                             return null;
                           })}

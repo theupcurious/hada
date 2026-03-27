@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { generateEmbedding } from "@/lib/chat/embeddings";
 import { callLLM, type LLMMessage, type ProviderSelection } from "@/lib/chat/providers";
 import type { MessageMetadata } from "@/lib/types/database";
 
@@ -123,6 +124,7 @@ export async function maybeCompactConversation(options: {
   supabase: SupabaseClient;
   conversationId: string;
   provider: ProviderSelection;
+  userId: string;
   compactAfterMessages?: number;
 }): Promise<void> {
   const threshold = options.compactAfterMessages ?? COMPACTION_THRESHOLD;
@@ -187,6 +189,13 @@ export async function maybeCompactConversation(options: {
     .join("\n\n")
     .slice(0, 20_000);
 
+  await flushMemoriesBeforeCompaction({
+    supabase: options.supabase,
+    userId: options.userId,
+    provider: options.provider,
+    transcript,
+  });
+
   let summary = "";
   try {
     const result = await callLLM({
@@ -228,6 +237,102 @@ export async function maybeCompactConversation(options: {
 
 export function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4);
+}
+
+async function flushMemoriesBeforeCompaction(options: {
+  supabase: SupabaseClient;
+  userId: string;
+  provider: ProviderSelection;
+  transcript: string;
+}): Promise<void> {
+  if (!options.transcript.trim()) {
+    return;
+  }
+
+  const { data: existing } = await options.supabase
+    .from("user_memories")
+    .select("topic, content")
+    .eq("user_id", options.userId)
+    .order("updated_at", { ascending: false })
+    .limit(50);
+
+  const existingMemories = (existing || []) as Array<{ topic: string; content: string }>;
+  const existingSection = existingMemories.length
+    ? existingMemories.map((memory) => `- ${memory.topic}: ${memory.content}`).join("\n")
+    : "None yet.";
+
+  let extraction = "";
+  try {
+    const result = await callLLM({
+      selection: options.provider,
+      tools: [],
+      messages: [
+        {
+          role: "system",
+          content: `You extract durable user facts from conversations. Output ONLY a JSON array of {topic, content} objects. Rules:
+- Only extract stable user preferences, recurring constraints, identity facts, or long-term context.
+- Do NOT extract research results, task outputs, one-off plans, or ephemeral information.
+- Topics are short kebab-case keys (e.g. "work-hours", "coffee-preference").
+- Content is 1-2 sentences max, plain text, no markdown.
+- If a fact updates an existing memory, use the same topic key.
+- If nothing durable is found, output an empty array: []
+
+Existing memories:
+${existingSection}`,
+        },
+        {
+          role: "user",
+          content: options.transcript,
+        },
+      ],
+    });
+    extraction = result.content.trim();
+  } catch {
+    return;
+  }
+
+  let memories: Array<{ topic: string; content: string }> = [];
+  try {
+    const jsonMatch = extraction.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return;
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as unknown;
+    if (!Array.isArray(parsed)) {
+      return;
+    }
+
+    memories = parsed as Array<{ topic: string; content: string }>;
+  } catch {
+    return;
+  }
+
+  const toSave = memories
+    .filter(
+      (memory) =>
+        typeof memory?.topic === "string" &&
+        typeof memory?.content === "string" &&
+        memory.topic.trim().length > 0 &&
+        memory.content.trim().length > 0 &&
+        memory.topic.trim().length <= 60 &&
+        memory.content.trim().length <= 500,
+    )
+    .slice(0, 5);
+
+  for (const memory of toSave) {
+    const embedding = await generateEmbedding(`${memory.topic.trim()}: ${memory.content.trim()}`);
+    await options.supabase.from("user_memories").upsert(
+      {
+        user_id: options.userId,
+        topic: memory.topic.trim(),
+        content: memory.content.trim(),
+        embedding: embedding ? JSON.stringify(embedding) : null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,topic" },
+    );
+  }
 }
 
 function fallbackSummary(lines: string[]): string {

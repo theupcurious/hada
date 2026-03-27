@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentLoop } from "@/lib/chat/agent-loop";
+import { extractCardsFromToolResults } from "@/lib/chat/card-extraction";
 import { buildSystemPrompt } from "@/lib/chat/build-system-prompt";
 import { assembleConversationContext, maybeCompactConversation } from "@/lib/chat/context-manager";
+import { extractMemoriesFromTurn } from "@/lib/chat/memory-extraction";
 import { resolveProviderSelection } from "@/lib/chat/providers";
 import { resolveRunBudget } from "@/lib/chat/runtime-budgets";
 import { createTools } from "@/lib/chat/tools";
@@ -45,6 +47,9 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   const runId = crypto.randomUUID();
   const agentRunStartedAt = Date.now();
   const toolCallLog: AgentRunToolCall[] = [];
+  const toolCallArgs = new Map<string, Record<string, unknown>>();
+  const toolResultsForCards: Array<{ name: string; result: string; args?: Record<string, unknown> }> =
+    [];
   let agentRunStatus: AgentRun["status"] = "running";
   let responseText = "";
   let thrownError: unknown = null;
@@ -122,7 +127,9 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       timeout: runBudget.timeoutMs,
       idleTimeout: runBudget.idleTimeoutMs,
     })) {
-      if (event.type === "text_delta") {
+      if (event.type === "tool_call") {
+        toolCallArgs.set(event.callId, event.args);
+      } else if (event.type === "text_delta") {
         assembled += event.content;
       } else if (event.type === "done") {
         if (!assembled.trim()) {
@@ -135,6 +142,11 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
           durationMs: event.durationMs,
           status: isToolResultError(event.result) ? "error" : "done",
         });
+        toolResultsForCards.push({
+          name: event.name,
+          result: event.result,
+          args: toolCallArgs.get(event.callId),
+        });
       } else if (event.type === "error") {
         fatalError = event.message;
       }
@@ -142,9 +154,11 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       await emitEvent(options.onEvent, event);
     }
     responseText = assembled.trim() || fatalError || "I ran into an issue while processing that.";
+    const extractedCards = extractCardsFromToolResults(toolResultsForCards);
     const assistantMetadata: MessageMetadata = {
       source: options.source,
       runId,
+      ...(extractedCards.length ? { cards: extractedCards } : {}),
       ...(options.backgroundJobId
         ? {
             backgroundJob: {
@@ -176,6 +190,17 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       supabase,
       conversationId: conversation.id,
       provider,
+      userId: options.userId,
+    });
+
+    void extractMemoriesFromTurn({
+      supabase,
+      userId: options.userId,
+      provider,
+      userMessage: options.message,
+      assistantResponse: responseText,
+    }).catch((error) => {
+      console.error("Memory extraction failed", error);
     });
 
     agentRunStatus = fatalError ? deriveAgentRunStatus(fatalError) : "completed";

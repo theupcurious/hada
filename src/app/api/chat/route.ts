@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
               id: result.assistantMessageId,
               conversationId: result.conversationId,
               userMessageId: result.userMessageId,
+              cards: Array.isArray(result.metadata.cards) ? result.metadata.cards : undefined,
               isError: !!result.metadata.gatewayError,
               errorMessage: result.metadata.gatewayError?.message,
             });

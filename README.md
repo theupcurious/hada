@@ -1,6 +1,6 @@
 # Hada
 
-Hada is an assistant application built around a local agent loop. It supports web chat, Telegram, long-term memory, scheduled tasks, live trace streaming, multi-step planning, specialist sub-agent delegation, background research jobs for long requests, a settings surface, and a dashboard control plane.
+Hada is an assistant application built around a local agent loop. It supports web chat, Telegram, long-term memory, scheduled tasks, live trace streaming, multi-step planning, specialist sub-agent delegation, background research jobs for long requests, rich inline output cards, a settings surface, and a dashboard control plane.
 
 ## Stack
 
@@ -20,7 +20,10 @@ Hada is an assistant application built around a local agent loop. It supports we
 - Multi-step task planning via `plan_task`
 - Specialist delegation via `delegate_task`
 - Long-term memory via `user_memories`
+- Automatic memory capture before compaction and after completed turns
+- Semantic memory recall via pgvector embeddings with text-search fallback
 - Web tools: `web_search`, `web_fetch`
+- Rich inline cards for supported structured outputs in chat
 - Google Calendar tools
 - Scheduled one-time and recurring tasks
 - Telegram integration with account linking
@@ -88,6 +91,11 @@ Run these migrations in Supabase SQL Editor:
 - `supabase/migrations/004_agent_and_telegram.sql`
 - `supabase/migrations/005_agent_runs.sql`
 - `supabase/migrations/006_background_jobs.sql`
+- `supabase/migrations/007_memory_embeddings.sql`
+
+Notes:
+- `007_memory_embeddings.sql` is required for semantic memory recall and adds the `match_user_memories` function plus the `user_memories.embedding` column.
+- `OPENAI_API_KEY` is optional overall, but it is required if you want embedding generation for semantic memory save/recall paths.
 
 ### Run locally
 
@@ -120,19 +128,25 @@ npm run build
 - `src/app/dashboard/page.tsx` - dashboard UI
 - `src/lib/chat/agent-loop.ts` - core runtime loop
 - `src/lib/chat/process-message.ts` - orchestration + telemetry
+- `src/lib/chat/card-extraction.ts` - tool-result to rich-card extraction
+- `src/lib/chat/memory-extraction.ts` - post-turn memory extraction
+- `src/lib/chat/embeddings.ts` - OpenAI embedding generation helper
 - `src/lib/chat/runtime-budgets.ts` - normal vs long-job budget selection
 - `src/lib/background-jobs.ts` - queueing, processing, and polling helpers
 - `src/lib/chat/tools/` - tool implementations
 - `src/lib/chat/agents/` - sub-agent profiles
 - `src/components/chat/agent-trace.tsx` - trace/delegation UI
 - `src/components/chat/task-plan-card.tsx` - plan UI
-- `docs/IMPLEMENTATION_PLAN.md` - implementation record
+- `src/components/chat/search-results-card.tsx` - rich search result renderer
+- `src/components/chat/schedule-view-card.tsx` - rich schedule renderer
+- `src/components/chat/data-table-card.tsx` - rich table renderer
 - `docs/ARCHITECTURE.md` - architecture overview
 - `docs/DATABASE.md` - schema overview
 
 ## Notes
 
 - The Settings memory tab and the Dashboard memory manager both operate on the same `user_memories` table the agent uses during runtime.
+- `web_search` results are automatically converted into rich inline cards; the schedule/table renderers are implemented but still need prompt/tool-side structured payload emission before they appear automatically.
 - `/api/chat` is an SSE endpoint with `maxDuration = 300`; long research-style prompts are queued into background jobs instead of trying to complete inside one request.
 - Background job progress is persisted in `background_job_events` and replayed into chat by polling `/api/background-jobs/[id]`.
 - Dashboard task `Run now` is intentionally guarded until immediate execution is wired through the scheduler path.

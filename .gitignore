@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 CLAUDE.md
+docs/plans/
 
 # debug
 npm-debug.log*
@@ -46,3 +47,4 @@ next-env.d.ts
 
 # supabase local
 supabase/.temp/
+.gstack/

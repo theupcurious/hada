@@ -10,6 +10,7 @@ Current migration chain:
 - `004_agent_and_telegram.sql`
 - `005_agent_runs.sql`
 - `006_background_jobs.sql`
+- `007_memory_embeddings.sql`
 
 ## Entity Relationship Diagram
 
@@ -110,7 +111,15 @@ Common `metadata` fields:
     "pending": true
   },
   "thinking": "...",
-  "cards": [],
+  "cards": [
+    {
+      "type": "search_results",
+      "data": {
+        "query": "latest AI agents news",
+        "results": []
+      }
+    }
+  ],
   "confirmation": {
     "pending": true
   },
@@ -125,7 +134,14 @@ Common `metadata` fields:
 Notes:
 - assistant messages may persist `gatewayError` when the run completes with a surfaced agent/runtime failure
 - assistant messages for queued long-form jobs persist `backgroundJob` state so the chat UI can resume polling after reload
+- assistant messages may persist rich card payloads in `metadata.cards`; these currently back inline `search_results`, `schedule_view`, and `data_table` renderers in the chat UI
 - plan/delegation progress is streamed live to the UI but not stored as first-class relational rows
+
+Current card payload families stored in `metadata.cards`:
+- `search_results`
+- `schedule_view`
+- `data_table`
+- `link_preview`
 
 ### integrations
 
@@ -145,7 +161,7 @@ OAuth/channel credentials for external providers.
 
 ### user_memories
 
-Long-term memory entries keyed by topic.
+Long-term memory entries keyed by topic, with optional semantic embeddings.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -153,6 +169,7 @@ Long-term memory entries keyed by topic.
 | user_id | uuid | Owner |
 | topic | text | Stable memory key |
 | content | text | Stored memory content |
+| embedding | vector(1536) | Optional pgvector embedding for semantic recall |
 | created_at | timestamptz | Creation time |
 | updated_at | timestamptz | Last update time |
 
@@ -163,6 +180,13 @@ Usage notes:
 - this is the single durable memory store used by the agent loop, the Settings memory tab, and the Dashboard memory manager
 - chat history deletion does not delete `user_memories`
 - application-level validation keeps this table focused on durable user facts/preferences rather than long research summaries
+- current application-level save/extraction paths cap `topic` at 60 chars and `content` at 500 chars
+- rows can be written explicitly by `save_memory`, automatically before conversation compaction, or automatically after a completed turn
+- semantic recall uses `embedding` when present; keyword fallback does not depend on embeddings
+
+Indexes:
+- btree index on `(user_id, updated_at desc)` from `004_agent_and_telegram.sql`
+- ivfflat cosine index on `embedding` from `007_memory_embeddings.sql`
 
 ### scheduled_tasks
 
@@ -264,6 +288,30 @@ Usage notes:
 - powers `/api/background-jobs/[id]` so the chat UI can replay tool/progress updates after the original request finishes
 - complements `agent_runs`; it does not replace run-level telemetry
 
+## Database Functions
+
+### match_user_memories(query_embedding, match_user_id, match_threshold, match_count)
+
+Semantic search helper introduced in `007_memory_embeddings.sql`.
+
+Arguments:
+- `query_embedding vector(1536)`: embedding generated from the recall query text
+- `match_user_id uuid`: restricts search to a single user
+- `match_threshold float`: minimum cosine similarity threshold, default `0.3`
+- `match_count int`: max rows returned, default `20`
+
+Returns:
+- `id uuid`
+- `topic text`
+- `content text`
+- `updated_at timestamptz`
+- `similarity float`
+
+Usage notes:
+- the application calls this function from `recall_memory` before falling back to `ILIKE` search
+- rows with `embedding IS NULL` are skipped automatically
+- if pgvector search returns no matches or embedding generation is unavailable, the application falls back to text search across `topic` and `content`
+
 ## RLS Model
 
 User-owned tables enforce `auth.uid() = user_id` semantics:
@@ -290,6 +338,8 @@ CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);
 CREATE INDEX idx_integrations_user_id ON integrations(user_id);
 CREATE UNIQUE INDEX idx_user_memories_user_topic ON user_memories(user_id, topic);
+CREATE INDEX idx_user_memories_user_updated ON user_memories(user_id, updated_at DESC);
+CREATE INDEX idx_user_memories_embedding ON user_memories USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 CREATE INDEX idx_scheduled_tasks_user_id ON scheduled_tasks(user_id);
 CREATE INDEX idx_scheduled_tasks_run_at ON scheduled_tasks(run_at) WHERE enabled = true;
 CREATE UNIQUE INDEX idx_telegram_link_tokens_token ON telegram_link_tokens(token);

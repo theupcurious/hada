@@ -1,10 +1,11 @@
 import type { AgentTool } from "@/lib/chat/agent-loop";
+import { generateEmbedding } from "@/lib/chat/embeddings";
 import type { ToolContext } from "@/lib/chat/tools/types";
 
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
 
 const MAX_TOPIC_CHARS = 60;
-const MAX_CONTENT_CHARS = 220;
+const MAX_CONTENT_CHARS = 500;
 const MAX_SENTENCE_COUNT = 3;
 
 export const saveMemoryManifest: ToolManifest = {
@@ -22,7 +23,7 @@ export const saveMemoryManifest: ToolManifest = {
       },
       content: {
         type: "string",
-        description: "Concise memory content to store.",
+        description: "Concise memory content to store (up to 500 characters).",
       },
     },
     required: ["topic", "content"],
@@ -47,11 +48,13 @@ export function createSaveMemoryTool(context: ToolContext): AgentTool {
         return JSON.stringify({ success: false, error: validationError });
       }
 
+      const embedding = await generateEmbedding(`${topic}: ${content}`);
       const { error } = await context.supabase.from("user_memories").upsert(
         {
           user_id: context.userId,
           topic,
           content,
+          embedding: embedding ? JSON.stringify(embedding) : null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id,topic" },

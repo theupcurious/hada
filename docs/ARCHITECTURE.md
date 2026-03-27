@@ -32,7 +32,10 @@ Next.js App
   │   ├─ processMessage()
   │   ├─ agentLoop()
   │   ├─ buildSystemPrompt()
-  │   └─ context-manager
+  │   ├─ context-manager
+  │   ├─ card-extraction
+  │   ├─ memory-extraction
+  │   └─ embeddings
   ├─ Tool registry
   │   ├─ memory tools
   │   ├─ web tools
@@ -122,7 +125,54 @@ Cron trigger
 - selecting runtime budgets based on the request shape
 - running `agentLoop()`
 - persisting or updating the assistant response
+- extracting rich cards from tool results and attaching them to assistant message metadata
+- triggering pre-compaction memory flushes through `maybeCompactConversation()`
+- kicking off post-turn memory extraction in the background
 - recording `agent_runs` telemetry
+
+### Rich Output Lifecycle
+
+Structured assistant outputs now flow through a separate rich-card path:
+
+1. Shared types:
+   `src/lib/types/cards.ts` defines the card payload contracts used across server and client.
+2. Server-side extraction:
+   `extractCardsFromToolResults()` inspects tool outputs after the agent loop finishes and converts supported results into typed card payloads.
+3. Persistence:
+   extracted cards are stored on the assistant message under `metadata.cards`.
+4. Delivery:
+   direct `/api/chat` completions include cards in the terminal SSE event, and background-job polling reloads them from the saved assistant message metadata.
+5. Rendering:
+   `/chat` renders supported card types inline alongside markdown content.
+
+Current supported automatic extraction:
+- `search_results` cards from `web_search`
+
+Current supported renderers:
+- `search_results`
+- `schedule_view`
+- `data_table`
+
+Follow-up gap:
+- `schedule_view` and `data_table` renderers exist, but they still need prompt/tool-side structured payload emission before they will appear automatically in normal conversations.
+
+### Memory Lifecycle
+
+Long-term memory now has three write paths and one hybrid read path:
+
+1. Explicit save:
+   `save_memory` validates a durable fact, allows up to 500 characters of content, generates an embedding when `OPENAI_API_KEY` is available, and upserts the row into `user_memories`.
+2. Pre-compaction flush:
+   `maybeCompactConversation()` extracts durable facts from the soon-to-be-compacted transcript before that context is replaced by a summary, then upserts the extracted memories directly.
+3. Post-turn extraction:
+   after `processMessage()` finishes the user-visible response, `extractMemoriesFromTurn()` runs fire-and-forget on the latest user/assistant turn to catch durable facts the agent did not explicitly save.
+4. Hybrid recall:
+   `recall_memory` first tries semantic search through the `match_user_memories` Postgres function using pgvector embeddings, then falls back to `ILIKE` matching across both `topic` and `content`.
+
+Design properties:
+- automatic memory capture is best-effort and silent on failure so the user-facing response path stays resilient
+- embeddings are optional; if embedding generation fails or `OPENAI_API_KEY` is missing, memory save/flush/extraction still persist text memories
+- compaction summaries remain in `messages`, while durable facts live separately in `user_memories`
 
 ### `agentLoop()`
 
@@ -169,6 +219,14 @@ Tools are no longer hardcoded as a plain list. `src/lib/chat/tools/tool-registry
 - manifests for `/api/tools`
 - category/risk metadata for UI/control-plane usage
 
+Memory-related tools currently split responsibilities this way:
+- `save_memory` writes durable facts/preferences into `user_memories`
+- `recall_memory` exposes hybrid semantic + fuzzy retrieval over `user_memories`
+
+Rich-output support currently splits responsibilities this way:
+- `card-extraction` turns supported tool results into typed `metadata.cards`
+- chat card components in `src/components/chat/` render those payloads inline
+
 ### Planning
 
 `plan_task` creates an ephemeral `TaskPlan` in the active loop:
@@ -199,6 +257,7 @@ Each delegated run:
 
 Key UI elements:
 - streaming markdown message content
+- inline rich cards for supported structured outputs
 - `AgentTraceTimeline` for tool/reasoning execution
 - `TaskPlanCard` for plan progress
 - nested delegation trace groups for sub-agent work
@@ -246,6 +305,14 @@ Important non-persisted orchestration state:
 - current step progress
 - delegated sub-agent event grouping
 - per-run timeout/idle budget selection
+
+Memory-specific persisted data:
+- `messages` stores raw chat history plus compaction summaries (`metadata.type = "compaction"`)
+- `user_memories` stores topic-keyed durable memories with optional pgvector embeddings
+- `match_user_memories(...)` is a database function used by semantic recall
+
+Rich-output persisted data:
+- assistant `messages.metadata.cards` stores typed rich-card payloads for inline UI rendering
 
 ## Security Model
 
