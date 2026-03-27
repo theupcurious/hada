@@ -3,6 +3,7 @@ import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import { summarizeToolList } from "@/lib/chat/tools";
+import { getPersonaById } from "@/lib/chat/personas";
 import type { MessageSource, UserSettings } from "@/lib/types/database";
 
 const MEMORY_TOKEN_BUDGET = 2000;
@@ -49,6 +50,11 @@ export async function buildSystemPrompt(options: {
     settings?: UserSettings;
   } | null);
   const userSettings = (user?.settings || {}) as UserSettings;
+  const personaId = typeof userSettings.persona === "string" ? userSettings.persona : "default";
+  const persona = getPersonaById(personaId);
+  const customInstructions = typeof userSettings.custom_instructions === "string"
+    ? userSettings.custom_instructions.trim()
+    : "";
   const connectedIntegrations = (
     integrationResult.data as unknown as Array<{ provider: string }> | null
   )?.map((row) => row.provider) || [];
@@ -74,6 +80,12 @@ export async function buildSystemPrompt(options: {
     basePrompt,
     "## User Context",
     userContextLines.join("\n"),
+    ...(persona.promptModifier
+      ? ["## Persona", persona.promptModifier]
+      : []),
+    ...(customInstructions
+      ? ["## Custom Instructions", customInstructions]
+      : []),
     "## Your Memory",
     memorySection,
     "## Available Tools",
