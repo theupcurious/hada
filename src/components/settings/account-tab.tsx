@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
+import { PERSONAS } from "@/lib/chat/personas";
 import type { LLMProviderName, UserSettings } from "@/lib/types/database";
 
 interface UserProfile {
@@ -33,6 +34,8 @@ export function AccountTab() {
   const [provider, setProvider] = useState<LLMProviderName>("minimax");
   const [model, setModel] = useState("");
   const [timezone, setTimezone] = useState("");
+  const [persona, setPersona] = useState<string>("default");
+  const [customInstructions, setCustomInstructions] = useState<string>("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -80,6 +83,8 @@ export function AccountTab() {
       setProvider((loaded.settings.llm_provider as LLMProviderName) || "minimax");
       setModel(typeof loaded.settings.llm_model === "string" ? loaded.settings.llm_model : "");
       setTimezone(typeof loaded.settings.timezone === "string" ? loaded.settings.timezone : "");
+      setPersona(typeof loaded.settings.persona === "string" ? loaded.settings.persona : "default");
+      setCustomInstructions(typeof loaded.settings.custom_instructions === "string" ? loaded.settings.custom_instructions : "");
     };
 
     void loadProfile();
@@ -93,6 +98,8 @@ export function AccountTab() {
     const nextSettings: UserSettings = {
       ...(profile.settings || {}),
       timezone: timezone.trim() || null,
+      persona,
+      custom_instructions: customInstructions.trim() || null,
     };
     if (isAdmin) {
       nextSettings.llm_provider = provider;
@@ -263,6 +270,66 @@ export function AccountTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Persona Section */}
+      <div className="rounded-xl border border-zinc-200/70 bg-white/70 p-6 shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          Persona
+        </h3>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Choose how Hada communicates with you.
+        </p>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {PERSONAS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPersona(p.id)}
+              className={`rounded-lg border p-3 text-left transition-all ${
+                persona === p.id
+                  ? "border-teal-500 bg-teal-50 shadow-sm dark:border-teal-400 dark:bg-teal-950/30"
+                  : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
+              }`}
+            >
+              <p className={`text-sm font-medium ${
+                persona === p.id
+                  ? "text-teal-700 dark:text-teal-300"
+                  : "text-zinc-900 dark:text-zinc-100"
+              }`}>
+                {p.name}
+              </p>
+              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                {p.description}
+              </p>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4">
+          <label
+            htmlFor="custom-instructions"
+            className="block text-xs font-medium text-zinc-700 dark:text-zinc-300"
+          >
+            Custom instructions (optional)
+          </label>
+          <p className="mt-0.5 text-xs text-zinc-400">
+            Tell Hada anything specific about how you want it to behave.
+          </p>
+          <textarea
+            id="custom-instructions"
+            value={customInstructions}
+            onChange={(e) => setCustomInstructions(e.target.value)}
+            placeholder="e.g., Always respond in Korean when I write in Korean. Prefer metric units."
+            rows={3}
+            maxLength={1000}
+            className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-teal-400"
+          />
+          <p className="mt-1 text-right text-xs text-zinc-400">
+            {customInstructions.length}/1000
+          </p>
+        </div>
+      </div>
 
       <Card className="border-red-200/70 dark:border-red-900/40">
         <CardHeader>
