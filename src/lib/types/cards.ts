@@ -54,5 +54,4 @@ export interface LinkPreviewCardPayload {
 export type RichCard =
   | SearchResultsCardPayload
   | ScheduleViewCardPayload
-  | DataTableCardPayload
-  | LinkPreviewCardPayload;
+  | DataTableCardPayload;

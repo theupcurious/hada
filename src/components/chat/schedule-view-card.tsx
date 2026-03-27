@@ -3,14 +3,7 @@
 import { motion } from "framer-motion";
 import { Calendar, Clock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-export interface ScheduleBlock {
-  time: string;
-  title: string;
-  duration?: string;
-  type: "event" | "suggestion" | "free";
-  source?: string;
-}
+import type { ScheduleBlock } from "@/lib/types/cards";
 
 export interface ScheduleViewCardProps {
   title: string;

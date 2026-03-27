@@ -4,14 +4,7 @@ import { useState } from "react";
 import { ExternalLink, Globe, Search } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-
-export interface SearchResultItem {
-  title: string;
-  url: string;
-  snippet: string;
-  favicon?: string;
-  source?: string;
-}
+import type { SearchResultItem } from "@/lib/types/cards";
 
 export interface SearchResultsCardProps {
   query: string;
