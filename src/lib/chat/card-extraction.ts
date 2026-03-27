@@ -11,6 +11,16 @@ const MAX_SEARCH_RESULTS = 5;
 export function extractCardsFromToolResults(toolResults: ToolResultForExtraction[]): RichCard[] {
   const cards: RichCard[] = [];
 
+  // Only show search result cards when web_search was the sole tool used.
+  // When the agent uses other tools alongside web_search (calendar, memory, etc.)
+  // it is synthesising an answer — the raw search results are noise, not signal.
+  const toolNames = new Set(toolResults.map((t) => t.name));
+  const isPureSearchRun = toolNames.size === 1 && toolNames.has("web_search");
+
+  if (!isPureSearchRun) {
+    return cards;
+  }
+
   for (const tool of toolResults) {
     if (tool.name === "web_search") {
       const card = extractSearchResultsCard(tool);
