@@ -133,20 +133,20 @@ type ChatCard =
 
 function MessageContent({ content }: { content: string }) {
   return (
-    <div className="min-w-0 max-w-full overflow-hidden break-words text-sm leading-relaxed space-y-1 [&>*:last-child]:mb-0">
+    <div className="min-w-0 w-full max-w-full overflow-hidden text-sm leading-relaxed space-y-1 [overflow-wrap:anywhere] [&>*]:min-w-0 [&>*:last-child]:mb-0">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           p: ({ children }) => (
-            <p className="mb-2 last:mb-0 whitespace-pre-wrap break-words">{children}</p>
+            <p className="mb-2 last:mb-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{children}</p>
           ),
           ul: ({ children }) => (
-            <ul className="list-disc space-y-1 pl-5 mb-2 break-words">{children}</ul>
+            <ul className="mb-2 list-disc space-y-1 pl-5 break-words [overflow-wrap:anywhere]">{children}</ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal space-y-1 pl-5 mb-2 break-words">{children}</ol>
+            <ol className="mb-2 list-decimal space-y-1 pl-5 break-words [overflow-wrap:anywhere]">{children}</ol>
           ),
-          li: ({ children }) => <li className="leading-snug break-words">{children}</li>,
+          li: ({ children }) => <li className="leading-snug break-words [overflow-wrap:anywhere]">{children}</li>,
           h1: ({ children }) => (
             <p className="font-semibold mb-1">{children}</p>
           ),
@@ -191,7 +191,7 @@ function MessageContent({ content }: { content: string }) {
             </a>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 italic text-zinc-500 dark:text-zinc-400 mb-2 break-words">
+            <blockquote className="mb-2 border-l-4 border-zinc-300 pl-4 italic break-words text-zinc-500 [overflow-wrap:anywhere] dark:border-zinc-600 dark:text-zinc-400">
               {children}
             </blockquote>
           ),
@@ -1079,7 +1079,7 @@ export default function ChatPage() {
       {/* Header */}
 
       <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 sm:gap-3">
+        <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-md shadow-teal-500/20">
               <span className="text-sm font-bold text-white">H</span>
@@ -1159,7 +1159,7 @@ export default function ChatPage() {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto flex h-full max-w-3xl flex-col px-3 sm:px-4 md:px-6">
+        <div className="mx-auto flex h-full w-full max-w-4xl flex-col px-3 sm:px-4 md:px-6">
 
           {/* Messages Area */}
           <div className="flex-1 min-h-0 py-4">
@@ -1174,7 +1174,7 @@ export default function ChatPage() {
                 }
               }}
             >
-              <div className="space-y-6 pb-6">
+              <div className="space-y-6 pb-6 pr-3 sm:pr-4">
                 {isLoadingMore && (
                   <div className="flex justify-center py-2">
                     <span className="text-sm text-zinc-400">Loading earlier messages...</span>
