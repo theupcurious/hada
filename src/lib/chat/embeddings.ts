@@ -8,21 +8,13 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
     return null;
   }
 
-  // Use EMBEDDING_API_KEY, fall back to LLM_API_KEY, then OPENAI_API_KEY
-  const apiKey =
-    process.env.EMBEDDING_API_KEY ||
-    process.env.LLM_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    "";
-
+  const apiKey = process.env.EMBEDDING_API_KEY || process.env.LLM_API_KEY || "";
   if (!apiKey) {
     return null;
   }
 
   const baseUrl = (
-    process.env.EMBEDDING_BASE_URL ||
-    process.env.OPENAI_BASE_URL ||
-    DEFAULT_EMBEDDING_BASE_URL
+    process.env.EMBEDDING_BASE_URL || DEFAULT_EMBEDDING_BASE_URL
   ).replace(/\/+$/, "");
 
   const model = process.env.EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
