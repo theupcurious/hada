@@ -51,7 +51,58 @@ export interface LinkPreviewCardPayload {
   };
 }
 
+export interface ComparisonCardItem {
+  name: string;
+  subtitle?: string;
+  scores?: Record<string, number>;
+  pros?: string[];
+  cons?: string[];
+}
+
+export interface ComparisonCardPayload {
+  type: "comparison";
+  data: {
+    title: string;
+    items: ComparisonCardItem[];
+    verdict?: string;
+  };
+}
+
+export interface StepsCardStep {
+  title: string;
+  detail?: string;
+  time?: string;
+}
+
+export interface StepsCardPayload {
+  type: "steps";
+  data: {
+    title: string;
+    steps: StepsCardStep[];
+  };
+}
+
+export interface ChecklistCardGroup {
+  name: string;
+  items: string[];
+}
+
+export interface ChecklistCardPayload {
+  type: "checklist";
+  data: {
+    title: string;
+    groups: ChecklistCardGroup[];
+  };
+}
+
+export type SmartCard =
+  | ComparisonCardPayload
+  | StepsCardPayload
+  | ChecklistCardPayload;
+
 export type RichCard =
   | SearchResultsCardPayload
   | ScheduleViewCardPayload
-  | DataTableCardPayload;
+  | DataTableCardPayload
+  | LinkPreviewCardPayload
+  | SmartCard;

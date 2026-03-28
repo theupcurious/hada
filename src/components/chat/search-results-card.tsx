@@ -65,6 +65,8 @@ function SearchResultRow({ result }: { result: SearchResultItem }) {
     >
       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
         {showFavicon ? (
+          // Arbitrary remote favicons make next/image impractical here.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={faviconUrl}
             alt=""

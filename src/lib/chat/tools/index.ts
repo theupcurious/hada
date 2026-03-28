@@ -9,6 +9,7 @@ import {
 import { createDelegateTaskTool, delegateTaskManifest } from "@/lib/chat/tools/delegate-task";
 import { createPlanTaskTool, planTaskManifest } from "@/lib/chat/tools/plan-task";
 import { createRecallMemoryTool, recallMemoryManifest } from "@/lib/chat/tools/recall-memory";
+import { createRenderCardTool, renderCardManifest } from "@/lib/chat/tools/render-card";
 import { createSaveMemoryTool, saveMemoryManifest } from "@/lib/chat/tools/save-memory";
 import { createScheduleTaskTool, scheduleTaskManifest } from "@/lib/chat/tools/schedule-task";
 import type { ToolContext } from "@/lib/chat/tools/types";
@@ -28,6 +29,7 @@ registry.register({ manifest: webSearchManifest, create: createWebSearchTool });
 registry.register({ manifest: webFetchManifest, create: createWebFetchTool });
 registry.register({ manifest: planTaskManifest, create: createPlanTaskTool });
 registry.register({ manifest: delegateTaskManifest, create: createDelegateTaskTool });
+registry.register({ manifest: renderCardManifest, create: createRenderCardTool });
 
 // Register Google Calendar tools
 registry.register({

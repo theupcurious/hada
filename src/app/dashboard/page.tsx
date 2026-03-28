@@ -242,10 +242,9 @@ export default function DashboardPage() {
   const activityRuns = useMemo(() => activity.data.runs || [], [activity.data.runs]);
   const totalRuns = activity.data.total ?? activityRuns.length;
   const dashboardSummary = useMemo(() => buildSummary(activityRuns, analytics.data), [activityRuns, analytics.data]);
-  const dailyActivity = useMemo(
-    () => (analytics.data?.dailyActivity?.length ? analytics.data.dailyActivity : dashboardSummary.dailyActivity),
-    [analytics.data?.dailyActivity, dashboardSummary.dailyActivity],
-  );
+  const dailyActivity = analytics.data?.dailyActivity?.length
+    ? analytics.data.dailyActivity
+    : dashboardSummary.dailyActivity;
   const maxDailyActivityRuns = useMemo(
     () => Math.max(1, ...dailyActivity.map((day) => day.runs ?? 0)),
     [dailyActivity],

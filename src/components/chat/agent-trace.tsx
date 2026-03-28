@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown,
@@ -249,14 +249,6 @@ function TraceTimeline({
   isStreaming?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(isStreaming !== true);
-  const prevStreamingRef = useRef(isStreaming);
-
-  useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming) {
-      setCollapsed(true);
-    }
-    prevStreamingRef.current = isStreaming;
-  }, [isStreaming]);
 
   // Build summary label
   const thinkingCount = thinking.length;

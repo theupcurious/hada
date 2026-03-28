@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { CalendarEventCard, type CalendarEventCardProps } from "@/components/chat/calendar-event-card";
 import { DataTableCard } from "@/components/chat/data-table-card";
+import { SmartCard } from "@/components/chat/smart-cards";
 import { AgentTraceTimeline, type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
 import { ScheduleViewCard } from "@/components/chat/schedule-view-card";
 import { TaskPlanCard } from "@/components/chat/task-plan-card";
@@ -763,11 +764,13 @@ export default function ChatPage() {
   }, [messages, ensureBackgroundJobPolling, stopBackgroundJobPolling]);
 
   useEffect(() => {
+    const pollers = backgroundJobPollersRef.current;
+
     return () => {
-      for (const poller of backgroundJobPollersRef.current.values()) {
+      for (const poller of pollers.values()) {
         window.clearInterval(poller);
       }
-      backgroundJobPollersRef.current.clear();
+      pollers.clear();
     };
   }, []);
 
@@ -1348,6 +1351,7 @@ export default function ChatPage() {
                           {/* Agent trace timeline */}
                           {message.role === "assistant" && (message.traceEvents?.length || message.thinkingEvents?.length) ? (
                             <AgentTraceTimeline
+                              key={`${message.id}-${message.isStreaming ? "streaming" : "idle"}`}
                               traces={message.traceEvents || []}
                               thinking={message.thinkingEvents || []}
                               isStreaming={message.isStreaming}
@@ -1423,6 +1427,19 @@ export default function ChatPage() {
                                   />
                                 );
                               }
+                            }
+                            if (
+                              card.type === "comparison" ||
+                              card.type === "steps" ||
+                              card.type === "checklist"
+                            ) {
+                              return (
+                                <SmartCard
+                                  key={`${message.id}-card-${idx}`}
+                                  type={card.type}
+                                  data={card.data}
+                                />
+                              );
                             }
                             return null;
                           })}
