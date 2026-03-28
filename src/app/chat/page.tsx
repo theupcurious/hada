@@ -10,6 +10,8 @@ import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { CalendarEventCard, type CalendarEventCardProps } from "@/components/chat/calendar-event-card";
 import { DataTableCard } from "@/components/chat/data-table-card";
 import { SmartCard } from "@/components/chat/smart-cards";
+import { MermaidDiagram } from "@/components/chat/mermaid-diagram";
+import { InlineChart } from "@/components/chat/inline-chart";
 import { AgentTraceTimeline, type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
 import { ScheduleViewCard } from "@/components/chat/schedule-view-card";
 import { TaskPlanCard } from "@/components/chat/task-plan-card";
@@ -149,28 +151,43 @@ function MessageContent({ content }: { content: string }) {
           ),
           li: ({ children }) => <li className="leading-snug break-words [overflow-wrap:anywhere]">{children}</li>,
           h1: ({ children }) => (
-            <p className="font-semibold mb-1">{children}</p>
+            <p className="mt-3 mb-2 text-base font-bold text-zinc-900 first:mt-0 dark:text-zinc-100">{children}</p>
           ),
           h2: ({ children }) => (
-            <p className="font-semibold mb-1">{children}</p>
+            <p className="mt-3 mb-1.5 text-sm font-bold text-zinc-900 first:mt-0 dark:text-zinc-100">{children}</p>
           ),
           h3: ({ children }) => (
-            <p className="font-semibold mb-1">{children}</p>
+            <p className="mt-2 mb-1 font-semibold text-zinc-900 first:mt-0 dark:text-zinc-100">{children}</p>
           ),
           h4: ({ children }) => (
-            <p className="font-semibold mb-1">{children}</p>
+            <p className="mt-2 mb-1 font-semibold text-zinc-700 first:mt-0 dark:text-zinc-300">{children}</p>
           ),
           h5: ({ children }) => (
-            <p className="font-semibold mb-1">{children}</p>
+            <p className="font-medium mb-1 text-zinc-600 dark:text-zinc-400">{children}</p>
           ),
           h6: ({ children }) => (
-            <p className="font-semibold mb-1">{children}</p>
+            <p className="font-medium mb-1 text-zinc-500 dark:text-zinc-500">{children}</p>
           ),
-          pre: ({ children }) => (
-            <pre className="mb-2 max-w-full overflow-x-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs whitespace-pre dark:bg-zinc-800">
-              {children}
-            </pre>
-          ),
+          pre: ({ children }) => {
+            // Check if this pre contains a mermaid or chart code block
+            const child = Array.isArray(children) ? children[0] : children;
+            if (child && typeof child === "object" && "props" in child) {
+              const codeProps = child.props as { className?: string; children?: React.ReactNode };
+              const lang = codeProps.className?.replace("language-", "");
+              const text = String(codeProps.children ?? "").replace(/\n$/, "");
+              if (lang === "mermaid") {
+                return <MermaidDiagram chart={text} />;
+              }
+              if (lang === "chart") {
+                return <InlineChart code={text} />;
+              }
+            }
+            return (
+              <pre className="mb-2 max-w-full overflow-x-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs whitespace-pre dark:bg-zinc-800">
+                {children}
+              </pre>
+            );
+          },
           code: ({ className, children }) => {
             const isBlock = !!className;
             return isBlock ? (
@@ -197,17 +214,17 @@ function MessageContent({ content }: { content: string }) {
             </blockquote>
           ),
           table: ({ children }) => (
-            <div className="mb-2 max-w-full overflow-x-auto">
-              <table className="w-full min-w-[28rem] border-collapse text-xs">{children}</table>
+            <div className="my-2 max-w-full overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+              <table className="w-full min-w-[20rem] border-collapse text-xs">{children}</table>
             </div>
           ),
           th: ({ children }) => (
-            <th className="border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-left font-semibold dark:border-zinc-600 dark:bg-zinc-800">
+            <th className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border border-zinc-300 px-3 py-1.5 break-words align-top dark:border-zinc-600">
+            <td className="border-b border-zinc-100 px-3 py-2 break-words align-top text-zinc-700 dark:border-zinc-800/60 dark:text-zinc-300">
               {children}
             </td>
           ),
