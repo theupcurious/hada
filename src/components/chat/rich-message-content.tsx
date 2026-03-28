@@ -1,38 +1,7 @@
 "use client";
 
-import { MermaidDiagram } from "@/components/chat/mermaid-diagram";
-import { InlineChart } from "@/components/chat/inline-chart";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-interface Visual {
-  type: "mermaid" | "chart";
-  code: string;
-}
-
-export function extractVisuals(content: string): { visuals: Visual[]; textContent: string } {
-  const visuals: Visual[] = [];
-  const pattern = /```(mermaid|chart)\n([\s\S]*?)```/g;
-  const textContent = content.replace(pattern, (_, lang: string, code: string) => {
-    visuals.push({ type: lang as "mermaid" | "chart", code: code.trim() });
-    return "";
-  });
-  return { visuals, textContent: textContent.trim() };
-}
-
-export function extractArtifactTitle(textContent: string): { title: string; subtitle?: string } {
-  const lines = textContent.split("\n");
-  // Look for first heading
-  for (const line of lines) {
-    const match = line.match(/^#{1,2}\s+(.+)/);
-    if (match) {
-      return { title: match[1].replace(/\*\*/g, "").trim() };
-    }
-  }
-  // Fallback: first non-empty line
-  const firstLine = lines.find((l) => l.trim().length > 0);
-  return { title: firstLine?.replace(/[#*]/g, "").trim() || "Response" };
-}
 
 interface RichMessageContentProps {
   content: string;
@@ -40,10 +9,6 @@ interface RichMessageContentProps {
 }
 
 export function RichMessageContent({ content }: RichMessageContentProps) {
-  return <PlainMarkdown content={content} />;
-}
-
-function PlainMarkdown({ content }: { content: string }) {
   return (
     <div className="min-w-0 w-full max-w-full overflow-hidden text-sm leading-relaxed space-y-1 [overflow-wrap:anywhere] [&>*]:min-w-0 [&>*:last-child]:mb-0">
       <ReactMarkdown
@@ -56,7 +21,7 @@ function PlainMarkdown({ content }: { content: string }) {
             <ul className="mb-2 list-disc space-y-1 pl-5 break-words [overflow-wrap:anywhere]">{children}</ul>
           ),
           ol: ({ children }) => (
-            <ol className="chat-steps mb-3 break-words [overflow-wrap:anywhere]">{children}</ol>
+            <ol className="mb-2 list-decimal space-y-1 pl-5 break-words [overflow-wrap:anywhere]">{children}</ol>
           ),
           li: ({ children }) => <li className="leading-snug break-words [overflow-wrap:anywhere]">{children}</li>,
           h1: ({ children }) => (
@@ -77,25 +42,11 @@ function PlainMarkdown({ content }: { content: string }) {
           h6: ({ children }) => (
             <p className="font-medium mb-1 text-zinc-500 dark:text-zinc-500">{children}</p>
           ),
-          pre: ({ children }) => {
-            const child = Array.isArray(children) ? children[0] : children;
-            if (child && typeof child === "object" && "props" in child) {
-              const codeProps = child.props as { className?: string; children?: React.ReactNode };
-              const lang = codeProps.className?.replace("language-", "");
-              const text = String(codeProps.children ?? "").replace(/\n$/, "");
-              if (lang === "mermaid") {
-                return <MermaidDiagram chart={text} />;
-              }
-              if (lang === "chart") {
-                return <InlineChart code={text} />;
-              }
-            }
-            return (
-              <pre className="mb-2 max-w-full overflow-x-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs whitespace-pre dark:bg-zinc-800">
-                {children}
-              </pre>
-            );
-          },
+          pre: ({ children }) => (
+            <pre className="mb-2 max-w-full overflow-x-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs whitespace-pre dark:bg-zinc-800">
+              {children}
+            </pre>
+          ),
           code: ({ className, children }) => {
             const isBlock = !!className;
             return isBlock ? (
