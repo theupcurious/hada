@@ -32,6 +32,34 @@ export function extractCardsFromToolResults(toolResults: ToolResultForExtraction
   return cards;
 }
 
+export function inferSmartCardFromText(options: {
+  userMessage: string;
+  assistantResponse: string;
+}): RichCard | null {
+  const userMessage = options.userMessage.trim();
+  const assistantResponse = options.assistantResponse.trim();
+
+  if (!userMessage || !assistantResponse) {
+    return null;
+  }
+
+  if (looksLikeChecklistPrompt(userMessage)) {
+    const checklistCard = inferChecklistCardFromText(userMessage, assistantResponse);
+    if (checklistCard) {
+      return checklistCard;
+    }
+  }
+
+  if (looksLikeStepsPrompt(userMessage)) {
+    const stepsCard = inferStepsCardFromText(userMessage, assistantResponse);
+    if (stepsCard) {
+      return stepsCard;
+    }
+  }
+
+  return null;
+}
+
 function safeJsonParse(value: string): unknown | null {
   try {
     return JSON.parse(value);
@@ -411,4 +439,191 @@ function toFiniteNumber(value: unknown): number | null {
   }
 
   return value;
+}
+
+function looksLikeStepsPrompt(value: string): boolean {
+  return /\b(step[- ]by[- ]step|steps?\s+to|how do i|how to|plan|launch plan|guide me through|roadmap)\b/i.test(value);
+}
+
+function looksLikeChecklistPrompt(value: string): boolean {
+  return /\b(checklist|packing list|to-?do|what do i need|shopping list|task list)\b/i.test(value);
+}
+
+function inferStepsCardFromText(userMessage: string, assistantResponse: string): RichCard | null {
+  const lines = assistantResponse.split(/\r?\n/);
+  const steps: StepsCardStep[] = [];
+  let current:
+    | {
+        title: string;
+        detailLines: string[];
+        section?: string;
+      }
+    | null = null;
+  let currentSection = "";
+
+  const pushCurrent = () => {
+    if (!current) {
+      return;
+    }
+
+    const detail = [current.section, ...current.detailLines]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    steps.push({
+      title: current.title,
+      ...(detail ? { detail } : {}),
+    });
+    current = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || /^[-|:]{3,}$/.test(line)) {
+      continue;
+    }
+
+    const markdownHeading = line.match(/^#{1,6}\s+(.+)$/);
+    if (markdownHeading) {
+      currentSection = cleanInlineText(markdownHeading[1]);
+      continue;
+    }
+
+    if (/^phase\s+\d+/i.test(line)) {
+      currentSection = cleanInlineText(line);
+      continue;
+    }
+
+    const stepMatch = line.match(/^\d+\.\s+(.+)$/);
+    if (stepMatch) {
+      pushCurrent();
+      current = {
+        title: cleanInlineText(stepMatch[1]),
+        detailLines: [],
+        section: currentSection || undefined,
+      };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const bulletMatch = line.match(/^[-*•]\s+(.+)$/);
+    if (bulletMatch) {
+      current.detailLines.push(cleanInlineText(bulletMatch[1]));
+      continue;
+    }
+
+    if (!/^\|/.test(line)) {
+      current.detailLines.push(cleanInlineText(line));
+    }
+  }
+
+  pushCurrent();
+
+  if (steps.length < 2) {
+    return null;
+  }
+
+  return {
+    type: "steps",
+    data: {
+      title: inferCardTitle(userMessage, assistantResponse, "Plan"),
+      steps: steps.slice(0, 12),
+    },
+  };
+}
+
+function inferChecklistCardFromText(userMessage: string, assistantResponse: string): RichCard | null {
+  const lines = assistantResponse.split(/\r?\n/);
+  const groups: ChecklistCardGroup[] = [];
+  let currentGroup = "Checklist";
+
+  const ensureGroup = (name: string) => {
+    const existing = groups.find((group) => group.name === name);
+    if (existing) {
+      return existing;
+    }
+
+    const group: ChecklistCardGroup = { name, items: [] };
+    groups.push(group);
+    return group;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || /^[-|:]{3,}$/.test(line)) {
+      continue;
+    }
+
+    const markdownHeading = line.match(/^#{1,6}\s+(.+)$/);
+    if (markdownHeading) {
+      currentGroup = cleanInlineText(markdownHeading[1]);
+      continue;
+    }
+
+    if (!line.startsWith("-") && !line.startsWith("*") && !line.startsWith("•") && /:\s*$/.test(line)) {
+      currentGroup = cleanInlineText(line.replace(/:\s*$/, ""));
+      continue;
+    }
+
+    const bulletMatch = line.match(/^[-*•]\s+(.+)$/);
+    if (!bulletMatch) {
+      continue;
+    }
+
+    const item = cleanInlineText(bulletMatch[1]);
+    if (!item) {
+      continue;
+    }
+
+    ensureGroup(currentGroup).items.push(item);
+  }
+
+  const normalizedGroups = groups.filter((group) => group.items.length > 0);
+  const itemCount = normalizedGroups.reduce((count, group) => count + group.items.length, 0);
+
+  if (itemCount < 3) {
+    return null;
+  }
+
+  return {
+    type: "checklist",
+    data: {
+      title: inferCardTitle(userMessage, assistantResponse, "Checklist"),
+      groups: normalizedGroups,
+    },
+  };
+}
+
+function inferCardTitle(userMessage: string, assistantResponse: string, fallbackSuffix: string): string {
+  const firstHeading = assistantResponse
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^#{1,6}\s+/.test(line));
+
+  if (firstHeading) {
+    return cleanInlineText(firstHeading.replace(/^#{1,6}\s+/, ""));
+  }
+
+  const promptText = cleanInlineText(userMessage.replace(/[?.!]+$/, ""));
+  if (promptText) {
+    return promptText.length <= 80 ? promptText : `${promptText.slice(0, 77).trimEnd()}...`;
+  }
+
+  return fallbackSuffix;
+}
+
+function cleanInlineText(value: string): string {
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }

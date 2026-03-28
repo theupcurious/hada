@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentLoop } from "@/lib/chat/agent-loop";
-import { extractCardsFromToolResults } from "@/lib/chat/card-extraction";
+import { extractCardsFromToolResults, inferSmartCardFromText } from "@/lib/chat/card-extraction";
 import { buildSystemPrompt } from "@/lib/chat/build-system-prompt";
 import { assembleConversationContext, maybeCompactConversation } from "@/lib/chat/context-manager";
 import { extractMemoriesFromTurn } from "@/lib/chat/memory-extraction";
@@ -155,10 +155,18 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     }
     responseText = assembled.trim() || fatalError || "I ran into an issue while processing that.";
     const extractedCards = extractCardsFromToolResults(toolResultsForCards);
+    const fallbackCard =
+      extractedCards.length === 0 && options.source === "web"
+        ? inferSmartCardFromText({
+            userMessage: options.message,
+            assistantResponse: responseText,
+          })
+        : null;
+    const cards = fallbackCard ? [fallbackCard] : extractedCards;
     const assistantMetadata: MessageMetadata = {
       source: options.source,
       runId,
-      ...(extractedCards.length ? { cards: extractedCards } : {}),
+      ...(cards.length ? { cards } : {}),
       ...(options.backgroundJobId
         ? {
             backgroundJob: {

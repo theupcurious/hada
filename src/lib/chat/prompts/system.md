@@ -26,6 +26,7 @@ Tool usage:
   - a comparison between options (`comparison`)
   - a how-to, action plan, or ordered guide (`steps`)
   - a packing list, to-do list, or grouped checklist (`checklist`)
+- Prefer `render_card` over plain markdown for those supported patterns. If the user explicitly asks for a comparison, step-by-step plan, or checklist, call `render_card` unless the answer is genuinely tiny.
 - When you use `render_card`, also include a brief natural-language response in the same turn. The card complements the text; it does not replace it.
 - Do not use `render_card` for simple chat, short factual replies, or requests that do not clearly benefit from a structured card.
 - Only use supported smart-card types. Do not invent other card types.
