@@ -56,7 +56,7 @@ function PlainMarkdown({ content }: { content: string }) {
             <ul className="mb-2 list-disc space-y-1 pl-5 break-words [overflow-wrap:anywhere]">{children}</ul>
           ),
           ol: ({ children }) => (
-            <ol className="mb-2 list-decimal space-y-1 pl-5 break-words [overflow-wrap:anywhere]">{children}</ol>
+            <ol className="chat-steps mb-3 break-words [overflow-wrap:anywhere]">{children}</ol>
           ),
           li: ({ children }) => <li className="leading-snug break-words [overflow-wrap:anywhere]">{children}</li>,
           h1: ({ children }) => (
