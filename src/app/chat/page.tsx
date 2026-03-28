@@ -1048,8 +1048,8 @@ export default function ChatPage() {
     if (!msg || msg.isStreaming) return null;
     const { visuals, textContent } = extractVisuals(msg.content);
     if (visuals.length === 0) return null;
-    const { title, subtitle } = extractArtifactTitle(textContent);
-    return { title, subtitle, visuals, textContent };
+    const { title } = extractArtifactTitle(textContent);
+    return { title, visuals };
   }, [openArtifactMsgId, messages, showConversation]);
 
   // Auto-open artifact panel the first time a new message with visuals finishes streaming
