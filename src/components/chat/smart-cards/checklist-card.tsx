@@ -83,7 +83,7 @@ export function ChecklistCard({ title, groups, onAction }: ChecklistCardProps) {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: groupIndex * 0.05 }}
-              className="rounded-xl border border-zinc-200/60 bg-white p-4 dark:border-zinc-800/60 dark:bg-zinc-850/50"
+              className="rounded-xl border border-zinc-200/60 bg-white p-4 dark:border-zinc-800/60 dark:bg-zinc-900/60"
             >
               <div className="flex items-center gap-2">
                 <span className={cn("h-2 w-2 rounded-full", accent.dot)} />

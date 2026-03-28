@@ -94,7 +94,7 @@ export function StepsCard({ title, steps, onAction }: StepsCardProps) {
                 "relative rounded-xl border px-4 py-3 transition-colors",
                 isDone
                   ? "border-teal-400/40 bg-teal-50/80 dark:border-teal-700/40 dark:bg-teal-950/25"
-                  : "border-zinc-200/60 bg-white dark:border-zinc-800/60 dark:bg-zinc-850/50",
+                  : "border-zinc-200/60 bg-white dark:border-zinc-800/60 dark:bg-zinc-900/60",
               )}
             >
               <div className="flex items-start gap-3">

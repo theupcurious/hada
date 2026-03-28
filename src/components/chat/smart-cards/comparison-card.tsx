@@ -82,7 +82,7 @@ export function ComparisonCard({ title, items, verdict, onAction }: ComparisonCa
                 "rounded-xl border px-4 py-4 transition-colors",
                 isLeader
                   ? "border-amber-400/50 bg-amber-50/60 dark:border-amber-600/30 dark:bg-amber-950/15"
-                  : "border-zinc-200/60 bg-white dark:border-zinc-800/60 dark:bg-zinc-850/50",
+                  : "border-zinc-200/60 bg-white dark:border-zinc-800/60 dark:bg-zinc-900/60",
               )}
             >
               <div className="flex items-start justify-between gap-3">
