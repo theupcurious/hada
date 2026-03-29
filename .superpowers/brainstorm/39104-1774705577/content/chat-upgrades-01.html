@@ -1,0 +1,139 @@
+<h2>Chat UX Upgrade Concepts</h2>
+<p class="subtitle">Four product-level improvements shown in the current Hada chat context. Click any card to mark what feels most worth shipping first.</p>
+
+<div class="cards" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+  <div class="card" data-choice="follow-up-chips" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">1. Follow-up suggestion chips</div>
+        <div class="mockup-body" style="background:#f5f5f4;padding:16px;">
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:999px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">H</div>
+            <div style="flex:1;background:white;border-radius:16px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.08);">
+              <div style="font-size:13px;line-height:1.45;color:#27272a;">
+                Here's a structured market brief with the latest positioning, risks, and notable launches.
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
+                <div style="padding:7px 10px;border-radius:999px;background:#e7f0ff;color:#1d4ed8;font-size:12px;">Compare against rivals</div>
+                <div style="padding:7px 10px;border-radius:999px;background:#ecfccb;color:#3f6212;font-size:12px;">Turn this into slides</div>
+                <div style="padding:7px 10px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:12px;">Summarize in 5 bullets</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Contextual next-step chips</h3>
+      <p>Highest leverage for conversational momentum. Low UI complexity, high perceived intelligence.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="message-actions" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">2. Hover message actions</div>
+        <div class="mockup-body" style="background:#f5f5f4;padding:16px;">
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:999px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">H</div>
+            <div style="position:relative;flex:1;background:white;border-radius:16px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.08);">
+              <div style="position:absolute;top:-12px;right:12px;display:flex;gap:6px;padding:6px;border-radius:999px;background:rgba(255,255,255,.92);border:1px solid #e4e4e7;box-shadow:0 8px 24px rgba(0,0,0,.08);">
+                <div style="padding:5px 8px;border-radius:999px;background:#fafafa;font-size:11px;color:#52525b;">Copy</div>
+                <div style="padding:5px 8px;border-radius:999px;background:#fafafa;font-size:11px;color:#52525b;">Retry</div>
+                <div style="padding:5px 8px;border-radius:999px;background:#fafafa;font-size:11px;color:#52525b;">👍</div>
+                <div style="padding:5px 8px;border-radius:999px;background:#fafafa;font-size:11px;color:#52525b;">👎</div>
+              </div>
+              <div style="font-size:13px;line-height:1.45;color:#27272a;padding-top:8px;">
+                I drafted the email, updated the timeline, and pulled the latest notes into one summary.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Polished response controls</h3>
+      <p>Pure product polish. Makes the app feel mature without changing core agent behavior.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="status-pills" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">3. Live tool status pills</div>
+        <div class="mockup-body" style="background:#f5f5f4;padding:16px;">
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:999px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">H</div>
+            <div style="flex:1;">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <div style="padding:7px 10px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-size:12px;">Searching web…</div>
+                <div style="padding:7px 10px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:12px;">Reading 3 sources…</div>
+                <div style="padding:7px 10px;border-radius:999px;background:#dcfce7;color:#166534;font-size:12px;">Drafting report…</div>
+              </div>
+              <div style="background:white;border-radius:16px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.08);font-size:13px;line-height:1.45;color:#27272a;">
+                I found three strong sources that agree on the recent executive changes and product rollout.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Minimal agent progress</h3>
+      <p>Best replacement for raw traces in the default UI. Strong trust signal if phrasing and transitions are right.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="streaming-fade" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">4. Word-by-word streaming</div>
+        <div class="mockup-body" style="background:#f5f5f4;padding:16px;">
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:999px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">H</div>
+            <div style="flex:1;background:white;border-radius:16px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.08);">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;line-height:1.7;font-size:13px;color:#27272a;">
+                <span style="opacity:.28;">Here’s</span>
+                <span style="opacity:.42;">the</span>
+                <span style="opacity:.58;">cleanest</span>
+                <span style="opacity:.72;">path</span>
+                <span style="opacity:.86;">to</span>
+                <span style="opacity:1;">ship this.</span>
+              </div>
+              <div style="margin-top:10px;width:8px;height:18px;background:#71717a;border-radius:99px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Intentional streaming feel</h3>
+      <p>Pure interaction quality. Subtle if done well, distracting if over-animated or too granular.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <div class="mockup">
+    <div class="mockup-header">Recommended rollout</div>
+    <div class="mockup-body">
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Start with</h4>
+          <ul>
+            <li>Follow-up chips</li>
+            <li>Status pills</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Layer in later</h4>
+          <ul>
+            <li>Hover actions</li>
+            <li>Streaming fade</li>
+          </ul>
+        </div>
+      </div>
+      <p class="subtitle" style="margin-top:12px;">The first two change usefulness and perceived agent quality. The latter two are polish multipliers once the workflow feels solid.</p>
+    </div>
+  </div>
+</div>

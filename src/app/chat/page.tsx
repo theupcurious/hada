@@ -1132,16 +1132,16 @@ export default function ChatPage() {
             <span className="hidden text-sm text-muted-foreground xl:block">{user?.email}</span>
             <ThemeToggle />
 
-            <Link href="/dashboard" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label="Open dashboard">
+            <Link href="/docs" className="sm:hidden">
+              <Button variant="ghost" size="icon" aria-label="Open docs">
                 <LayoutDashboard className="h-4 w-4" />
               </Button>
             </Link>
 
-            <Link href="/dashboard" className="hidden sm:block">
+            <Link href="/docs" className="hidden sm:block">
               <Button variant="ghost" size="sm" className="px-2.5">
                 <LayoutDashboard className="mr-2 h-4 w-4" />
-                Dashboard
+                Docs
               </Button>
             </Link>
 

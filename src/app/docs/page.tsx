@@ -156,7 +156,7 @@ export default function DashboardPage() {
   const sidebar = (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">Documents</span>
+        <span className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">Docs</span>
         <div className="flex items-center gap-0.5">
           <button onClick={() => void createDoc(null)} className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="New document">
             <Plus className="h-3.5 w-3.5" />
@@ -236,7 +236,7 @@ export default function DashboardPage() {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg gradient-brand shadow-sm shadow-teal-500/20">
               <span className="text-xs font-bold text-white">H</span>
             </div>
-            <span className="font-semibold">Documents</span>
+            <span className="font-semibold">Docs</span>
           </div>
           <div className="flex items-center gap-1">
             <ThemeToggle />
