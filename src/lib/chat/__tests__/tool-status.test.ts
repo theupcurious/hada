@@ -17,7 +17,6 @@ describe("buildToolStatusPills", () => {
     });
 
     expect(pills.map((pill) => pill.label)).toEqual([
-      "Searching web",
       "Reading 3 sources",
       "Working in background",
     ]);
@@ -35,5 +34,20 @@ describe("buildToolStatusPills", () => {
     });
 
     expect(pills.at(-1)?.label).toBe("Drafting response");
+  });
+
+  it("shows analysis status after tool calls are done but text has not started", () => {
+    const pills = buildToolStatusPills({
+      isStreaming: true,
+      traces: [
+        { callId: "1", name: "web_search", args: {}, status: "done", durationMs: 120, result: "{}", truncated: false },
+        { callId: "2", name: "web_fetch", args: {}, status: "done", durationMs: 240, result: "{}", truncated: false },
+      ],
+      thinkingCount: 0,
+      hasVisibleContent: false,
+      backgroundJobPending: false,
+    });
+
+    expect(pills.map((pill) => pill.label)).toEqual(["Analyzing findings"]);
   });
 });

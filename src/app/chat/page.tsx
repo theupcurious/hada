@@ -1224,13 +1224,13 @@ export default function ChatPage() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-hidden flex">
-        <div className={`flex h-full flex-col transition-all duration-300 ${artifactContent ? "w-full md:max-w-none md:px-3 sm:px-3" : "w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
+      <div className="flex min-w-0 flex-1 overflow-hidden">
+        <div className={`min-w-0 flex h-full w-full flex-col transition-all duration-300 ${artifactContent ? "md:max-w-none md:px-3 sm:px-3" : "max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
 
           {/* Messages Area */}
           <div className="flex-1 min-h-0 py-4">
             <ScrollArea
-              className="h-full overflow-x-hidden"
+              className="h-full min-w-0 max-w-full overflow-x-hidden"
               ref={scrollAreaRef}
               onScrollCapture={(e) => {
                 const target = e.target as HTMLElement;
@@ -1240,7 +1240,7 @@ export default function ChatPage() {
                 }
               }}
             >
-              <div className="space-y-6 pb-6 pr-3 sm:pr-4">
+              <div className="min-w-0 w-full max-w-full space-y-6 pb-6 sm:pr-4">
                 {isLoadingMore && (
                   <div className="flex justify-center py-2">
                     <span className="text-sm text-zinc-400">Loading earlier messages...</span>
@@ -1313,7 +1313,7 @@ export default function ChatPage() {
                       </motion.div>
                     )}
 
-                    <div className="mt-5 grid w-full max-w-2xl grid-cols-2 gap-2.5 sm:mt-8 sm:gap-3">
+                    <div className="mt-5 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:mt-8 sm:grid-cols-2 sm:gap-3">
                       {starterPrompts.map((shortcut) => (
                         <button
                           key={shortcut.title}
@@ -1347,8 +1347,8 @@ export default function ChatPage() {
                         </div>
                         <div className="space-y-2">
                           {recentRuns.map((run) => (
-                            <div key={run.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
-                              <p className="truncate text-xs text-zinc-700 dark:text-zinc-300">
+                            <div key={run.id} className="flex min-w-0 items-center gap-3 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
+                              <p className="min-w-0 flex-1 truncate text-xs text-zinc-700 dark:text-zinc-300">
                                 {run.input_preview ?? "Task ran"}
                               </p>
                               <div className="flex shrink-0 items-center gap-1.5">
@@ -1363,8 +1363,10 @@ export default function ChatPage() {
                       </div>
                     ) : messages.length > 0 ? (
                       <div className="mt-5 w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Continue where you left off</p>
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <p className="min-w-0 flex-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                            Continue where you left off
+                          </p>
                           <Button size="sm" variant="outline" onClick={() => setShowConversation(true)}>
                             Open chat
                           </Button>
@@ -1385,6 +1387,7 @@ export default function ChatPage() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="min-w-0"
                       >
                         <ChatMessageRow
                           message={message}

@@ -19,30 +19,40 @@ export function buildToolStatusPills(input: ToolStatusInput): ToolStatusPill[] {
     return [];
   }
 
-  const hasSearch = input.traces.some((trace) => trace.name === "web_search");
-  const fetchCount = input.traces.filter((trace) => trace.name === "web_fetch").length;
-  const hasDelegate = input.traces.some((trace) => trace.name === "delegate_task");
+  const searchTraces = input.traces.filter((trace) => trace.name === "web_search");
+  const fetchTraces = input.traces.filter((trace) => trace.name === "web_fetch");
+  const delegateTraces = input.traces.filter((trace) => trace.name === "delegate_task");
+  const runningSearch = searchTraces.some((trace) => trace.status === "running");
+  const runningFetch = fetchTraces.some((trace) => trace.status === "running");
+  const runningDelegate = delegateTraces.some((trace) => trace.status === "running");
+  const hasRunningTool = runningSearch || runningFetch || runningDelegate;
+  const hasToolHistory = searchTraces.length > 0 || fetchTraces.length > 0 || delegateTraces.length > 0;
+  const fetchCount = fetchTraces.length;
 
   const pills: ToolStatusPill[] = [];
 
-  if (hasSearch) {
+  if (runningSearch) {
     pills.push({ id: "search", label: "Searching web", tone: "working" });
   }
 
-  if (fetchCount > 0) {
+  if (runningFetch && fetchCount > 0) {
     pills.push({
       id: "fetch",
       label: `Reading ${fetchCount} source${fetchCount === 1 ? "" : "s"}`,
-      tone: "neutral",
+      tone: "working",
     });
   }
 
-  if (hasDelegate) {
-    pills.push({ id: "delegate", label: "Research agent working", tone: "neutral" });
+  if (runningDelegate) {
+    pills.push({ id: "delegate", label: "Research agent working", tone: "working" });
   }
 
   if (input.backgroundJobPending) {
     pills.push({ id: "background", label: "Working in background", tone: "neutral" });
+  }
+
+  if (!hasRunningTool && hasToolHistory && !input.hasVisibleContent && input.thinkingCount === 0) {
+    pills.push({ id: "analyzing", label: "Analyzing findings", tone: "working" });
   }
 
   if (input.hasVisibleContent || input.thinkingCount > 0) {
