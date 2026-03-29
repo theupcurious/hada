@@ -185,6 +185,16 @@ export interface AgentRun {
   created_at: string;
 }
 
+export interface Document {
+  id: string;
+  user_id: string;
+  title: string;
+  content: string;
+  folder: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Chat runtime types
 export interface ChatMessage {
   role: MessageRole;

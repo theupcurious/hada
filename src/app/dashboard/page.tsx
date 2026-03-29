@@ -3,70 +3,66 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { ArrowRight, Calendar, CheckSquare, MessageSquare, Settings2, Zap } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Folder,
+  MessageSquare,
+  Plus,
+  Settings2,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import type { ScheduledTask } from "@/lib/types/database";
+import type { Document } from "@/lib/types/database";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-type DashboardTask = ScheduledTask & { next_run_at?: string | null };
+type DocListItem = Pick<Document, "id" | "title" | "folder" | "updated_at"> & { preview?: string };
 
-interface RecentRun {
-  id: string;
-  source: "web" | "telegram" | "scheduled";
-  status: "running" | "completed" | "failed" | "timeout";
-  input_preview: string | null;
-  started_at: string;
-}
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-function formatRelativeTime(iso: string): string {
+function formatUpdated(iso: string): string {
   const date = new Date(iso);
   const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-  const diffMins = Math.round(diffMs / 60000);
-  const diffHours = Math.round(diffMs / 3600000);
-  const diffDays = Math.round(diffMs / 86400000);
-
-  if (diffMs < 0) return "overdue";
-  if (diffMins < 60) return `in ${diffMins}m`;
-  if (diffHours < 24) return `in ${diffHours}h`;
-  if (diffDays === 1) return "tomorrow";
-  return `in ${diffDays}d`;
-}
-
-function formatPastTime(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
 }
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<{ name?: string | null; email?: string | null } | null>(null);
-  const [tasks, setTasks] = useState<DashboardTask[]>([]);
-  const [googleConnected, setGoogleConnected] = useState(false);
-  const [telegramConnected, setTelegramConnected] = useState(false);
-  const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
+  const [docs, setDocs] = useState<DocListItem[]>([]);
+  const [activeDocId, setActiveDocId] = useState<string | null>(null);
+  const [activeDoc, setActiveDoc] = useState<Document | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editFolder, setEditFolder] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [newFolderInput, setNewFolderInput] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  const loadDocs = useCallback(async () => {
+    const response = await fetch("/api/documents");
+    if (!response.ok) return;
+    const data = (await response.json()) as { documents?: DocListItem[] };
+    setDocs(data.documents ?? []);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -74,368 +70,524 @@ export default function DashboardPage() {
     async function initialize() {
       const { data, error } = await supabase.auth.getUser();
       if (!active) return;
-
-      if (error || !data.user) {
-        router.push("/auth/login");
-        return;
-      }
-
-      const { data: dbUser } = await supabase
-        .from("users")
-        .select("name, email")
-        .eq("id", data.user.id)
-        .single();
-
-      if (!active) return;
-      setUser({
-        name: (dbUser as { name?: string | null } | null)?.name ?? data.user.user_metadata?.name ?? null,
-        email: data.user.email ?? null,
-      });
-
-      await Promise.all([
-        fetch("/api/dashboard/tasks")
-          .then((r) => r.ok ? r.json() : null)
-          .then((d) => {
-            if (!active || !d) return;
-            const list: DashboardTask[] = Array.isArray(d) ? d : (d?.tasks ?? []);
-            setTasks(list.filter((t) => t.enabled));
-          })
-          .catch(() => null),
-        fetch("/api/integrations/google")
-          .then((r) => r.ok ? r.json() : null)
-          .then((d) => { if (!active || !d) return; setGoogleConnected(Boolean(d?.connected)); })
-          .catch(() => null),
-        fetch("/api/integrations/telegram/link")
-          .then((r) => r.ok ? r.json() : null)
-          .then((d) => { if (!active || !d) return; setTelegramConnected(Boolean(d?.connected)); })
-          .catch(() => null),
-        fetch("/api/dashboard/activity?limit=3")
-          .then((r) => r.ok ? r.json() : null)
-          .then((d) => {
-            if (!active || !d) return;
-            const runs: RecentRun[] = Array.isArray(d?.runs) ? d.runs : [];
-            setRecentRuns(runs);
-          })
-          .catch(() => null),
-      ]);
-
+      if (error || !data.user) { router.push("/auth/login"); return; }
+      await loadDocs();
       if (active) setIsLoading(false);
     }
 
     void initialize();
     return () => { active = false; };
-  }, [router, supabase]);
+  }, [router, supabase, loadDocs]);
 
-  const firstName = user?.name?.split(" ")[0] ?? user?.email?.split("@")[0] ?? "there";
-  const greeting = getGreeting();
+  const loadFullDoc = useCallback(async (id: string) => {
+    const response = await fetch(`/api/documents/${id}`);
+    if (!response.ok) return;
+    const data = (await response.json()) as { document?: Document };
+    if (data.document) setActiveDoc(data.document);
+  }, []);
 
-  const upcomingTasks = tasks
-    .filter((t) => t.next_run_at)
-    .sort((a, b) => new Date(a.next_run_at!).getTime() - new Date(b.next_run_at!).getTime())
-    .slice(0, 3);
+  const selectDoc = useCallback(async (id: string) => {
+    setActiveDocId(id);
+    setIsEditing(false);
+    setSidebarOpen(false);
+    await loadFullDoc(id);
+  }, [loadFullDoc]);
 
-  const connectedIntegrations = [
-    googleConnected && { label: "Google Calendar", icon: "📅" },
-    telegramConnected && { label: "Telegram", icon: "✈" },
-  ].filter(Boolean) as { label: string; icon: string }[];
+  const createDoc = useCallback(async (folder?: string | null) => {
+    const response = await fetch("/api/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Untitled", content: "", folder: folder ?? null }),
+    });
+    if (!response.ok) return;
+    const data = (await response.json()) as { document?: Document };
+    if (!data.document) return;
+    await loadDocs();
+    setActiveDocId(data.document.id);
+    setActiveDoc(data.document);
+    setEditTitle(data.document.title);
+    setEditContent(data.document.content);
+    setEditFolder(data.document.folder ?? "");
+    setIsEditing(true);
+    if (folder) setExpandedFolders((prev) => new Set([...prev, folder]));
+    setSidebarOpen(false);
+  }, [loadDocs]);
 
-  const suggestions = buildSuggestions(googleConnected, telegramConnected);
+  const saveDoc = useCallback(async () => {
+    if (!activeDocId) return;
+    setIsSaving(true);
+    const response = await fetch(`/api/documents/${activeDocId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: editTitle.trim() || "Untitled",
+        content: editContent,
+        folder: editFolder.trim() || null,
+      }),
+    });
+    if (response.ok) {
+      const data = (await response.json()) as { document?: Document };
+      if (data.document) setActiveDoc(data.document);
+      await loadDocs();
+      setIsEditing(false);
+    }
+    setIsSaving(false);
+  }, [activeDocId, editTitle, editContent, editFolder, loadDocs]);
 
-  const subtitleText = upcomingTasks.length > 0
-    ? `You have ${tasks.length} scheduled task${tasks.length !== 1 ? "s" : ""} this week.`
-    : "Your assistant is ready.";
+  const deleteDoc = useCallback(async (id: string) => {
+    if (!window.confirm("Delete this document?")) return;
+    await fetch(`/api/documents/${id}`, { method: "DELETE" });
+    await loadDocs();
+    if (activeDocId === id) {
+      setActiveDocId(null);
+      setActiveDoc(null);
+      setIsEditing(false);
+    }
+  }, [activeDocId, loadDocs]);
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <span className="text-sm text-zinc-400">Loading...</span>
+  const startEdit = useCallback(() => {
+    if (!activeDoc) return;
+    setEditTitle(activeDoc.title);
+    setEditContent(activeDoc.content);
+    setEditFolder(activeDoc.folder ?? "");
+    setIsEditing(true);
+  }, [activeDoc]);
+
+  const handleUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const content = String(evt.target?.result ?? "");
+      const title = file.name.replace(/\.md$/i, "");
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content, folder: null }),
+      });
+      if (!response.ok) return;
+      const data = (await response.json()) as { document?: Document };
+      if (!data.document) return;
+      await loadDocs();
+      await selectDoc(data.document.id);
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [loadDocs, selectDoc]);
+
+  const toggleFolder = (name: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) { next.delete(name); } else { next.add(name); }
+      return next;
+    });
+  };
+
+  const handleNewFolder = () => {
+    const name = newFolderName.trim();
+    if (name) {
+      setExpandedFolders((prev) => new Set([...prev, name]));
+      void createDoc(name);
+    }
+    setNewFolderInput(false);
+    setNewFolderName("");
+  };
+
+  // Build folder tree from docs
+  const folders = [...new Set(docs.filter((d) => d.folder).map((d) => d.folder as string))].sort();
+  const rootDocs = docs.filter((d) => !d.folder);
+
+  const sidebar = (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between px-3 py-2">
+        <span className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">Documents</span>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => void createDoc(null)}
+            className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            title="New document"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <label
+            htmlFor="doc-upload"
+            className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            title="Upload .md file"
+          >
+            <Upload className="h-3.5 w-3.5" />
+          </label>
+          <input
+            ref={fileInputRef}
+            id="doc-upload"
+            type="file"
+            accept=".md,text/markdown"
+            className="hidden"
+            onChange={handleUpload}
+          />
+        </div>
       </div>
-    );
-  }
+
+      <div className="flex-1 overflow-y-auto px-1 pb-2">
+        {/* Folders */}
+        {folders.map((folder) => {
+          const folderDocs = docs.filter((d) => d.folder === folder);
+          const isExpanded = expandedFolders.has(folder);
+          return (
+            <div key={folder}>
+              <button
+                onClick={() => toggleFolder(folder)}
+                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />}
+                <Folder className="h-3.5 w-3.5 shrink-0 text-teal-500" />
+                <span className="truncate font-medium">{folder}</span>
+                <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{folderDocs.length}</span>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="ml-3 border-l border-zinc-200/70 pl-2 dark:border-zinc-800">
+                      {folderDocs.map((doc) => (
+                        <DocItem
+                          key={doc.id}
+                          doc={doc}
+                          isActive={activeDocId === doc.id}
+                          onSelect={selectDoc}
+                        />
+                      ))}
+                      <button
+                        onClick={() => void createDoc(folder)}
+                        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
+                      >
+                        <Plus className="h-3 w-3" />
+                        New in {folder}
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+
+        {/* Root docs */}
+        {rootDocs.map((doc) => (
+          <DocItem
+            key={doc.id}
+            doc={doc}
+            isActive={activeDocId === doc.id}
+            onSelect={selectDoc}
+          />
+        ))}
+
+        {/* New folder */}
+        {newFolderInput ? (
+          <div className="px-2 py-1">
+            <input
+              autoFocus
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleNewFolder();
+                if (e.key === "Escape") { setNewFolderInput(false); setNewFolderName(""); }
+              }}
+              onBlur={handleNewFolder}
+              placeholder="Folder name"
+              className="w-full rounded border border-zinc-200 bg-white px-2 py-1 text-xs outline-none focus:border-teal-400 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setNewFolderInput(true)}
+            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
+          >
+            <Folder className="h-3 w-3" />
+            New folder
+          </button>
+        )}
+
+        {docs.length === 0 && !isLoading && (
+          <div className="px-2 py-6 text-center">
+            <p className="text-xs text-zinc-400">No documents yet.</p>
+            <button
+              onClick={() => void createDoc(null)}
+              className="mt-1 text-xs font-medium text-teal-500 hover:underline"
+            >
+              Create your first one →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-6 sm:px-6 sm:py-10">
+    <div className="flex h-dvh flex-col bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
-      <header className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-md shadow-teal-500/20">
-            <span className="text-sm font-bold text-white">H</span>
+      <header className="shrink-0 border-b border-zinc-200/80 bg-white/80 px-3 py-2.5 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            {/* Mobile sidebar toggle */}
+            <button
+              className="rounded-md p-1 text-zinc-500 md:hidden hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <FileText className="h-4 w-4" />
+            </button>
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg gradient-brand shadow-sm shadow-teal-500/20">
+              <span className="text-xs font-bold text-white">H</span>
+            </div>
+            <span className="font-semibold">Documents</span>
           </div>
-          <span className="font-semibold">Hada</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <ThemeToggle />
-          <Link href="/settings">
-            <Button variant="ghost" size="icon" aria-label="Settings">
-              <Settings2 className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/chat">
-            <Button variant="ghost" size="sm" className="gap-1.5">
-              Chat
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <Link href="/settings">
+              <Button variant="ghost" size="icon" aria-label="Settings">
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/chat">
+              <Button variant="ghost" size="sm" className="hidden gap-1.5 sm:inline-flex">
+                Chat <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+            <Link href="/chat" className="sm:hidden">
+              <Button variant="ghost" size="icon" aria-label="Chat">
+                <MessageSquare className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Greeting */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-        className="mb-8"
-      >
-        <h1 className="text-2xl font-semibold sm:text-3xl">
-          <span className="gradient-text">{greeting}</span>, {firstName}.
-        </h1>
-        <p className="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">{subtitleText}</p>
-      </motion.div>
-
-      <div className="space-y-6">
-        {/* Cards row */}
-        {(upcomingTasks.length > 0 || connectedIntegrations.length > 0) && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
-            className="grid gap-3 sm:grid-cols-2"
-          >
-            {/* Upcoming Tasks Card */}
-            {upcomingTasks.length > 0 ? (
-              <Link href="/settings?tab=tasks" className="group rounded-2xl border border-zinc-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm transition-all hover:border-teal-500/30 hover:shadow-md dark:border-zinc-800/80 dark:bg-zinc-900/70 dark:hover:border-teal-500/30">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    <CheckSquare className="h-4 w-4 text-teal-500" />
-                    Scheduled Tasks
-                  </div>
-                  <span className="text-xs text-zinc-400">{tasks.length} active</span>
-                </div>
-                <div className="space-y-2">
-                  {upcomingTasks.map((task) => (
-                    <div key={task.id} className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs text-zinc-600 dark:text-zinc-400">{task.description}</p>
-                      <span className="shrink-0 rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-medium text-teal-600 dark:text-teal-400">
-                        {formatRelativeTime(task.next_run_at!)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </Link>
-            ) : (
-              <Link href="/chat" className="group rounded-2xl border border-dashed border-zinc-200/80 p-4 transition-all hover:border-teal-500/40 dark:border-zinc-800/80">
-                <div className="flex items-center gap-2 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-                  <CheckSquare className="h-4 w-4" />
-                  No tasks scheduled
-                </div>
-                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">Ask Hada to set a reminder</p>
-              </Link>
-            )}
-
-            {/* Integration Status / Calendar placeholder */}
-            {googleConnected ? (
-              <div className="rounded-2xl border border-zinc-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-900/70">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  <Calendar className="h-4 w-4 text-teal-500" />
-                  Google Calendar
-                </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Connected. Ask Hada what&apos;s on your schedule.
-                </p>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Mobile sidebar overlay */}
+        <AnimatePresence>
+          {sidebarOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-20 bg-black/30 md:hidden"
+                onClick={() => setSidebarOpen(false)}
+              />
+              <motion.div
+                initial={{ x: -240 }}
+                animate={{ x: 0 }}
+                exit={{ x: -240 }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="fixed inset-y-0 left-0 z-30 w-60 bg-white pt-14 shadow-xl dark:bg-zinc-900 md:hidden"
+              >
                 <button
-                  onClick={() => {
-                    window.location.href = "/chat";
-                  }}
-                  className="mt-2 text-xs font-medium text-teal-600 hover:underline dark:text-teal-400"
+                  onClick={() => setSidebarOpen(false)}
+                  className="absolute right-2 top-16 rounded p-1 text-zinc-400 hover:text-zinc-600"
                 >
-                  Check this week →
+                  <X className="h-4 w-4" />
                 </button>
-              </div>
+                {sidebar}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Desktop sidebar */}
+        <div className="hidden w-56 shrink-0 flex-col border-r border-zinc-200/70 bg-white/60 backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 md:flex">
+          {sidebar}
+        </div>
+
+        {/* Content pane */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {isLoading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <span className="text-sm text-zinc-400">Loading...</span>
+            </div>
+          ) : activeDoc ? (
+            isEditing ? (
+              <EditorPane
+                title={editTitle}
+                content={editContent}
+                folder={editFolder}
+                folders={folders}
+                isSaving={isSaving}
+                onTitleChange={setEditTitle}
+                onContentChange={setEditContent}
+                onFolderChange={setEditFolder}
+                onSave={saveDoc}
+                onCancel={() => setIsEditing(false)}
+              />
             ) : (
-              <Link href="/settings" className="group rounded-2xl border border-dashed border-zinc-200/80 p-4 transition-all hover:border-teal-500/40 dark:border-zinc-800/80">
-                <div className="flex items-center gap-2 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-                  <Calendar className="h-4 w-4" />
-                  Calendar
-                </div>
-                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">Connect Google Calendar in settings</p>
-              </Link>
-            )}
-          </motion.div>
-        )}
-
-        {/* Integration chips */}
-        {connectedIntegrations.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="flex flex-wrap items-center gap-2"
-          >
-            <span className="text-xs text-zinc-400">Connected:</span>
-            {connectedIntegrations.map((integration) => (
-              <Link
-                key={integration.label}
-                href="/settings"
-                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-white/70 px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:border-teal-500/40 hover:text-zinc-900 dark:border-zinc-800/80 dark:bg-zinc-900/50 dark:text-zinc-300 dark:hover:text-zinc-50"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                {integration.label}
-              </Link>
-            ))}
-          </motion.div>
-        )}
-
-        {/* Suggestions */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut", delay: 0.15 }}
-        >
-          <p className="mb-3 text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">Suggested</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {suggestions.map((s) => (
-              <Link
-                key={s.prompt}
-                href={`/chat`}
-                className="group flex items-start gap-3 rounded-xl border border-zinc-200/70 bg-white/70 p-3 text-left transition-all hover:border-teal-500/30 hover:shadow-sm hover:shadow-teal-500/5 dark:border-zinc-800/70 dark:bg-zinc-900/50"
-              >
-                <span className="mt-0.5 text-base leading-none">{s.icon}</span>
-                <div>
-                  <p className="text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">{s.title}</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">{s.subtitle}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Recent Activity */}
-        {recentRuns.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">Recent Activity</p>
-              <Link href="/settings?tab=activity" className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
-                View all →
-              </Link>
-            </div>
-            <div className="space-y-1.5">
-              {recentRuns.map((run) => (
-                <div
-                  key={run.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200/60 bg-white/60 px-3 py-2.5 dark:border-zinc-800/60 dark:bg-zinc-900/40"
-                >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <RunSourceIcon source={run.source} />
-                    <p className="truncate text-xs text-zinc-700 dark:text-zinc-300">
-                      {run.input_preview ?? "Task ran"}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <RunStatusDot status={run.status} />
-                    <span className="text-[10px] text-zinc-400">{formatPastTime(run.started_at)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Go to chat CTA */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 0.25 }}
-          className="pt-2"
-        >
-          <Link href="/chat">
-            <Button className="w-full gap-2 gradient-brand text-white border-0 shadow-md shadow-teal-500/20">
-              <MessageSquare className="h-4 w-4" />
-              Message Hada
-            </Button>
-          </Link>
-        </motion.div>
+              <ViewPane
+                doc={activeDoc}
+                onEdit={startEdit}
+                onDelete={() => void deleteDoc(activeDoc.id)}
+              />
+            )
+          ) : (
+            <EmptyPane onCreate={() => void createDoc(null)} />
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function RunSourceIcon({ source }: { source: RecentRun["source"] }) {
-  if (source === "scheduled") return <Zap className="h-3 w-3 shrink-0 text-teal-500" />;
-  if (source === "telegram") return <span className="text-[11px] leading-none">✈</span>;
-  return <MessageSquare className="h-3 w-3 shrink-0 text-zinc-400" />;
-}
-
-function RunStatusDot({ status }: { status: RecentRun["status"] }) {
+function DocItem({
+  doc,
+  isActive,
+  onSelect,
+}: {
+  doc: DocListItem;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+}) {
   return (
-    <span
+    <button
+      onClick={() => onSelect(doc.id)}
       className={cn(
-        "h-1.5 w-1.5 rounded-full",
-        status === "completed" && "bg-green-500",
-        status === "running" && "bg-yellow-500 animate-pulse",
-        status === "failed" && "bg-red-500",
-        status === "timeout" && "bg-zinc-400",
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+        isActive
+          ? "bg-teal-500/10 text-teal-700 dark:text-teal-300"
+          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
       )}
-    />
+    >
+      <FileText className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-teal-500" : "text-zinc-400")} />
+      <span className="truncate">{doc.title}</span>
+      <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{formatUpdated(doc.updated_at)}</span>
+    </button>
   );
 }
 
-function buildSuggestions(
-  googleConnected: boolean,
-  telegramConnected: boolean,
-): { icon: string; title: string; subtitle: string; prompt: string }[] {
-  const suggestions = [];
+function ViewPane({
+  doc,
+  onEdit,
+  onDelete,
+}: {
+  doc: Document;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 px-5 py-3 dark:border-zinc-800/60">
+        <div>
+          <h1 className="font-semibold text-zinc-900 dark:text-zinc-50">{doc.title}</h1>
+          {doc.folder && (
+            <p className="text-xs text-zinc-400">{doc.folder} / {doc.title}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={onEdit}>Edit</Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-500 hover:text-red-600 dark:text-red-400"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
 
-  if (googleConnected) {
-    suggestions.push({
-      icon: "📅",
-      title: "What's on my calendar?",
-      subtitle: "Check this week's events",
-      prompt: "What's on my calendar this week?",
-    });
-  }
+      <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-8">
+        {doc.content ? (
+          <div className="prose prose-zinc max-w-none dark:prose-invert prose-headings:font-semibold prose-code:rounded prose-code:bg-zinc-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em] dark:prose-code:bg-zinc-800">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{doc.content}</ReactMarkdown>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-400 italic">Empty document. Click Edit to start writing.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
-  suggestions.push({
-    icon: "☀️",
-    title: "Today's briefing",
-    subtitle: "Top tech and AI stories",
-    prompt: "Give me a brief summary of the most important tech and AI news today.",
-  });
+function EditorPane({
+  title,
+  content,
+  folder,
+  folders,
+  isSaving,
+  onTitleChange,
+  onContentChange,
+  onFolderChange,
+  onSave,
+  onCancel,
+}: {
+  title: string;
+  content: string;
+  folder: string;
+  folders: string[];
+  isSaving: boolean;
+  onTitleChange: (v: string) => void;
+  onContentChange: (v: string) => void;
+  onFolderChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 px-4 py-2.5 dark:border-zinc-800/60">
+        <div className="flex flex-1 items-center gap-2 min-w-0">
+          <input
+            value={title}
+            onChange={(e) => onTitleChange(e.target.value)}
+            placeholder="Document title"
+            className="min-w-0 flex-1 bg-transparent text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-50"
+          />
+          <select
+            value={folder}
+            onChange={(e) => onFolderChange(e.target.value)}
+            className="shrink-0 rounded border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          >
+            <option value="">No folder</option>
+            {folders.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+        </div>
+        <div className="ml-3 flex shrink-0 items-center gap-1.5">
+          <Button size="sm" variant="ghost" onClick={onCancel} disabled={isSaving}>Cancel</Button>
+          <Button size="sm" onClick={onSave} disabled={isSaving} className="gradient-brand text-white border-0">
+            {isSaving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </div>
 
-  suggestions.push({
-    icon: "🎯",
-    title: "Prep for a meeting",
-    subtitle: "Talking points & context",
-    prompt: "Help me prepare for an upcoming meeting.",
-  });
+      <textarea
+        value={content}
+        onChange={(e) => onContentChange(e.target.value)}
+        placeholder="Write in markdown..."
+        className="flex-1 resize-none bg-transparent px-5 py-5 font-mono text-sm leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-200 sm:px-8"
+        spellCheck={false}
+      />
+    </div>
+  );
+}
 
-  if (!googleConnected) {
-    suggestions.push({
-      icon: "📝",
-      title: "Set a reminder",
-      subtitle: "Schedule something for later",
-      prompt: "Set a reminder for me.",
-    });
-  }
-
-  if (telegramConnected) {
-    suggestions.push({
-      icon: "🔍",
-      title: "Research a topic",
-      subtitle: "Get a thorough summary",
-      prompt: "Research a topic for me.",
-    });
-  } else {
-    suggestions.push({
-      icon: "✈",
-      title: "Connect Telegram",
-      subtitle: "Chat with Hada on the go",
-      prompt: "",
-    });
-  }
-
-  return suggestions.slice(0, 4);
+function EmptyPane({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 dark:border-zinc-700">
+        <FileText className="h-6 w-6 text-zinc-400" />
+      </div>
+      <div>
+        <p className="font-medium text-zinc-700 dark:text-zinc-300">Select a document</p>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          or create a new one to get started
+        </p>
+      </div>
+      <Button size="sm" onClick={onCreate} className="mt-1 gap-1.5">
+        <Plus className="h-3.5 w-3.5" />
+        New document
+      </Button>
+    </div>
+  );
 }

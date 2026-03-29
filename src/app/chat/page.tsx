@@ -120,6 +120,7 @@ export default function ChatPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [greetingText, setGreetingText] = useState("Hello");
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [recentRuns, setRecentRuns] = useState<Array<{ id: string; input_preview: string | null; source: string; status: string; started_at: string }>>([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
@@ -611,8 +612,18 @@ export default function ChatPage() {
         setShowProfileSetup(true);
       }
 
-      // Load message history
-      await loadHistory();
+      // Load message history + recent activity in parallel
+      await Promise.all([
+        loadHistory(),
+        fetch("/api/dashboard/activity?limit=3")
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => {
+            if (!d) return;
+            const runs = Array.isArray(d?.runs) ? d.runs : [];
+            setRecentRuns(runs);
+          })
+          .catch(() => null),
+      ]);
       setIsLoadingHistory(false);
     };
     initialize();
@@ -1039,12 +1050,6 @@ export default function ChatPage() {
     },
   ];
 
-  const latestUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "user" && message.content.trim());
-  const latestAssistantMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "assistant" && message.content.trim());
   const shouldShowLanding = !showConversation && !isLoading;
 
   const inputForm = (
@@ -1283,47 +1288,39 @@ export default function ChatPage() {
                       ))}
                     </div>
 
-                    {messages.length > 0 ? (
+                    {recentRuns.length > 0 ? (
                       <div className="mt-5 w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                          <div>
-                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                              Continue where you left off
-                            </p>
-                            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                              Persistent context is still available. Open the conversation if you want to review or continue it directly.
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full sm:w-auto"
-                            onClick={() => setShowConversation(true)}
-                          >
+                        <div className="mb-3 flex items-center justify-between">
+                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Recent activity</p>
+                          {messages.length > 0 && (
+                            <Button size="sm" variant="outline" onClick={() => setShowConversation(true)}>
+                              Open chat
+                            </Button>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          {recentRuns.map((run) => (
+                            <div key={run.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
+                              <p className="truncate text-xs text-zinc-700 dark:text-zinc-300">
+                                {run.input_preview ?? "Task ran"}
+                              </p>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <span className={`h-1.5 w-1.5 rounded-full ${run.status === "completed" ? "bg-green-500" : run.status === "running" ? "bg-yellow-500" : "bg-red-500"}`} />
+                                <span className="text-[10px] text-zinc-400">
+                                  {new Date(run.started_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : messages.length > 0 ? (
+                      <div className="mt-5 w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Continue where you left off</p>
+                          <Button size="sm" variant="outline" onClick={() => setShowConversation(true)}>
                             Open chat
                           </Button>
-                        </div>
-                        <div className="mt-4 hidden sm:block">
-                          {latestUserMessage ? (
-                            <div className="rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
-                              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
-                                Last request
-                              </p>
-                              <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                                {truncatePreview(latestUserMessage.content, 120)}
-                              </p>
-                            </div>
-                          ) : null}
-                          {latestAssistantMessage ? (
-                            <div className="mt-3 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
-                              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
-                                Last reply
-                              </p>
-                              <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                                {truncatePreview(latestAssistantMessage.content, 140)}
-                              </p>
-                            </div>
-                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -1400,14 +1397,6 @@ function isToolErrorResult(result: string): boolean {
   }
 }
 
-function truncatePreview(value: string, maxLength: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, maxLength).trimEnd()}…`;
-}
 
 function nextEventOrder(ref: MutableRefObject<number>): number {
   ref.current += 1;

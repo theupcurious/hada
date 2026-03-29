@@ -1,7 +1,7 @@
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import type { ToolContext } from "@/lib/chat/tools/types";
 
-export type ToolCategory = "memory" | "web" | "calendar" | "communication" | "system" | "custom";
+export type ToolCategory = "memory" | "web" | "calendar" | "communication" | "system" | "custom" | "documents";
 export type RiskLevel = "low" | "medium" | "high";
 
 export interface ToolManifest {

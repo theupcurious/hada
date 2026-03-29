@@ -15,6 +15,8 @@ import { createScheduleTaskTool, scheduleTaskManifest } from "@/lib/chat/tools/s
 import type { ToolContext } from "@/lib/chat/tools/types";
 import { createWebFetchTool, webFetchManifest } from "@/lib/chat/tools/web-fetch";
 import { createWebSearchTool, webSearchManifest } from "@/lib/chat/tools/web-search";
+import { createListDocumentsTool, listDocumentsManifest } from "@/lib/chat/tools/list-documents";
+import { createReadDocumentTool, readDocumentManifest } from "@/lib/chat/tools/read-document";
 import { registry } from "@/lib/chat/tools/tool-registry";
 
 export interface CreateToolsOptions {
@@ -30,6 +32,8 @@ registry.register({ manifest: webFetchManifest, create: createWebFetchTool });
 registry.register({ manifest: planTaskManifest, create: createPlanTaskTool });
 registry.register({ manifest: delegateTaskManifest, create: createDelegateTaskTool });
 registry.register({ manifest: renderCardManifest, create: createRenderCardTool });
+registry.register({ manifest: listDocumentsManifest, create: createListDocumentsTool });
+registry.register({ manifest: readDocumentManifest, create: createReadDocumentTool });
 
 // Register Google Calendar tools
 registry.register({
