@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { CalendarEventCard } from "@/components/chat/calendar-event-card";
@@ -188,13 +188,19 @@ export function ChatMessageRow({
   const [copied, setCopied] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const pills = buildToolStatusPills({
-    isStreaming: message.isStreaming ?? false,
-    traces: message.traceEvents ?? [],
-    thinkingCount: message.thinkingEvents?.length ?? 0,
-    hasVisibleContent: (message.content?.length ?? 0) > 0,
-    backgroundJobPending: message.backgroundJob?.pending ?? false,
-  });
+  const pills = useMemo(
+    () =>
+      message.isStreaming
+        ? buildToolStatusPills({
+            isStreaming: true,
+            traces: message.traceEvents ?? [],
+            thinkingCount: message.thinkingEvents?.length ?? 0,
+            hasVisibleContent: (message.content?.length ?? 0) > 0,
+            backgroundJobPending: message.backgroundJob?.pending ?? false,
+          })
+        : [],
+    [message.isStreaming, message.traceEvents, message.thinkingEvents, message.content, message.backgroundJob],
+  );
 
   const handleCopy = async () => {
     await onCopy(message.id, message.content);
@@ -254,6 +260,11 @@ export function ChatMessageRow({
         {/* Task plan */}
         {message.role === "assistant" && message.plan ? (
           <TaskPlanCard plan={message.plan} activeStepId={message.activeStepId} />
+        ) : null}
+
+        {/* Status pills */}
+        {message.role === "assistant" && message.isStreaming && pills.length > 0 ? (
+          <ToolStatusPills pills={pills} />
         ) : null}
 
         {/* Message content */}
@@ -373,11 +384,6 @@ export function ChatMessageRow({
             </Button>
           </div>
         )}
-
-        {/* Status pills */}
-        {message.role === "assistant" && message.isStreaming && pills.length > 0 ? (
-          <ToolStatusPills pills={pills} />
-        ) : null}
 
         {/* Message actions hover toolbar */}
         {showActions && (
