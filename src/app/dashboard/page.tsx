@@ -19,13 +19,14 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Markdown as MarkdownExtension } from "tiptap-markdown";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Document } from "@/lib/types/database";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 type DocListItem = Pick<Document, "id" | "title" | "folder" | "updated_at"> & { preview?: string };
 
@@ -43,10 +44,6 @@ export default function DashboardPage() {
   const [docs, setDocs] = useState<DocListItem[]>([]);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<Document | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editContent, setEditContent] = useState("");
-  const [editFolder, setEditFolder] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -66,7 +63,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let active = true;
-
     async function initialize() {
       const { data, error } = await supabase.auth.getUser();
       if (!active) return;
@@ -74,7 +70,6 @@ export default function DashboardPage() {
       await loadDocs();
       if (active) setIsLoading(false);
     }
-
     void initialize();
     return () => { active = false; };
   }, [router, supabase, loadDocs]);
@@ -88,7 +83,6 @@ export default function DashboardPage() {
 
   const selectDoc = useCallback(async (id: string) => {
     setActiveDocId(id);
-    setIsEditing(false);
     setSidebarOpen(false);
     await loadFullDoc(id);
   }, [loadFullDoc]);
@@ -105,53 +99,16 @@ export default function DashboardPage() {
     await loadDocs();
     setActiveDocId(data.document.id);
     setActiveDoc(data.document);
-    setEditTitle(data.document.title);
-    setEditContent(data.document.content);
-    setEditFolder(data.document.folder ?? "");
-    setIsEditing(true);
     if (folder) setExpandedFolders((prev) => new Set([...prev, folder]));
     setSidebarOpen(false);
   }, [loadDocs]);
-
-  const saveDoc = useCallback(async () => {
-    if (!activeDocId) return;
-    setIsSaving(true);
-    const response = await fetch(`/api/documents/${activeDocId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: editTitle.trim() || "Untitled",
-        content: editContent,
-        folder: editFolder.trim() || null,
-      }),
-    });
-    if (response.ok) {
-      const data = (await response.json()) as { document?: Document };
-      if (data.document) setActiveDoc(data.document);
-      await loadDocs();
-      setIsEditing(false);
-    }
-    setIsSaving(false);
-  }, [activeDocId, editTitle, editContent, editFolder, loadDocs]);
 
   const deleteDoc = useCallback(async (id: string) => {
     if (!window.confirm("Delete this document?")) return;
     await fetch(`/api/documents/${id}`, { method: "DELETE" });
     await loadDocs();
-    if (activeDocId === id) {
-      setActiveDocId(null);
-      setActiveDoc(null);
-      setIsEditing(false);
-    }
+    if (activeDocId === id) { setActiveDocId(null); setActiveDoc(null); }
   }, [activeDocId, loadDocs]);
-
-  const startEdit = useCallback(() => {
-    if (!activeDoc) return;
-    setEditTitle(activeDoc.title);
-    setEditContent(activeDoc.content);
-    setEditFolder(activeDoc.folder ?? "");
-    setIsEditing(true);
-  }, [activeDoc]);
 
   const handleUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -193,7 +150,6 @@ export default function DashboardPage() {
     setNewFolderName("");
   };
 
-  // Build folder tree from docs
   const folders = [...new Set(docs.filter((d) => d.folder).map((d) => d.folder as string))].sort();
   const rootDocs = docs.filter((d) => !d.folder);
 
@@ -202,72 +158,37 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">Documents</span>
         <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => void createDoc(null)}
-            className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-            title="New document"
-          >
+          <button onClick={() => void createDoc(null)} className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="New document">
             <Plus className="h-3.5 w-3.5" />
           </button>
-          <label
-            htmlFor="doc-upload"
-            className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-            title="Upload .md file"
-          >
+          <label htmlFor="doc-upload" className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="Upload .md file">
             <Upload className="h-3.5 w-3.5" />
           </label>
-          <input
-            ref={fileInputRef}
-            id="doc-upload"
-            type="file"
-            accept=".md,text/markdown"
-            className="hidden"
-            onChange={handleUpload}
-          />
+          <input ref={fileInputRef} id="doc-upload" type="file" accept=".md,text/markdown" className="hidden" onChange={handleUpload} />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-1 pb-2">
-        {/* Folders */}
         {folders.map((folder) => {
           const folderDocs = docs.filter((d) => d.folder === folder);
           const isExpanded = expandedFolders.has(folder);
           return (
             <div key={folder}>
-              <button
-                onClick={() => toggleFolder(folder)}
-                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
+              <button onClick={() => toggleFolder(folder)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
                 {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />}
                 <Folder className="h-3.5 w-3.5 shrink-0 text-teal-500" />
                 <span className="truncate font-medium">{folder}</span>
                 <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{folderDocs.length}</span>
               </button>
-
               <AnimatePresence initial={false}>
                 {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="overflow-hidden"
-                  >
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
                     <div className="ml-3 border-l border-zinc-200/70 pl-2 dark:border-zinc-800">
                       {folderDocs.map((doc) => (
-                        <DocItem
-                          key={doc.id}
-                          doc={doc}
-                          isActive={activeDocId === doc.id}
-                          onSelect={selectDoc}
-                        />
+                        <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} />
                       ))}
-                      <button
-                        onClick={() => void createDoc(folder)}
-                        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
-                      >
-                        <Plus className="h-3 w-3" />
-                        New in {folder}
+                      <button onClick={() => void createDoc(folder)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300">
+                        <Plus className="h-3 w-3" />New in {folder}
                       </button>
                     </div>
                   </motion.div>
@@ -277,51 +198,27 @@ export default function DashboardPage() {
           );
         })}
 
-        {/* Root docs */}
         {rootDocs.map((doc) => (
-          <DocItem
-            key={doc.id}
-            doc={doc}
-            isActive={activeDocId === doc.id}
-            onSelect={selectDoc}
-          />
+          <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} />
         ))}
 
-        {/* New folder */}
         {newFolderInput ? (
           <div className="px-2 py-1">
-            <input
-              autoFocus
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleNewFolder();
-                if (e.key === "Escape") { setNewFolderInput(false); setNewFolderName(""); }
-              }}
-              onBlur={handleNewFolder}
-              placeholder="Folder name"
-              className="w-full rounded border border-zinc-200 bg-white px-2 py-1 text-xs outline-none focus:border-teal-400 dark:border-zinc-700 dark:bg-zinc-900"
-            />
+            <input autoFocus value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleNewFolder(); if (e.key === "Escape") { setNewFolderInput(false); setNewFolderName(""); } }}
+              onBlur={handleNewFolder} placeholder="Folder name"
+              className="w-full rounded border border-zinc-200 bg-white px-2 py-1 text-xs outline-none focus:border-teal-400 dark:border-zinc-700 dark:bg-zinc-900" />
           </div>
         ) : (
-          <button
-            onClick={() => setNewFolderInput(true)}
-            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
-          >
-            <Folder className="h-3 w-3" />
-            New folder
+          <button onClick={() => setNewFolderInput(true)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300">
+            <Folder className="h-3 w-3" />New folder
           </button>
         )}
 
         {docs.length === 0 && !isLoading && (
           <div className="px-2 py-6 text-center">
             <p className="text-xs text-zinc-400">No documents yet.</p>
-            <button
-              onClick={() => void createDoc(null)}
-              className="mt-1 text-xs font-medium text-teal-500 hover:underline"
-            >
-              Create your first one →
-            </button>
+            <button onClick={() => void createDoc(null)} className="mt-1 text-xs font-medium text-teal-500 hover:underline">Create your first one →</button>
           </div>
         )}
       </div>
@@ -330,15 +227,10 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-dvh flex-col bg-zinc-50 dark:bg-zinc-950">
-      {/* Header */}
       <header className="shrink-0 border-b border-zinc-200/80 bg-white/80 px-3 py-2.5 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            {/* Mobile sidebar toggle */}
-            <button
-              className="rounded-md p-1 text-zinc-500 md:hidden hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-            >
+            <button className="rounded-md p-1 text-zinc-500 md:hidden hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => setSidebarOpen(!sidebarOpen)}>
               <FileText className="h-4 w-4" />
             </button>
             <div className="flex h-7 w-7 items-center justify-center rounded-lg gradient-brand shadow-sm shadow-teal-500/20">
@@ -348,88 +240,57 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-1">
             <ThemeToggle />
-            <Link href="/settings">
-              <Button variant="ghost" size="icon" aria-label="Settings">
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link href="/chat">
-              <Button variant="ghost" size="sm" className="hidden gap-1.5 sm:inline-flex">
-                Chat <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
-            <Link href="/chat" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label="Chat">
-                <MessageSquare className="h-4 w-4" />
-              </Button>
-            </Link>
+            <Link href="/settings"><Button variant="ghost" size="icon" aria-label="Settings"><Settings2 className="h-4 w-4" /></Button></Link>
+            <Link href="/chat"><Button variant="ghost" size="sm" className="hidden gap-1.5 sm:inline-flex">Chat <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
+            <Link href="/chat" className="sm:hidden"><Button variant="ghost" size="icon" aria-label="Chat"><MessageSquare className="h-4 w-4" /></Button></Link>
           </div>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Mobile sidebar overlay */}
         <AnimatePresence>
           {sidebarOpen && (
             <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-20 bg-black/30 md:hidden"
-                onClick={() => setSidebarOpen(false)}
-              />
-              <motion.div
-                initial={{ x: -240 }}
-                animate={{ x: 0 }}
-                exit={{ x: -240 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className="fixed inset-y-0 left-0 z-30 w-60 bg-white pt-14 shadow-xl dark:bg-zinc-900 md:hidden"
-              >
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="absolute right-2 top-16 rounded p-1 text-zinc-400 hover:text-zinc-600"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-20 bg-black/30 md:hidden" onClick={() => setSidebarOpen(false)} />
+              <motion.div initial={{ x: -240 }} animate={{ x: 0 }} exit={{ x: -240 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="fixed inset-y-0 left-0 z-30 w-60 bg-white pt-14 shadow-xl dark:bg-zinc-900 md:hidden">
+                <button onClick={() => setSidebarOpen(false)} className="absolute right-2 top-16 rounded p-1 text-zinc-400 hover:text-zinc-600"><X className="h-4 w-4" /></button>
                 {sidebar}
               </motion.div>
             </>
           )}
         </AnimatePresence>
 
-        {/* Desktop sidebar */}
         <div className="hidden w-56 shrink-0 flex-col border-r border-zinc-200/70 bg-white/60 backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 md:flex">
           {sidebar}
         </div>
 
-        {/* Content pane */}
         <div className="flex flex-1 flex-col overflow-hidden">
           {isLoading ? (
             <div className="flex flex-1 items-center justify-center">
               <span className="text-sm text-zinc-400">Loading...</span>
             </div>
           ) : activeDoc ? (
-            isEditing ? (
-              <EditorPane
-                title={editTitle}
-                content={editContent}
-                folder={editFolder}
-                folders={folders}
-                isSaving={isSaving}
-                onTitleChange={setEditTitle}
-                onContentChange={setEditContent}
-                onFolderChange={setEditFolder}
-                onSave={saveDoc}
-                onCancel={() => setIsEditing(false)}
-              />
-            ) : (
-              <ViewPane
-                doc={activeDoc}
-                onEdit={startEdit}
-                onDelete={() => void deleteDoc(activeDoc.id)}
-              />
-            )
+            <WysiwygPane
+              key={activeDoc.id}
+              doc={activeDoc}
+              isSaving={isSaving}
+              onSave={async (title, content, folder) => {
+                setIsSaving(true);
+                const response = await fetch(`/api/documents/${activeDoc.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ title, content, folder: folder || null }),
+                });
+                if (response.ok) {
+                  const data = (await response.json()) as { document?: Document };
+                  if (data.document) setActiveDoc(data.document);
+                  await loadDocs();
+                }
+                setIsSaving(false);
+              }}
+              onDelete={() => void deleteDoc(activeDoc.id)}
+              folders={folders}
+            />
           ) : (
             <EmptyPane onCreate={() => void createDoc(null)} />
           )}
@@ -439,196 +300,119 @@ export default function DashboardPage() {
   );
 }
 
-function DocItem({
+function WysiwygPane({
   doc,
-  isActive,
-  onSelect,
+  isSaving,
+  onSave,
+  onDelete,
+  folders,
 }: {
-  doc: DocListItem;
-  isActive: boolean;
-  onSelect: (id: string) => void;
+  doc: Document;
+  isSaving: boolean;
+  onSave: (title: string, content: string, folder: string) => Promise<void>;
+  onDelete: () => void;
+  folders: string[];
 }) {
+  const [title, setTitle] = useState(doc.title);
+  const [folder, setFolder] = useState(doc.folder ?? "");
+  const [isDirty, setIsDirty] = useState(false);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      MarkdownExtension.configure({ html: false, transformPastedText: true }),
+    ],
+    content: doc.content,
+    editorProps: {
+      attributes: {
+        class: "outline-none min-h-full px-5 py-5 sm:px-8 wysiwyg-editor",
+      },
+    },
+    onUpdate: () => setIsDirty(true),
+  });
+
+  const handleSave = async () => {
+    if (!editor) return;
+    const storage = editor.storage as unknown as Record<string, { getMarkdown?: () => string }>;
+    const md = storage.markdown?.getMarkdown?.() ?? editor.getText();
+    await onSave(title, md, folder);
+    setIsDirty(false);
+  };
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Header bar */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/60 px-4 py-2.5 dark:border-zinc-800/60">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <input
+            value={title}
+            onChange={(e) => { setTitle(e.target.value); setIsDirty(true); }}
+            placeholder="Document title"
+            className="min-w-0 flex-1 bg-transparent text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-50"
+          />
+          <select
+            value={folder}
+            onChange={(e) => { setFolder(e.target.value); setIsDirty(true); }}
+            className="shrink-0 rounded border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          >
+            <option value="">No folder</option>
+            {folders.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {isDirty && (
+            <Button size="sm" onClick={handleSave} disabled={isSaving} className="gradient-brand text-white border-0">
+              {isSaving ? "Saving…" : "Save"}
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 dark:text-red-400" onClick={onDelete}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* WYSIWYG editor */}
+      <div className="flex-1 overflow-y-auto">
+        <style>{`
+          .wysiwyg-editor h1 { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 0.75rem; color: inherit; }
+          .wysiwyg-editor h2 { font-size: 1.25rem; font-weight: 600; margin: 1rem 0 0.5rem; color: inherit; }
+          .wysiwyg-editor h3 { font-size: 1.1rem; font-weight: 600; margin: 0.875rem 0 0.375rem; color: inherit; }
+          .wysiwyg-editor h1:first-child, .wysiwyg-editor h2:first-child, .wysiwyg-editor h3:first-child { margin-top: 0; }
+          .wysiwyg-editor p { margin-bottom: 0.75rem; line-height: 1.7; }
+          .wysiwyg-editor ul { list-style: disc; margin: 0 0 0.75rem 1.25rem; }
+          .wysiwyg-editor ol { list-style: decimal; margin: 0 0 0.75rem 1.25rem; }
+          .wysiwyg-editor li { margin-bottom: 0.25rem; line-height: 1.6; }
+          .wysiwyg-editor blockquote { border-left: 2px solid #14b8a6; padding-left: 1rem; color: #71717a; font-style: italic; margin-bottom: 0.75rem; }
+          .wysiwyg-editor code { background: rgba(113,113,122,0.12); border-radius: 0.25rem; padding: 0.1em 0.35em; font-size: 0.85em; font-family: ui-monospace, monospace; }
+          .wysiwyg-editor pre { background: rgba(113,113,122,0.1); border-radius: 0.5rem; padding: 0.875rem 1rem; overflow-x: auto; margin-bottom: 1rem; }
+          .wysiwyg-editor pre code { background: none; padding: 0; font-size: 0.85rem; }
+          .wysiwyg-editor table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; font-size: 0.875rem; }
+          .wysiwyg-editor th { border: 1px solid rgba(113,113,122,0.3); padding: 0.5rem 0.75rem; text-align: left; font-weight: 600; background: rgba(113,113,122,0.08); }
+          .wysiwyg-editor td { border: 1px solid rgba(113,113,122,0.3); padding: 0.5rem 0.75rem; }
+          .wysiwyg-editor hr { border: none; border-top: 1px solid rgba(113,113,122,0.2); margin: 1.25rem 0; }
+          .wysiwyg-editor a { color: #0d9488; text-decoration: underline; }
+          .wysiwyg-editor strong { font-weight: 600; }
+          .wysiwyg-editor .is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #a1a1aa; pointer-events: none; height: 0; }
+        `}</style>
+        <EditorContent editor={editor} />
+      </div>
+    </div>
+  );
+}
+
+function DocItem({ doc, isActive, onSelect }: { doc: DocListItem; isActive: boolean; onSelect: (id: string) => void }) {
   return (
     <button
       onClick={() => onSelect(doc.id)}
       className={cn(
         "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-        isActive
-          ? "bg-teal-500/10 text-teal-700 dark:text-teal-300"
-          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
+        isActive ? "bg-teal-500/10 text-teal-700 dark:text-teal-300" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
       )}
     >
       <FileText className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-teal-500" : "text-zinc-400")} />
       <span className="truncate">{doc.title}</span>
       <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{formatUpdated(doc.updated_at)}</span>
     </button>
-  );
-}
-
-const markdownComponents: React.ComponentProps<typeof ReactMarkdown>["components"] = {
-  h1: ({ children }) => <h1 className="mb-3 mt-6 text-2xl font-bold text-zinc-900 dark:text-zinc-50 first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="mb-2 mt-5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">{children}</h2>,
-  h3: ({ children }) => <h3 className="mb-2 mt-4 text-lg font-semibold text-zinc-800 dark:text-zinc-100">{children}</h3>,
-  h4: ({ children }) => <h4 className="mb-1 mt-3 text-base font-semibold text-zinc-800 dark:text-zinc-100">{children}</h4>,
-  p: ({ children }) => <p className="mb-3 leading-relaxed text-zinc-700 dark:text-zinc-300">{children}</p>,
-  strong: ({ children }) => <strong className="font-semibold text-zinc-900 dark:text-zinc-50">{children}</strong>,
-  em: ({ children }) => <em className="italic text-zinc-700 dark:text-zinc-300">{children}</em>,
-  ul: ({ children }) => <ul className="mb-3 ml-5 list-disc space-y-1 text-zinc-700 dark:text-zinc-300">{children}</ul>,
-  ol: ({ children }) => <ol className="mb-3 ml-5 list-decimal space-y-1 text-zinc-700 dark:text-zinc-300">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  blockquote: ({ children }) => <blockquote className="mb-3 border-l-2 border-teal-400 pl-4 italic text-zinc-500 dark:text-zinc-400">{children}</blockquote>,
-  hr: () => <hr className="my-5 border-zinc-200 dark:border-zinc-800" />,
-  code: ({ children, className }) => {
-    const isBlock = className?.includes("language-");
-    if (isBlock) {
-      return (
-        <pre className="mb-4 overflow-x-auto rounded-xl bg-zinc-100 px-4 py-3 dark:bg-zinc-800">
-          <code className={`text-sm font-mono text-zinc-800 dark:text-zinc-200 ${className ?? ""}`}>{children}</code>
-        </pre>
-      );
-    }
-    return <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.85em] text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">{children}</code>;
-  },
-  table: ({ children }) => (
-    <div className="mb-4 overflow-x-auto">
-      <table className="w-full border-collapse text-sm">{children}</table>
-    </div>
-  ),
-  thead: ({ children }) => <thead className="bg-zinc-100 dark:bg-zinc-800">{children}</thead>,
-  th: ({ children }) => <th className="border border-zinc-200 px-3 py-2 text-left font-semibold text-zinc-800 dark:border-zinc-700 dark:text-zinc-100">{children}</th>,
-  td: ({ children }) => <td className="border border-zinc-200 px-3 py-2 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">{children}</td>,
-  a: ({ href, children }) => <a href={href} className="text-teal-600 underline hover:text-teal-700 dark:text-teal-400" target="_blank" rel="noopener noreferrer">{children}</a>,
-};
-
-function ViewPane({
-  doc,
-  onEdit,
-  onDelete,
-}: {
-  doc: Document;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 px-5 py-3 dark:border-zinc-800/60">
-        <div>
-          <h1 className="font-semibold text-zinc-900 dark:text-zinc-50">{doc.title}</h1>
-          {doc.folder && (
-            <p className="text-xs text-zinc-400">{doc.folder} / {doc.title}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="outline" onClick={onEdit}>Edit</Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-red-500 hover:text-red-600 dark:text-red-400"
-            onClick={onDelete}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-8">
-        {doc.content ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{doc.content}</ReactMarkdown>
-        ) : (
-          <p className="text-sm text-zinc-400 italic">Empty document. Click Edit to start writing.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EditorPane({
-  title,
-  content,
-  folder,
-  folders,
-  isSaving,
-  onTitleChange,
-  onContentChange,
-  onFolderChange,
-  onSave,
-  onCancel,
-}: {
-  title: string;
-  content: string;
-  folder: string;
-  folders: string[];
-  isSaving: boolean;
-  onTitleChange: (v: string) => void;
-  onContentChange: (v: string) => void;
-  onFolderChange: (v: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 px-4 py-2.5 dark:border-zinc-800/60">
-        <div className="flex flex-1 items-center gap-2 min-w-0">
-          <input
-            value={title}
-            onChange={(e) => onTitleChange(e.target.value)}
-            placeholder="Document title"
-            className="min-w-0 flex-1 bg-transparent text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-50"
-          />
-          <select
-            value={folder}
-            onChange={(e) => onFolderChange(e.target.value)}
-            className="shrink-0 rounded border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-          >
-            <option value="">No folder</option>
-            {folders.map((f) => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
-        </div>
-        <div className="ml-3 flex shrink-0 items-center gap-1.5">
-          <Button size="sm" variant="ghost" onClick={onCancel} disabled={isSaving}>Cancel</Button>
-          <Button size="sm" onClick={onSave} disabled={isSaving} className="gradient-brand text-white border-0">
-            {isSaving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </div>
-
-      {/* Split pane: editor left, live preview right */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Raw editor */}
-        <div className="flex flex-1 flex-col border-r border-zinc-200/60 dark:border-zinc-800/60">
-          <div className="border-b border-zinc-200/40 px-4 py-1.5 dark:border-zinc-800/40">
-            <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">Markdown</span>
-          </div>
-          <textarea
-            autoFocus
-            value={content}
-            onChange={(e) => onContentChange(e.target.value)}
-            placeholder="Write in markdown..."
-            className="flex-1 resize-none bg-transparent px-4 py-4 font-mono text-sm leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-200"
-            spellCheck={false}
-          />
-        </div>
-
-        {/* Live preview */}
-        <div className="hidden flex-1 flex-col overflow-y-auto sm:flex">
-          <div className="border-b border-zinc-200/40 px-5 py-1.5 dark:border-zinc-800/40">
-            <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">Preview</span>
-          </div>
-          <div className="px-5 py-4">
-            {content ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {content}
-              </ReactMarkdown>
-            ) : (
-              <p className="text-sm italic text-zinc-400">Preview will appear here...</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -640,13 +424,10 @@ function EmptyPane({ onCreate }: { onCreate: () => void }) {
       </div>
       <div>
         <p className="font-medium text-zinc-700 dark:text-zinc-300">Select a document</p>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          or create a new one to get started
-        </p>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">or create a new one to get started</p>
       </div>
       <Button size="sm" onClick={onCreate} className="mt-1 gap-1.5">
-        <Plus className="h-3.5 w-3.5" />
-        New document
+        <Plus className="h-3.5 w-3.5" />New document
       </Button>
     </div>
   );
