@@ -40,7 +40,7 @@ describe("resolveRegenerationPair", () => {
     const pair = resolveRegenerationPair(
       [
         { id: "u1", role: "user", content: "question" },
-        { id: "s1", role: "assistant", content: "thinking..." },
+        { id: "s1", role: "system", content: "thinking..." },
         { id: "a1", role: "assistant", content: "answer" },
       ],
       "a1",

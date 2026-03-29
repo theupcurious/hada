@@ -35,7 +35,12 @@ export async function enqueueBackgroundJob(options: {
   userId: string;
   source: MessageSource;
   message: string;
-  /** Optional existing IDs for regeneration — reuses rows instead of creating new ones. */
+  /**
+   * Optional existing IDs for regeneration — reuses rows instead of creating new ones.
+   * Currently reserved for future background-job regeneration support; the API route
+   * handles regeneration by calling processMessage directly and does not route through
+   * this path yet.
+   */
   userMessageId?: string;
   assistantMessageId?: string;
   conversationId?: string;
