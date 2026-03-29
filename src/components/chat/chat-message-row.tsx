@@ -282,7 +282,7 @@ export function ChatMessageRow({
             </div>
           ) : null}
           {message.role === "assistant" ? (
-            message.isStreaming && message.streamSegments?.length ? (
+            message.isStreaming && !message.content && message.streamSegments?.length ? (
               <StreamingMessage segments={message.streamSegments} />
             ) : (
               <RichMessageContent content={message.content} isStreaming={message.isStreaming} />
