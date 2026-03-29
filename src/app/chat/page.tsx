@@ -1240,7 +1240,7 @@ export default function ChatPage() {
                 }
               }}
             >
-              <div className="min-w-0 w-full max-w-full space-y-6 pb-6 sm:pr-4">
+              <div className="min-w-0 w-full max-w-full space-y-6 pb-6 pr-2 sm:pr-4">
                 {isLoadingMore && (
                   <div className="flex justify-center py-2">
                     <span className="text-sm text-zinc-400">Loading earlier messages...</span>
