@@ -18,6 +18,8 @@ describe("ChatMessageRow", () => {
         onCopy={vi.fn(async () => undefined)}
         onRegenerate={vi.fn(async () => undefined)}
         onFeedback={vi.fn(async () => undefined)}
+        onSaveToDoc={vi.fn()}
+        onOpenArtifact={vi.fn()}
       />,
     );
 

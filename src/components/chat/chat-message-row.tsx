@@ -71,6 +71,8 @@ interface ChatMessageRowProps {
   onCopy: (messageId: string, content: string) => Promise<void>;
   onRegenerate: (messageId: string) => Promise<void>;
   onFeedback: (messageId: string, value: "up" | "down") => Promise<void>;
+  onSaveToDoc: (messageId: string, content: string) => void;
+  onOpenArtifact: (messageId: string, content: string) => void;
 }
 
 function isCalendarEventData(value: unknown): value is CalendarEventCardData {
@@ -184,6 +186,8 @@ export function ChatMessageRow({
   onCopy,
   onRegenerate,
   onFeedback,
+  onSaveToDoc,
+  onOpenArtifact,
 }: ChatMessageRowProps) {
   const [copied, setCopied] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -215,6 +219,11 @@ export function ChatMessageRow({
   const handleFeedback = async (value: "up" | "down") => {
     await onFeedback(message.id, value);
   };
+
+  const handleSaveToDoc = () => onSaveToDoc(message.id, message.content);
+  const handleOpenArtifact = () => onOpenArtifact(message.id, message.content);
+
+  const isLong = message.content.length > 900;
 
   const showActions =
     message.role === "assistant" &&
@@ -397,9 +406,12 @@ export function ChatMessageRow({
             <MessageActions
               copied={copied}
               feedbackValue={message.feedback?.value}
+              isLong={isLong}
               onCopy={handleCopy}
               onRegenerate={handleRegenerate}
               onFeedback={handleFeedback}
+              onSaveToDoc={handleSaveToDoc}
+              onOpenArtifact={handleOpenArtifact}
             />
           </div>
         )}

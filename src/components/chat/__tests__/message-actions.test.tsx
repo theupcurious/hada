@@ -17,6 +17,7 @@ describe("MessageActions", () => {
         onCopy={onCopy}
         onRegenerate={onRegenerate}
         onFeedback={onFeedback}
+        onSaveToDoc={vi.fn()}
       />,
     );
 

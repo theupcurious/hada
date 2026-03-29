@@ -9,6 +9,9 @@ import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { ChatMessageRow } from "@/components/chat/chat-message-row";
+import { ArtifactPanel } from "@/components/chat/artifact-panel";
+import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
+import { DocAttachPicker, AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
 import type { TaskPlan } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
 import type { StreamingSegment } from "@/components/chat/streaming-message";
@@ -123,6 +126,9 @@ export default function ChatPage() {
   const [recentRuns, setRecentRuns] = useState<Array<{ id: string; input_preview: string | null; source: string; status: string; started_at: string }>>([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [artifactContent, setArtifactContent] = useState<{ title: string; content: string } | null>(null);
+  const [saveModalContent, setSaveModalContent] = useState<string | null>(null);
+  const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([]);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -851,10 +857,38 @@ export default function ChatPage() {
     return currentAssistantId;
   }, [applyAgentEventToMessage, ensureBackgroundJobPolling]);
 
+  const handleSaveToDoc = (_messageId: string, content: string) => {
+    setSaveModalContent(content);
+  };
+
+  const handleOpenArtifact = (_messageId: string, content: string) => {
+    const titleMatch = content.match(/^#{1,3}\s+(.+)/m);
+    const title = titleMatch ? titleMatch[1].trim() : "Response";
+    setArtifactContent({ title, content });
+  };
+
+  const handleAttachDoc = (doc: AttachedDoc) => {
+    setAttachedDocs((prev) => [...prev, doc]);
+  };
+
+  const handleDetachDoc = (docId: string) => {
+    setAttachedDocs((prev) => prev.filter((d) => d.id !== docId));
+  };
+
   const sendMessage = async (overrideMessage?: string) => {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
     setShowConversation(true);
+
+    // Build message with attached doc context prepended
+    const docsToSend = attachedDocs;
+    let fullMessage = messageText.trim();
+    if (docsToSend.length > 0) {
+      const context = docsToSend
+        .map((d) => `[Attached document: ${d.title}]\n${d.content}`)
+        .join("\n\n");
+      fullMessage = `${context}\n\n---\n\n${fullMessage}`;
+    }
 
     const tempUserId = `temp-user-${Date.now()}`;
     const tempAssistantId = `temp-assistant-${Date.now()}`;
@@ -876,6 +910,7 @@ export default function ChatPage() {
       },
     ]);
     if (!overrideMessage) setInput("");
+    setAttachedDocs([]);
     setIsLoading(true);
     setIsThinking(true);
 
@@ -884,7 +919,7 @@ export default function ChatPage() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: messageText.trim() }),
+        body: JSON.stringify({ message: fullMessage }),
       });
 
       resolvedAssistantId = await processChatStream(response, tempAssistantId, tempUserId);
@@ -1054,7 +1089,10 @@ export default function ChatPage() {
 
   const inputForm = (
     <form onSubmit={handleSubmit}>
-      <div className="glass relative rounded-2xl">
+      <div className="glass rounded-2xl">
+        {/* Attached doc chips */}
+        <AttachedDocChips attachedDocs={attachedDocs} onDetach={handleDetachDoc} />
+        {/* Textarea */}
         <textarea
           ref={textareaRef}
           value={input}
@@ -1068,24 +1106,33 @@ export default function ChatPage() {
           }}
           placeholder="Message Hada..."
           rows={1}
-          className="w-full resize-none bg-transparent px-4 py-4 pr-12 text-sm leading-6 outline-none placeholder:text-zinc-400 disabled:opacity-60"
+          className="w-full resize-none bg-transparent px-4 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 disabled:opacity-60"
           disabled={isLoading}
         />
-        <Button
-          type="submit"
-          disabled={isLoading || !input.trim()}
-          size="sm"
-          className="absolute bottom-2 right-2 rounded-xl gradient-brand text-white border-0 shadow-md shadow-teal-500/20 disabled:opacity-40"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="h-4 w-4"
+        {/* Bottom bar: attach + send */}
+        <div className="flex items-center gap-1 px-2 pb-2">
+          <DocAttachPicker
+            attachedDocs={attachedDocs}
+            onAttach={handleAttachDoc}
+            onDetach={handleDetachDoc}
+          />
+          <div className="flex-1" />
+          <Button
+            type="submit"
+            disabled={isLoading || !input.trim()}
+            size="sm"
+            className="rounded-xl gradient-brand text-white border-0 shadow-md shadow-teal-500/20 disabled:opacity-40"
           >
-            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-          </svg>
-        </Button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="h-4 w-4"
+            >
+              <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+            </svg>
+          </Button>
+        </div>
       </div>
       <p className="mt-2 hidden text-center text-xs text-zinc-400 sm:block">
         Enter to send, Shift+Enter for a new line. Hada can make mistakes — verify important information.
@@ -1178,7 +1225,7 @@ export default function ChatPage() {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden flex">
-        <div className="flex h-full flex-col w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6">
+        <div className={`flex h-full flex-col transition-all duration-300 ${artifactContent ? "w-full md:max-w-none md:px-3 sm:px-3" : "w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
 
           {/* Messages Area */}
           <div className="flex-1 min-h-0 py-4">
@@ -1347,6 +1394,8 @@ export default function ChatPage() {
                           onCopy={handleCopyMessage}
                           onRegenerate={handleRegenerateMessage}
                           onFeedback={handleMessageFeedback}
+                          onSaveToDoc={handleSaveToDoc}
+                          onOpenArtifact={handleOpenArtifact}
                         />
                       </motion.div>
                     ))}
@@ -1365,7 +1414,32 @@ export default function ChatPage() {
           )}
         </div>
 
+        {/* Artifact Panel */}
+        <AnimatePresence>
+          {artifactContent && (
+            <motion.div
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: "42%" }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="hidden md:flex flex-col shrink-0 overflow-hidden"
+            >
+              <ArtifactPanel
+                artifact={{ title: artifactContent.title, content: artifactContent.content }}
+                onClose={() => setArtifactContent(null)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      {/* Save to Doc modal */}
+      {saveModalContent !== null && (
+        <SaveToDocModal
+          content={saveModalContent}
+          onClose={() => setSaveModalContent(null)}
+        />
+      )}
     </div>
   );
 }
