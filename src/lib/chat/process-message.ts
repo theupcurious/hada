@@ -156,13 +156,14 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     }
     responseText = assembled.trim() || fatalError || "I ran into an issue while processing that.";
     const cards = extractCardsFromToolResults(toolResultsForCards);
-    const followUpSuggestions = fatalError
-      ? []
-      : await generateFollowUpSuggestions({
-          provider,
-          userMessage: options.message,
-          assistantResponse: responseText,
-        }).catch(() => []);
+    const followUpSuggestions =
+      fatalError || options.source !== "web"
+        ? []
+        : await generateFollowUpSuggestions({
+            provider,
+            userMessage: options.message,
+            assistantResponse: responseText,
+          }).catch(() => []);
     const assistantMetadata: MessageMetadata = {
       source: options.source,
       runId,
