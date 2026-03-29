@@ -101,6 +101,7 @@ interface BackgroundJobPollResponse {
         pending?: boolean;
       };
       cards?: ChatCard[];
+      followUpSuggestions?: unknown;
       gatewayError?: { code?: string; message?: string };
     } | null;
   } | null;
@@ -473,6 +474,11 @@ export default function ChatPage() {
           cards: Array.isArray(data.assistantMessage?.metadata?.cards)
             ? (data.assistantMessage.metadata.cards as ChatCard[])
             : message.cards,
+          followUpSuggestions: Array.isArray(data.assistantMessage?.metadata?.followUpSuggestions)
+            ? (data.assistantMessage.metadata.followUpSuggestions as unknown[]).filter(
+                (v): v is string => typeof v === "string",
+              )
+            : message.followUpSuggestions,
           backgroundJob: {
             id: jobId,
             status: data.job!.status,

@@ -79,6 +79,9 @@ export async function POST(request: NextRequest) {
               conversationId: result.conversationId,
               userMessageId: result.userMessageId,
               cards: Array.isArray(result.metadata.cards) ? result.metadata.cards : undefined,
+              followUpSuggestions: Array.isArray(result.metadata.followUpSuggestions)
+                ? result.metadata.followUpSuggestions
+                : undefined,
               isError: !!result.metadata.gatewayError,
               errorMessage: result.metadata.gatewayError?.message,
             });
@@ -116,6 +119,9 @@ export async function POST(request: NextRequest) {
               conversationId: result.conversationId,
               userMessageId: result.userMessageId,
               cards: Array.isArray(result.metadata.cards) ? result.metadata.cards : undefined,
+              followUpSuggestions: Array.isArray(result.metadata.followUpSuggestions)
+                ? result.metadata.followUpSuggestions
+                : undefined,
               isError: !!result.metadata.gatewayError,
               errorMessage: result.metadata.gatewayError?.message,
             });
