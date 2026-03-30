@@ -29,7 +29,6 @@ Hada is an assistant application built around a local agent loop. It supports we
 - Telegram integration with account linking
 - Agent personas (Balanced, Concise, Friendly, Professional, Academic) and custom instructions, configurable per user in Settings
 - Settings at `/settings` for runtime status, integrations, preferences, persona, memory management, and chat reset
-- Dashboard at `/dashboard` for activity, analytics, memories, and tasks
 - Responsive chat/settings layouts tuned for mobile and narrow viewports
 
 ## Quick Start
@@ -106,7 +105,6 @@ npm run dev
 
 Open:
 - `http://localhost:3000/chat`
-- `http://localhost:3000/dashboard`
 - `http://localhost:3000/settings`
 
 ## Verification
@@ -122,11 +120,10 @@ npm run build
 - `src/app/api/background-jobs/[id]/route.ts` - background job poll API
 - `src/app/api/background-jobs/[id]/run/route.ts` - background job processor trigger
 - `src/app/api/tools/route.ts` - tool manifest introspection
-- `src/app/api/dashboard/` - dashboard APIs
+- `src/app/api/dashboard/` - dashboard data APIs (activity, analytics, memories, tasks)
 - `src/app/api/webhooks/telegram/route.ts` - Telegram webhook
 - `src/app/api/cron/route.ts` - scheduled task runner
 - `src/app/chat/page.tsx` - chat UI
-- `src/app/dashboard/page.tsx` - dashboard UI
 - `src/lib/chat/agent-loop.ts` - core runtime loop
 - `src/lib/chat/process-message.ts` - orchestration + telemetry
 - `src/lib/chat/card-extraction.ts` - tool-result to rich-card extraction

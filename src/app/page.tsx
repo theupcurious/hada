@@ -144,9 +144,9 @@ export default function Home() {
               { title: "Calendar", desc: "Schedule meetings, check availability, send invites", icon: "📅" },
               { title: "Email", desc: "Draft responses, summarize threads, send on your behalf", icon: "✉️" },
               { title: "Research", desc: "Find information, compare options, create summaries", icon: "🔍" },
-              { title: "Tasks", desc: "Track to-dos, set reminders, follow up automatically", icon: "✅" },
-              { title: "Bookings", desc: "Book appointments, restaurants, travel arrangements", icon: "🗓️" },
-              { title: "And more...", desc: "New skills added regularly — taxes, shopping, and beyond", icon: "✨" },
+              { title: "Tasks", desc: "Set reminders, schedule recurring jobs, follow up automatically", icon: "✅" },
+              { title: "Telegram", desc: "Message Hada from anywhere — works over Telegram too", icon: "💬" },
+              { title: "Memory", desc: "Remembers your preferences and context across every conversation", icon: "🧠" },
             ].map((feature, i) => (
               <motion.div
                 key={feature.title}
@@ -170,7 +170,7 @@ export default function Home() {
       <footer className="relative border-t border-border/50 px-6 py-8">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <p className="text-sm text-muted-foreground">Hada — Your AI Assistant</p>
-          <p className="text-sm text-muted-foreground">Built with care</p>
+          <p className="text-sm text-muted-foreground">© 2026 Hada</p>
         </div>
       </footer>
     </div>
