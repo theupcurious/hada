@@ -15,6 +15,7 @@ import { ScheduleViewCard } from "@/components/chat/schedule-view-card";
 import { TaskPlanCard } from "@/components/chat/task-plan-card";
 import { MessageActions } from "@/components/chat/message-actions";
 import { FollowUpChips } from "@/components/chat/follow-up-chips";
+import { Trash2 } from "lucide-react";
 import type { TaskPlan } from "@/lib/types/database";
 import type {
   CalendarEventCardData,
@@ -73,6 +74,7 @@ interface ChatMessageRowProps {
   onFeedback: (messageId: string, value: "up" | "down") => Promise<void>;
   onSaveToDoc: (messageId: string, content: string) => void;
   onOpenArtifact: (messageId: string, content: string) => void;
+  onDeleteMessage?: (messageId: string) => Promise<void>;
 }
 
 function isCalendarEventData(value: unknown): value is CalendarEventCardData {
@@ -188,6 +190,7 @@ export function ChatMessageRow({
   onFeedback,
   onSaveToDoc,
   onOpenArtifact,
+  onDeleteMessage,
 }: ChatMessageRowProps) {
   const [copied, setCopied] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -222,6 +225,10 @@ export function ChatMessageRow({
 
   const handleSaveToDoc = () => onSaveToDoc(message.id, message.content);
   const handleOpenArtifact = () => onOpenArtifact(message.id, message.content);
+  const handleDeleteMessage = async () => {
+    if (!onDeleteMessage) return;
+    await onDeleteMessage(message.id);
+  };
 
   const isLong = message.content.length > 900;
 
@@ -401,7 +408,7 @@ export function ChatMessageRow({
         {/* Message actions hover toolbar */}
         {showActions && (
           <div
-            className={`transition-opacity duration-150 ${isHovered ? "opacity-100" : "opacity-0"}`}
+            className={`inline-flex items-center gap-2 transition-opacity duration-150 ${isHovered ? "opacity-100" : "opacity-0"}`}
           >
             <MessageActions
               copied={copied}
@@ -413,6 +420,19 @@ export function ChatMessageRow({
               onSaveToDoc={handleSaveToDoc}
               onOpenArtifact={handleOpenArtifact}
             />
+            {onDeleteMessage && (
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Delete message"
+                title="Delete message"
+                onClick={() => void handleDeleteMessage()}
+                className="rounded-full border border-zinc-200/80 bg-white/95 text-zinc-500 shadow-lg shadow-black/5 backdrop-blur hover:text-red-600 dark:border-zinc-800/80 dark:bg-zinc-950/90 dark:text-zinc-400 dark:hover:text-red-400"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         )}
 
