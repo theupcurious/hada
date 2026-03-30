@@ -129,6 +129,7 @@ export default function ChatPage() {
   const [artifactContent, setArtifactContent] = useState<{ title: string; content: string } | null>(null);
   const [saveModalContent, setSaveModalContent] = useState<string | null>(null);
   const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([]);
+  const [deletingChat, setDeletingChat] = useState(false);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1043,6 +1044,44 @@ export default function ChatPage() {
     router.push("/");
   };
 
+  const handleDeleteCurrentChat = async () => {
+    if (deletingChat || isLoading) return;
+    const confirmed = window.confirm(
+      "Delete this chat? This removes the current conversation and its messages.",
+    );
+    if (!confirmed) return;
+
+    setDeletingChat(true);
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "DELETE",
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to delete chat.");
+      }
+
+      setMessages([]);
+      setShowConversation(false);
+      setHasMoreHistory(false);
+      setIsLoadingMore(false);
+      setAttachedDocs([]);
+      setArtifactContent(null);
+      setSaveModalContent(null);
+      setIsThinking(false);
+      setIsLoading(false);
+      setRecentRuns([]);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to delete chat.");
+    } finally {
+      setDeletingChat(false);
+    }
+  };
+
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) {
@@ -1433,6 +1472,18 @@ export default function ChatPage() {
           {/* Input Area - Fixed at bottom when there are messages */}
           {showConversation && messages.length > 0 && (
             <div className="shrink-0 border-t border-border/50 bg-background/80 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 backdrop-blur-md">
+              <div className="mb-2 flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void handleDeleteCurrentChat()}
+                  disabled={deletingChat || isLoading}
+                  className="text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
+                >
+                  {deletingChat ? "Deleting..." : "Delete chat"}
+                </Button>
+              </div>
               {inputForm}
             </div>
           )}
