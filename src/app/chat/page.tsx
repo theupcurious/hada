@@ -1046,7 +1046,7 @@ export default function ChatPage() {
 
   const handleDeleteMessage = async (messageId: string) => {
     if (deletingMessageId || isLoading) return;
-    const confirmed = window.confirm("Delete this message from chat history?");
+    const confirmed = window.confirm("Delete this chat turn (prompt + response) from history?");
     if (!confirmed) return;
 
     setDeletingMessageId(messageId);
@@ -1056,6 +1056,7 @@ export default function ChatPage() {
       });
       const data = (await response.json().catch(() => ({}))) as {
         success?: boolean;
+        deletedIds?: string[];
         error?: string;
       };
 
@@ -1064,7 +1065,12 @@ export default function ChatPage() {
       }
 
       setMessages((prev) => {
-        const next = prev.filter((message) => message.id !== messageId);
+        const idsToDelete = new Set(
+          Array.isArray(data.deletedIds) && data.deletedIds.length
+            ? data.deletedIds
+            : [messageId],
+        );
+        const next = prev.filter((message) => !idsToDelete.has(message.id));
         if (!next.length) {
           window.setTimeout(() => setShowConversation(false), 0);
         }
