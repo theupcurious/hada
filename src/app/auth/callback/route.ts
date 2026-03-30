@@ -29,6 +29,11 @@ export async function GET(request: Request) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
+    // PKCE exchange failed — this happens when the verification link is opened in a
+    // different browser or device than where signup occurred (the code_verifier cookie
+    // is missing). Supabase already confirmed the email server-side, so redirect to
+    // login with a success message instead of an error page.
+    return NextResponse.redirect(`${origin}/auth/login?verified=1`);
   }
 
   if (tokenHash && type) {

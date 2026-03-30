@@ -11,6 +11,7 @@ export default function LoginForm() {
   const searchParams = useSearchParams();
   const emailFromQuery = searchParams.get("email") || "";
   const verifyFromQuery = searchParams.get("verify") === "1";
+  const emailVerified = searchParams.get("verified") === "1";
 
   const [email, setEmail] = useState(emailFromQuery);
   const [password, setPassword] = useState("");
@@ -143,6 +144,14 @@ export default function LoginForm() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
+          {emailVerified && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+              <p className="font-medium">Email verified!</p>
+              <p className="mt-1 text-emerald-700 dark:text-emerald-300">
+                Your email address is confirmed. Sign in to get started.
+              </p>
+            </div>
+          )}
           {showVerifyBanner && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-medium">Verify your email to finish signup</p>
