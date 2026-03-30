@@ -1141,12 +1141,12 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="flex h-dvh w-full max-w-full flex-col overflow-x-hidden bg-zinc-50 dark:bg-zinc-950">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
 
-      <header className="max-w-full border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
-        <div className="flex w-full max-w-full items-center justify-between gap-2 sm:gap-3">
-          <div className="flex min-w-0 max-w-full items-center gap-2.5 sm:gap-3">
+      <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
+        <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-md shadow-teal-500/20">
               <span className="text-sm font-bold text-white">H</span>
             </div>
@@ -1175,7 +1175,7 @@ export default function ChatPage() {
               </span>
             </Link>
           </div>
-          <div className="flex shrink-0 items-center justify-end gap-1 sm:gap-1.5">
+          <div className="flex items-center justify-end gap-1 sm:gap-1.5">
             <span className="hidden text-sm text-muted-foreground xl:block">{user?.email}</span>
             <ThemeToggle />
 
@@ -1224,13 +1224,13 @@ export default function ChatPage() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex min-w-0 max-w-full flex-1 overflow-hidden">
-        <div className={`min-w-0 flex h-full w-full flex-col transition-all duration-300 ${artifactContent ? "md:max-w-none md:px-3 sm:px-3" : "max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
+      <div className="flex min-w-0 flex-1 overflow-hidden">
+        <div className={`flex min-w-0 h-full w-full flex-col ${artifactContent ? "md:max-w-none md:px-3 sm:px-3" : "max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
 
           {/* Messages Area */}
           <div className="flex-1 min-h-0 py-4">
             <ScrollArea
-              className="h-full min-w-0 max-w-full overflow-x-hidden"
+              className="h-full"
               ref={scrollAreaRef}
               onScrollCapture={(e) => {
                 const target = e.target as HTMLElement;
@@ -1240,7 +1240,7 @@ export default function ChatPage() {
                 }
               }}
             >
-              <div className="min-w-0 w-full max-w-full space-y-6 pb-6 pr-2 sm:pr-4">
+              <div className="space-y-6 pb-6 pr-3 sm:pr-4">
                 {isLoadingMore && (
                   <div className="flex justify-center py-2">
                     <span className="text-sm text-zinc-400">Loading earlier messages...</span>
