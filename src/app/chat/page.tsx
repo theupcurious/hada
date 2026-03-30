@@ -129,7 +129,6 @@ export default function ChatPage() {
   const [artifactContent, setArtifactContent] = useState<{ title: string; content: string } | null>(null);
   const [saveModalContent, setSaveModalContent] = useState<string | null>(null);
   const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([]);
-  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1044,45 +1043,6 @@ export default function ChatPage() {
     router.push("/");
   };
 
-  const handleDeleteMessage = async (messageId: string) => {
-    if (deletingMessageId || isLoading) return;
-    const confirmed = window.confirm("Delete this chat turn (prompt + response) from history?");
-    if (!confirmed) return;
-
-    setDeletingMessageId(messageId);
-    try {
-      const response = await fetch(`/api/messages/${messageId}`, {
-        method: "DELETE",
-      });
-      const data = (await response.json().catch(() => ({}))) as {
-        success?: boolean;
-        deletedIds?: string[];
-        error?: string;
-      };
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to delete message.");
-      }
-
-      setMessages((prev) => {
-        const idsToDelete = new Set(
-          Array.isArray(data.deletedIds) && data.deletedIds.length
-            ? data.deletedIds
-            : [messageId],
-        );
-        const next = prev.filter((message) => !idsToDelete.has(message.id));
-        if (!next.length) {
-          window.setTimeout(() => setShowConversation(false), 0);
-        }
-        return next;
-      });
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to delete message.");
-    } finally {
-      setDeletingMessageId(null);
-    }
-  };
-
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) {
@@ -1460,7 +1420,6 @@ export default function ChatPage() {
                           onFeedback={handleMessageFeedback}
                           onSaveToDoc={handleSaveToDoc}
                           onOpenArtifact={handleOpenArtifact}
-                          onDeleteMessage={handleDeleteMessage}
                         />
                       </motion.div>
                     ))}
