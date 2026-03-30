@@ -1086,10 +1086,18 @@ export default function ChatPage() {
   ];
 
   const shouldShowLanding = !showConversation && !isLoading;
+  const hasLastChat = messages.length > 0 || recentRuns.length > 0;
+
+  const handleContinueLastChat = async () => {
+    if (!messages.length) {
+      await loadHistory();
+    }
+    setShowConversation(true);
+  };
 
   const inputForm = (
-    <form onSubmit={handleSubmit}>
-      <div className="glass rounded-2xl">
+    <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
+      <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden">
         {/* Attached doc chips */}
         <AttachedDocChips attachedDocs={attachedDocs} onDetach={handleDetachDoc} />
         {/* Textarea */}
@@ -1240,7 +1248,7 @@ export default function ChatPage() {
                 }
               }}
             >
-              <div className="space-y-6 pb-6 pr-3 sm:pr-4">
+              <div className="space-y-6 pb-6 pr-3 sm:pr-4 min-w-0 w-full">
                 {isLoadingMore && (
                   <div className="flex justify-center py-2">
                     <span className="text-sm text-zinc-400">Loading earlier messages...</span>
@@ -1255,7 +1263,7 @@ export default function ChatPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="flex min-h-full w-full flex-col items-center justify-start overflow-x-hidden px-4 pb-6 pt-4 text-center sm:min-h-[60vh] sm:justify-center sm:px-4"
+                    className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-6 pt-4 text-center sm:min-h-[60vh] sm:justify-center sm:px-4"
                   >
                     <div className="relative mb-5 hidden sm:block sm:mb-6">
                       <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-teal-400/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
@@ -1263,7 +1271,7 @@ export default function ChatPage() {
                         <span className="text-2xl font-bold text-white">H</span>
                       </div>
                     </div>
-                    <h1 className="w-full break-words text-2xl font-semibold sm:text-3xl">
+                    <h1 className="w-full max-w-full text-center break-words text-2xl font-semibold sm:text-3xl">
                       <span className="gradient-text">{greetingText}</span>, {user?.name || "there"}
                     </h1>
                     <p className="mt-2 w-full max-w-md text-sm text-zinc-500 sm:text-lg">What can I help you with today?</p>
@@ -1318,7 +1326,7 @@ export default function ChatPage() {
                         <button
                           key={shortcut.title}
                           onClick={() => void sendMessage(shortcut.prompt)}
-                          className="glass group rounded-xl p-3 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-teal-500/5 sm:p-4"
+                          className="glass group min-w-0 rounded-xl p-3 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-teal-500/5 sm:p-4"
                         >
                           <div className="flex items-start gap-2.5 sm:gap-3">
                             <span className="mt-0.5 text-base leading-none sm:text-lg">{shortcut.icon}</span>
@@ -1335,12 +1343,25 @@ export default function ChatPage() {
                       ))}
                     </div>
 
+                    {hasLastChat ? (
+                      <div className="mt-5 w-full max-w-2xl sm:hidden">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => void handleContinueLastChat()}
+                        >
+                          Continue last chat
+                        </Button>
+                      </div>
+                    ) : null}
+
                     {recentRuns.length > 0 ? (
-                      <div className="mt-5 w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6">
+                      <div className="mt-5 hidden w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6 sm:block">
                         <div className="mb-3 flex items-center justify-between">
                           <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Recent activity</p>
-                          {messages.length > 0 && (
-                            <Button size="sm" variant="outline" onClick={() => setShowConversation(true)}>
+                          {hasLastChat && (
+                            <Button size="sm" variant="outline" onClick={() => void handleContinueLastChat()}>
                               Open chat
                             </Button>
                           )}
@@ -1362,12 +1383,12 @@ export default function ChatPage() {
                         </div>
                       </div>
                     ) : messages.length > 0 ? (
-                      <div className="mt-5 w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6">
+                      <div className="mt-5 hidden w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6 sm:block">
                         <div className="flex min-w-0 items-center justify-between gap-3">
                           <p className="min-w-0 flex-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
                             Continue where you left off
                           </p>
-                          <Button size="sm" variant="outline" onClick={() => setShowConversation(true)}>
+                          <Button size="sm" variant="outline" onClick={() => void handleContinueLastChat()}>
                             Open chat
                           </Button>
                         </div>
