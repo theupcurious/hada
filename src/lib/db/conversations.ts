@@ -231,6 +231,14 @@ export async function clearLatestConversation(
     return false;
   }
 
+  // Delete agent_runs for this conversation so they no longer appear
+  // in the "Recent activity" panel on the welcome page.
+  await supabase
+    .from('agent_runs')
+    .delete()
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userId);
+
   const { error } = await supabase
     .from('conversations')
     .delete()
