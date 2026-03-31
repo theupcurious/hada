@@ -129,9 +129,10 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       } else if (event.type === "text_delta") {
         assembled += event.content;
       } else if (event.type === "done") {
-        if (!assembled.trim()) {
-          assembled = event.content;
-        }
+        // done.content is the terminal iteration text only — always use it
+        // as the authoritative saved response, overriding any intermediate
+        // "Let me search…" text that streaming may have accumulated.
+        assembled = event.content;
       } else if (event.type === "tool_result") {
         toolCallLog.push({
           name: event.name,

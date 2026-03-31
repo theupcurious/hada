@@ -181,9 +181,8 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
             llmMessages.push({
               role: "system",
               content:
-                "Your previous turn promised to use a tool or continue with an action, " +
-                "but you did not actually do it. Do not narrate the next step. " +
-                "Either call the needed tool now or give the final answer now.",
+                "Your previous turn promised to use a tool but did not call it. " +
+                "Call the tool now. Do not narrate — act.",
             });
             continue;
           }
