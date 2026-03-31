@@ -9,7 +9,7 @@ export interface StreamingSegment {
 
 export function StreamingMessage({ segments }: { segments: StreamingSegment[] }) {
   return (
-    <div className="min-w-0 w-full max-w-full overflow-hidden text-sm leading-relaxed [overflow-wrap:anywhere]">
+    <div className="min-w-0 w-full max-w-full overflow-hidden text-base leading-relaxed [overflow-wrap:anywhere]">
       <AnimatePresence initial={false}>
         {segments.map((segment) => (
           <motion.span
