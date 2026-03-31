@@ -899,7 +899,7 @@ function summarizeThinkingForDisplay(text: string): string | null {
   return "Analyzing the request and deciding the next step.";
 }
 
-function isDeferredToolIntentResponse(text: string): boolean {
+export function isDeferredToolIntentResponse(text: string): boolean {
   const normalized = text.replace(/\s+/g, " ").trim().toLowerCase();
   if (!normalized) {
     return false;
@@ -907,12 +907,8 @@ function isDeferredToolIntentResponse(text: string): boolean {
 
   return [
     /\blet me (search|check|look up|find|fetch|research|compare|dig deeper)\b/,
-    /\bi(?:'ll| will) (search|check|look up|find|fetch|research|compare)\b/,
-    /\bi(?:'m| am) going to (search|check|look up|find|fetch|research|compare)\b/,
-    /\bsearch for\b/,
-    /\bcheck for\b/,
-    /\blook up\b/,
-    /\bdig deeper\b/,
+    /\bi(?:'ll| will) (search|check|look up|find|fetch|research|compare|dig deeper)\b/,
+    /\bi(?:'m| am) going to (search|check|look up|find|fetch|research|compare|dig deeper)\b/,
   ].some((pattern) => pattern.test(normalized));
 }
 

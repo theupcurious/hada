@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
               id: result.assistantMessageId,
               conversationId: result.conversationId,
               userMessageId: result.userMessageId,
+              response: result.response,
               cards: Array.isArray(result.metadata.cards) ? result.metadata.cards : undefined,
               followUpSuggestions: Array.isArray(result.metadata.followUpSuggestions)
                 ? result.metadata.followUpSuggestions
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
               id: result.assistantMessageId,
               conversationId: result.conversationId,
               userMessageId: result.userMessageId,
+              response: result.response,
               cards: Array.isArray(result.metadata.cards) ? result.metadata.cards : undefined,
               followUpSuggestions: Array.isArray(result.metadata.followUpSuggestions)
                 ? result.metadata.followUpSuggestions

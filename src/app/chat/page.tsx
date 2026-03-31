@@ -725,6 +725,8 @@ export default function ChatPage() {
       if (event.type === "complete") {
         receivedTerminalEvent = true;
         const realAssistantId = String(event.id ?? currentAssistantId);
+        const terminalResponse =
+          typeof event.response === "string" ? event.response : null;
         setMessages((prev) =>
           prev.map((msg) => {
             if (userMessageId && msg.id === userMessageId) {
@@ -734,6 +736,7 @@ export default function ChatPage() {
               return {
                 ...msg,
                 id: realAssistantId,
+                content: terminalResponse ?? msg.content,
                 cards: Array.isArray(event.cards) ? (event.cards as ChatCard[]) : msg.cards,
                 followUpSuggestions: Array.isArray(event.followUpSuggestions)
                   ? (event.followUpSuggestions as string[]).filter((v): v is string => typeof v === "string")
