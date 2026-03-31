@@ -135,6 +135,7 @@ export default function ChatPage() {
   const eventOrderRef = useRef(0);
   const backgroundJobPollersRef = useRef(new Map<string, number>());
   const backgroundJobCursorRef = useRef(new Map<string, number>());
+  const pendingResponsePollRef = useRef<number | null>(null);
   const router = useRouter();
   const supabase = createClient();
   const { status: connectionStatus } = useHealthStatus(30000); // Poll every 30s
@@ -518,7 +519,7 @@ export default function ChatPage() {
     backgroundJobPollersRef.current.set(jobId, timer);
   }, [pollBackgroundJob]);
 
-  const loadHistory = useCallback(async (before?: string) => {
+  const loadHistory = useCallback(async (before?: string): Promise<Message[] | undefined> => {
     try {
       const url = new URL("/api/conversations/messages", window.location.origin);
       url.searchParams.set("limit", "25");
@@ -538,11 +539,15 @@ export default function ChatPage() {
         // Prepend older messages
         setMessages((prev) => [...loadedMessages, ...prev]);
       } else {
-        // Initial load
+        // Initial load — auto-show conversation if there are messages
         setMessages(loadedMessages);
+        if (loadedMessages.length > 0) {
+          setShowConversation(true);
+        }
       }
 
       setHasMoreHistory(data.hasMore);
+      return loadedMessages;
     } catch (error) {
       console.error("Failed to load history:", error);
     }
@@ -619,7 +624,7 @@ export default function ChatPage() {
       }
 
       // Load message history + recent activity in parallel
-      await Promise.all([
+      const [initialMessages] = await Promise.all([
         loadHistory(),
         fetch("/api/dashboard/activity?limit=3", { cache: "no-store" })
           .then((r) => r.ok ? r.json() : null)
@@ -631,6 +636,42 @@ export default function ChatPage() {
           .catch(() => null),
       ]);
       setIsLoadingHistory(false);
+
+      // If the last message is from the user with no assistant reply, the server may
+      // still be processing. Show a streaming placeholder and poll until the response lands.
+      if (initialMessages && initialMessages.length > 0) {
+        const lastMsg = initialMessages[initialMessages.length - 1];
+        if (lastMsg.role === "user") {
+          const placeholderId = `pending-${Date.now()}`;
+          setMessages((prev) => [
+            ...prev,
+            { id: placeholderId, role: "assistant", content: "", isStreaming: true, created_at: new Date().toISOString() },
+          ]);
+          setIsLoading(true);
+
+          const pollForResponse = () => {
+            pendingResponsePollRef.current = window.setTimeout(async () => {
+              try {
+                const res = await fetch("/api/conversations/messages?limit=10");
+                if (!res.ok) return;
+                const data = await res.json() as { messages: ApiMessage[] };
+                const latest: Message[] = data.messages.map(apiMessageToMessage);
+                const hasReply = latest.some((m) => m.role === "assistant");
+                if (hasReply) {
+                  setMessages(latest);
+                  setIsLoading(false);
+                  pendingResponsePollRef.current = null;
+                } else {
+                  pollForResponse();
+                }
+              } catch {
+                pollForResponse();
+              }
+            }, 3000);
+          };
+          pollForResponse();
+        }
+      }
     };
     initialize();
   }, [router, supabase, loadHistory]);
@@ -689,6 +730,9 @@ export default function ChatPage() {
         window.clearInterval(poller);
       }
       pollers.clear();
+      if (pendingResponsePollRef.current !== null) {
+        window.clearTimeout(pendingResponsePollRef.current);
+      }
     };
   }, []);
 
