@@ -24,6 +24,7 @@ export interface UserPermissions {
 export interface UserSettings {
   llm_provider?: LLMProviderName;
   llm_model?: string | null;
+  llm_fallback_model?: string | null;
   timezone?: string | null;
   persona?: string;
   custom_instructions?: string | null;

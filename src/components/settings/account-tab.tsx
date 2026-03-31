@@ -45,6 +45,9 @@ export function AccountTab() {
   const [loadingOpenRouterModels, setLoadingOpenRouterModels] = useState(false);
   const [openRouterModelsError, setOpenRouterModelsError] = useState<string | null>(null);
   const [openRouterPickerOpen, setOpenRouterPickerOpen] = useState(false);
+  const [fallbackModel, setFallbackModel] = useState("");
+  const [fallbackQuery, setFallbackQuery] = useState("");
+  const [fallbackPickerOpen, setFallbackPickerOpen] = useState(false);
   const [timezone, setTimezone] = useState("");
   const [persona, setPersona] = useState<string>("default");
   const [customInstructions, setCustomInstructions] = useState<string>("");
@@ -97,6 +100,9 @@ export function AccountTab() {
       setProvider(loadedProvider);
       setModel(loadedModel);
       setOpenRouterQuery(loadedModel);
+      const loadedFallback = typeof loaded.settings.llm_fallback_model === "string" ? loaded.settings.llm_fallback_model : "";
+      setFallbackModel(loadedFallback);
+      setFallbackQuery(loadedFallback);
       setTimezone(typeof loaded.settings.timezone === "string" ? loaded.settings.timezone : "");
       setPersona(typeof loaded.settings.persona === "string" ? loaded.settings.persona : "default");
       setCustomInstructions(typeof loaded.settings.custom_instructions === "string" ? loaded.settings.custom_instructions : "");
@@ -161,7 +167,18 @@ export function AccountTab() {
     setOpenRouterPickerOpen(false);
     setOpenRouterQuery("");
     setModel("");
+    setFallbackPickerOpen(false);
+    setFallbackQuery("");
+    setFallbackModel("");
   }
+
+  const normalizedFallbackQuery = fallbackQuery.trim().toLowerCase();
+  const filteredFallbackModels = openRouterModels
+    .filter((option) => {
+      if (!normalizedFallbackQuery) return true;
+      return `${option.id} ${option.name}`.toLowerCase().includes(normalizedFallbackQuery);
+    })
+    .slice(0, 60);
 
   const normalizedOpenRouterQuery = openRouterQuery.trim().toLowerCase();
   const filteredOpenRouterModels = openRouterModels
@@ -189,9 +206,11 @@ export function AccountTab() {
     if (isAdmin) {
       nextSettings.llm_provider = provider;
       nextSettings.llm_model = model.trim() || null;
+      nextSettings.llm_fallback_model = fallbackModel.trim() || null;
     } else {
       delete nextSettings.llm_provider;
       delete nextSettings.llm_model;
+      delete nextSettings.llm_fallback_model;
     }
 
     const { error } = await supabase
@@ -412,6 +431,62 @@ export function AccountTab() {
                 </div>
               )}
             </>
+          )}
+          {isAdmin && provider === "openrouter" && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Fallback model (OpenRouter)</label>
+              <div className="relative">
+                <Input
+                  value={fallbackQuery}
+                  onFocus={() => setFallbackPickerOpen(true)}
+                  onBlur={() => { window.setTimeout(() => setFallbackPickerOpen(false), 120); }}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setFallbackQuery(nextValue);
+                    setFallbackModel(nextValue.trim());
+                    setFallbackPickerOpen(true);
+                  }}
+                  placeholder={loadingOpenRouterModels ? "Loading models..." : "Search fallback model"}
+                />
+                {fallbackPickerOpen && (
+                  <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+                    <button
+                      type="button"
+                      className={`w-full rounded px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+                        !fallbackModel ? "bg-zinc-100 dark:bg-zinc-800" : "text-zinc-700 dark:text-zinc-300"
+                      }`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { setFallbackModel(""); setFallbackQuery(""); setFallbackPickerOpen(false); }}
+                    >
+                      No fallback model
+                    </button>
+                    {filteredFallbackModels.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`w-full rounded px-3 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+                          fallbackModel === option.id ? "bg-zinc-100 dark:bg-zinc-800" : ""
+                        }`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setFallbackModel(option.id); setFallbackQuery(option.id); setFallbackPickerOpen(false); }}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium">{option.name}</span>
+                          <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">{option.priceSummary}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{option.id}</p>
+                      </button>
+                    ))}
+                    {!loadingOpenRouterModels && filteredFallbackModels.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">No models found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Used automatically if the primary model fails. Leave blank for no fallback.
+              </p>
+            </div>
           )}
           <div className="space-y-2">
             <label className="text-sm font-medium">Timezone (optional)</label>

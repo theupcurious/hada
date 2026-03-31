@@ -90,6 +90,7 @@ export const PROVIDERS: Record<LLMProviderName, ProviderConfig> = {
 export interface ProviderSelection {
   provider: LLMProviderName;
   model: string;
+  fallbackModel?: string;
   apiKey: string;
   config: ProviderConfig;
 }
@@ -111,13 +112,18 @@ export function resolveProviderSelection(settings?: UserSettings): ProviderSelec
     process.env.LLM_MODEL ||
     config.defaultModel;
 
+  const fallbackModel =
+    (typeof settings?.llm_fallback_model === "string" && settings.llm_fallback_model.trim()) ||
+    config.fallbackModel ||
+    undefined;
+
   const apiKey = process.env.LLM_API_KEY || "";
 
   if (!apiKey) {
     throw new Error(`Missing API key for provider "${provider}". Set the LLM_API_KEY environment variable.`);
   }
 
-  return { provider, model, apiKey, config };
+  return { provider, model, fallbackModel, apiKey, config };
 }
 
 export async function callLLM(options: {
@@ -172,7 +178,7 @@ export async function* callLLMStream(options: {
       lastError = error;
       if (!isTransientError(error) || attempt >= maxRetries) {
         // Attempt fallback model (non-streaming)
-        const fallback = options.selection.config.fallbackModel;
+        const fallback = options.selection.fallbackModel;
         if (fallback && fallback !== options.selection.model) {
           try {
             const result = await callOpenAICompatible({
