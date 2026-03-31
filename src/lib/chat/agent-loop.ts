@@ -114,6 +114,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         let apiToolCalls: LLMToolCall[] = [];
         let iterationText = "";
         const thinkFilter = createThinkFilter();
+        let thinkingEventYielded = false;
 
         for await (const streamEvent of callLLMStream({
           selection: options.provider,
@@ -125,6 +126,13 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           if (streamEvent.type === "text") {
             rawContent += streamEvent.chunk;
             const emittable = thinkFilter.feed(streamEvent.chunk);
+            // Emit early thinking signal as soon as we detect a <think> block
+            // so the UI can show "Thinking..." instead of being silent for 60+ seconds.
+            if (thinkFilter.phase === "in_think" && !thinkingEventYielded) {
+              thinkingEventYielded = true;
+              markProgress();
+              yield { type: "thinking", content: "Analyzing the request..." };
+            }
             if (emittable) {
               iterationText += emittable;
               yield { type: "text_delta", content: emittable };
@@ -143,7 +151,9 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
         markProgress();
 
-        const thinkingContent = summarizeThinkingForDisplay(rawContent);
+        // Only emit a post-stream thinking summary if we didn't already emit one early.
+        // (Avoids duplicate thinking events in the UI for long think blocks.)
+        const thinkingContent = thinkingEventYielded ? null : summarizeThinkingForDisplay(rawContent);
         if (thinkingContent) {
           markProgress();
           yield { type: "thinking", content: thinkingContent };
@@ -761,6 +771,7 @@ function formatDurationForMessage(durationMs: number): string {
 interface ThinkFilter {
   feed(chunk: string): string;
   flush(): string;
+  readonly phase: "detecting" | "in_think" | "streaming";
 }
 
 function createThinkFilter(): ThinkFilter {
@@ -822,7 +833,11 @@ function createThinkFilter(): ThinkFilter {
     return "";
   }
 
-  return { feed, flush };
+  return {
+    feed,
+    flush,
+    get phase() { return phase; },
+  };
 }
 
 // ─── Text chunking ────────────────────────────────────────────────────────────

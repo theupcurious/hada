@@ -72,8 +72,13 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   };
   const tools = createTools(toolContext, { connectedIntegrations });
 
-  // Round 2: everything that needs conversationId or tools, all in parallel
-  const [agentRunId, userMessage, builtPrompt, context] = await Promise.all([
+  // Round 2: save user message + build prompt + create agent run in parallel.
+  // NOTE: assembleConversationContext is intentionally excluded here and runs
+  // after saveMessage commits. Running them in the same Promise.all creates a
+  // race: PostgreSQL read-committed isolation means the SELECT can complete
+  // before the INSERT is visible, causing the model to respond to the previous
+  // message instead of the current one.
+  const [agentRunId, userMessage, builtPrompt] = await Promise.all([
     createAgentRunRecord({
       supabase,
       conversationId: conversation.id,
@@ -95,8 +100,10 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       tools,
       connectedIntegrations,
     }),
-    assembleConversationContext({ supabase, conversationId: conversation.id }),
   ]);
+
+  // Round 3: assemble context after user message is committed to DB.
+  const context = await assembleConversationContext({ supabase, conversationId: conversation.id });
 
   toolContext.timezone =
     typeof builtPrompt.userSettings.timezone === "string"
