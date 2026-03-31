@@ -160,19 +160,10 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     }
     responseText = assembled.trim() || fatalError || "I ran into an issue while processing that.";
     const cards = extractCardsFromToolResults(toolResultsForCards);
-    const followUpSuggestions =
-      fatalError || options.source !== "web"
-        ? []
-        : await generateFollowUpSuggestions({
-            provider,
-            userMessage: options.message,
-            assistantResponse: responseText,
-          }).catch(() => []);
-    const assistantMetadata: MessageMetadata = {
+    const initialMetadata: MessageMetadata = {
       source: options.source,
       runId,
       ...(cards.length ? { cards } : {}),
-      ...(followUpSuggestions.length ? { followUpSuggestions } : {}),
       ...(options.backgroundJobId
         ? {
             backgroundJob: {
@@ -190,22 +181,39 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
           supabase,
           options.assistantMessageId,
           responseText,
-          assistantMetadata,
+          initialMetadata,
         )
       : await saveMessage(
           supabase,
           conversation.id,
           "assistant",
           responseText,
-          assistantMetadata,
+          initialMetadata,
         );
 
-    await maybeCompactConversation({
+    await emitEvent(options.onEvent, { type: "message_saved", id: assistantMessage.id });
+
+    const followUpSuggestions =
+      fatalError || options.source !== "web"
+        ? []
+        : await generateFollowUpSuggestions({
+            provider,
+            userMessage: options.message,
+            assistantResponse: responseText,
+          }).catch(() => []);
+
+    if (followUpSuggestions.length > 0) {
+      initialMetadata.followUpSuggestions = followUpSuggestions;
+      await updateMessageById(supabase, assistantMessage.id, responseText, initialMetadata);
+      await emitEvent(options.onEvent, { type: "follow_up_suggestions", suggestions: followUpSuggestions });
+    }
+
+    void maybeCompactConversation({
       supabase,
       conversationId: conversation.id,
       provider,
       userId: options.userId,
-    });
+    }).catch((e) => console.error("Compaction failed", e));
 
     void extractMemoriesFromTurn({
       supabase,
@@ -220,7 +228,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     agentRunStatus = fatalError ? deriveAgentRunStatus(fatalError) : "completed";
     result = {
       response: responseText,
-      metadata: assistantMetadata,
+      metadata: initialMetadata,
       conversationId: conversation.id,
       userMessageId: userMessage.id,
       assistantMessageId: assistantMessage.id,

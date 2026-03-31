@@ -55,9 +55,7 @@ export function buildToolStatusPills(input: ToolStatusInput): ToolStatusPill[] {
     pills.push({ id: "analyzing", label: "Analyzing findings", tone: "working" });
   }
 
-  if (input.hasVisibleContent || input.thinkingCount > 0) {
-    pills.push({ id: "drafting", label: "Drafting response", tone: "working" });
-  }
+
 
   return dedupePills(pills);
 }

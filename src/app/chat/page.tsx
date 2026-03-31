@@ -748,6 +748,32 @@ export default function ChatPage() {
           }),
         );
         currentAssistantId = realAssistantId;
+      } else if (event.type === "message_saved") {
+        const realAssistantId = String(event.id ?? currentAssistantId);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === currentAssistantId
+              ? {
+                  ...msg,
+                  id: realAssistantId,
+                  isStreaming: false,
+                }
+              : msg,
+          ),
+        );
+        currentAssistantId = realAssistantId;
+      } else if (event.type === "follow_up_suggestions") {
+        const suggestions = Array.isArray(event.suggestions) ? (event.suggestions as string[]) : [];
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === currentAssistantId
+              ? {
+                  ...msg,
+                  followUpSuggestions: suggestions,
+                }
+              : msg,
+          ),
+        );
       } else if (event.type === "error") {
         receivedTerminalEvent = true;
         setMessages((prev) =>

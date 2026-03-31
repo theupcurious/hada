@@ -259,7 +259,6 @@ export function ChatMessageRow({
         {message.role === "assistant" &&
           (message.traceEvents?.length || message.thinkingEvents?.length) ? (
           <AgentTraceTimeline
-            key={`${message.id}-${message.isStreaming ? "streaming" : "idle"}`}
             traces={message.traceEvents || []}
             thinking={message.thinkingEvents || []}
             isStreaming={message.isStreaming}
@@ -399,20 +398,24 @@ export function ChatMessageRow({
         )}
 
         {/* Message actions hover toolbar */}
-        {showActions && (
-          <div
-            className={`inline-flex items-center gap-2 transition-opacity duration-150 ${isHovered ? "opacity-100" : "opacity-0"}`}
-          >
-            <MessageActions
-              copied={copied}
-              feedbackValue={message.feedback?.value}
-              isLong={isLong}
-              onCopy={handleCopy}
-              onRegenerate={handleRegenerate}
-              onFeedback={handleFeedback}
-              onSaveToDoc={handleSaveToDoc}
-              onOpenArtifact={handleOpenArtifact}
-            />
+        {message.role === "assistant" && message.content.trim().length > 0 && (
+          <div className="min-h-[32px] mt-2 relative">
+            <div
+              className={`absolute top-0 left-0 inline-flex items-center gap-2 transition-opacity duration-150 ${
+                !message.isStreaming && isHovered ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+              }`}
+            >
+              <MessageActions
+                copied={copied}
+                feedbackValue={message.feedback?.value}
+                isLong={isLong}
+                onCopy={handleCopy}
+                onRegenerate={handleRegenerate}
+                onFeedback={handleFeedback}
+                onSaveToDoc={handleSaveToDoc}
+                onOpenArtifact={handleOpenArtifact}
+              />
+            </div>
           </div>
         )}
 
