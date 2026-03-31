@@ -204,7 +204,13 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
 
     if (followUpSuggestions.length > 0) {
       initialMetadata.followUpSuggestions = followUpSuggestions;
-      await updateMessageById(supabase, assistantMessage.id, responseText, initialMetadata);
+      try {
+        await updateMessageById(supabase, assistantMessage.id, responseText, initialMetadata);
+      } catch (error) {
+        // Follow-up suggestions are non-critical. If this persistence step fails,
+        // keep the successful assistant response and continue the request.
+        console.error("Failed to persist follow-up suggestions", error);
+      }
       await emitEvent(options.onEvent, { type: "follow_up_suggestions", suggestions: followUpSuggestions });
     }
 

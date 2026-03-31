@@ -83,10 +83,14 @@ export async function updateMessageById(
     })
     .eq("id", messageId)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw new Error(`Failed to update message: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error(`Failed to update message: no row matched id ${messageId}`);
   }
 
   return data as Message;
@@ -226,18 +230,33 @@ export async function clearLatestConversation(
   userId: string
 ): Promise<boolean> {
   const conversationId = await getConversationId(supabase, userId);
+  const { count: webRunCount, error: webRunCountError } = await supabase
+    .from("agent_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("source", "web");
 
-  if (!conversationId) {
-    return false;
+  if (webRunCountError) {
+    throw new Error(`Failed to inspect chat activity: ${webRunCountError.message}`);
   }
 
-  // Delete agent_runs for this conversation so they no longer appear
-  // in the "Recent activity" panel on the welcome page.
-  await supabase
-    .from('agent_runs')
+  const cleared = Boolean(conversationId) || ((webRunCount || 0) > 0);
+
+  // Remove activity rows tied to web chat so the welcome "Recent activity"
+  // panel reflects a cleared chat state.
+  const { error: runsError } = await supabase
+    .from("agent_runs")
     .delete()
-    .eq('conversation_id', conversationId)
-    .eq('user_id', userId);
+    .eq("user_id", userId)
+    .eq("source", "web");
+
+  if (runsError) {
+    throw new Error(`Failed to clear chat activity: ${runsError.message}`);
+  }
+
+  if (!conversationId) {
+    return cleared;
+  }
 
   const { error } = await supabase
     .from('conversations')

@@ -621,7 +621,7 @@ export default function ChatPage() {
       // Load message history + recent activity in parallel
       await Promise.all([
         loadHistory(),
-        fetch("/api/dashboard/activity?limit=3")
+        fetch("/api/dashboard/activity?limit=3", { cache: "no-store" })
           .then((r) => r.ok ? r.json() : null)
           .then((d) => {
             if (!d) return;

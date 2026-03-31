@@ -39,12 +39,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      runs: runs || [],
-      total: count || 0,
-      limit,
-      offset,
-    });
+    return NextResponse.json(
+      {
+        runs: runs || [],
+        total: count || 0,
+        limit,
+        offset,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
   } catch (error) {
     console.error("Dashboard activity API error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
