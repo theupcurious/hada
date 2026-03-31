@@ -23,6 +23,7 @@ export async function buildSystemPrompt(options: {
   userId: string;
   source: MessageSource;
   tools: AgentTool[];
+  connectedIntegrations?: string[];
 }): Promise<BuildSystemPromptResult> {
   const basePrompt = await getBasePrompt();
 
@@ -32,10 +33,12 @@ export async function buildSystemPrompt(options: {
       .select("name, email, tier, settings")
       .eq("id", options.userId)
       .single(),
-    options.supabase
-      .from("integrations")
-      .select("provider")
-      .eq("user_id", options.userId),
+    options.connectedIntegrations
+      ? Promise.resolve(null)
+      : options.supabase
+          .from("integrations")
+          .select("provider")
+          .eq("user_id", options.userId),
     options.supabase
       .from("user_memories")
       .select("topic, content, updated_at")
@@ -55,9 +58,10 @@ export async function buildSystemPrompt(options: {
   const customInstructions = typeof userSettings.custom_instructions === "string"
     ? userSettings.custom_instructions.trim()
     : "";
-  const connectedIntegrations = (
-    integrationResult.data as unknown as Array<{ provider: string }> | null
-  )?.map((row) => row.provider) || [];
+  const connectedIntegrations = options.connectedIntegrations ?? (
+    (integrationResult as { data: Array<{ provider: string }> | null } | null)
+      ?.data?.map((row) => row.provider) ?? []
+  );
   const memorySection = formatMemories(
     (memoryResult.data as unknown as Array<{ topic: string; content: string; updated_at: string }> | null) || [],
   );

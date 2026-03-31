@@ -1,7 +1,8 @@
 import type { AgentEvent, TaskPlan, TaskStep } from "@/lib/types/database";
 import {
-  callLLM,
+  callLLMStream,
   type LLMMessage,
+  type LLMToolCall,
   type LLMToolDefinition,
   type ProviderSelection,
 } from "@/lib/chat/providers";
@@ -105,15 +106,43 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
         iterationCount += 1;
         markProgress();
-        const result = await callLLMWithRetry({
+
+        // Stream the LLM response, emitting text_delta events in real time.
+        // iterationText tracks what was streamed this iteration only; it is
+        // only moved into finalText if this turns out to be the terminal iteration.
+        let rawContent = "";
+        let apiToolCalls: LLMToolCall[] = [];
+        let iterationText = "";
+        const thinkFilter = createThinkFilter();
+
+        for await (const streamEvent of callLLMStream({
           selection: options.provider,
           messages: buildMessagesForIteration(llmMessages, activePlan, currentStepIndex),
           tools: llmTools,
           signal: timeoutController.signal,
-        });
+        })) {
+          markProgress();
+          if (streamEvent.type === "text") {
+            rawContent += streamEvent.chunk;
+            const emittable = thinkFilter.feed(streamEvent.chunk);
+            if (emittable) {
+              iterationText += emittable;
+              yield { type: "text_delta", content: emittable };
+            }
+          } else if (streamEvent.type === "done") {
+            apiToolCalls = streamEvent.toolCalls;
+          }
+        }
+
+        // Flush any content held in the think buffer at end of stream
+        const flushed = thinkFilter.flush();
+        if (flushed) {
+          iterationText += flushed;
+          yield { type: "text_delta", content: flushed };
+        }
+
         markProgress();
 
-        const rawContent = result.content || "";
         const thinkingContent = summarizeThinkingForDisplay(rawContent);
         if (thinkingContent) {
           markProgress();
@@ -121,9 +150,9 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         }
         const visibleContent = sanitizeAssistantContent(rawContent);
         const fallbackToolCalls =
-          result.toolCalls.length === 0 ? parseProtocolToolCalls(rawContent) : [];
+          apiToolCalls.length === 0 ? parseProtocolToolCalls(rawContent) : [];
         const effectiveToolCalls =
-          result.toolCalls.length > 0 ? result.toolCalls : fallbackToolCalls;
+          apiToolCalls.length > 0 ? apiToolCalls : fallbackToolCalls;
 
         if (!effectiveToolCalls.length) {
           if (!visibleContent.trim()) {
@@ -159,7 +188,12 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
             continue;
           }
 
-          if (visibleContent) {
+          // This is the terminal iteration — commit streamed text to finalText.
+          // If the think filter suppressed everything and sanitization recovered
+          // content, emit it now (e.g. pure think-block responses).
+          if (iterationText.trim()) {
+            finalText += iterationText;
+          } else if (visibleContent.trim()) {
             finalText += visibleContent;
             for (const chunk of chunkText(visibleContent, 140)) {
               markProgress();
@@ -721,51 +755,78 @@ function formatDurationForMessage(durationMs: number): string {
   return `${minutes.toFixed(1)} minutes`;
 }
 
-function isRateLimitError(error: unknown): boolean {
-  return error instanceof Error && /\(429\)/.test(error.message);
+// ─── Think-block stream filter ────────────────────────────────────────────────
+// Buffers content at the start of a response to detect and suppress <think>…</think>
+// blocks. Once we know we're past any think block, content flows through directly.
+
+interface ThinkFilter {
+  feed(chunk: string): string;
+  flush(): string;
 }
 
-function isTransientError(error: unknown): boolean {
-  if (isRateLimitError(error)) return true;
-  if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  return msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("fetch failed");
-}
+function createThinkFilter(): ThinkFilter {
+  type Phase = "detecting" | "in_think" | "streaming";
+  let phase: Phase = "detecting";
+  let buf = "";
+  const THINK_OPEN = "<think>";
+  const THINK_CLOSE = "</think>";
 
-async function callLLMWithRetry(
-  options: Parameters<typeof callLLM>[0],
-  maxRetries = 2,
-): Promise<Awaited<ReturnType<typeof callLLM>>> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await callLLM(options);
-    } catch (error) {
-      if (isAbortError(error)) throw error;
-      lastError = error;
-      if (!isTransientError(error) || attempt >= maxRetries) throw error;
-      const delayMs = isRateLimitError(error)
-        ? Math.pow(2, attempt + 1) * 1_000 // 2s, 4s
-        : 1_000;
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, delayMs);
-        const signal = options.signal;
-        if (signal) {
-          const onAbort = () => {
-            clearTimeout(timer);
-            reject(new DOMException("Aborted", "AbortError"));
-          };
-          if (signal.aborted) {
-            onAbort();
-          } else {
-            signal.addEventListener("abort", onAbort, { once: true });
-          }
-        }
-      });
+  function feed(chunk: string): string {
+    if (phase === "streaming") return chunk;
+
+    buf += chunk;
+
+    if (phase === "in_think") {
+      const end = buf.toLowerCase().indexOf(THINK_CLOSE);
+      if (end !== -1) {
+        const after = buf.slice(end + THINK_CLOSE.length);
+        buf = "";
+        phase = "streaming";
+        return after;
+      }
+      return "";
     }
+
+    // "detecting" — buffer until we can tell if it starts with <think>
+    const trimmed = buf.trimStart();
+    if (trimmed.length < THINK_OPEN.length) return ""; // not enough data yet
+
+    if (trimmed.toLowerCase().startsWith(THINK_OPEN)) {
+      phase = "in_think";
+      const end = buf.toLowerCase().indexOf(THINK_CLOSE);
+      if (end !== -1) {
+        const after = buf.slice(end + THINK_CLOSE.length);
+        buf = "";
+        phase = "streaming";
+        return after;
+      }
+      return "";
+    }
+
+    // Doesn't start with <think> — flush and stream
+    phase = "streaming";
+    const out = buf;
+    buf = "";
+    return out;
   }
-  throw lastError;
+
+  function flush(): string {
+    if (phase === "streaming") return "";
+    if (phase === "detecting" && buf) {
+      // Response ended before we accumulated enough to detect — emit as-is
+      const out = buf;
+      buf = "";
+      return out;
+    }
+    // phase === "in_think" and never closed — suppress (it's all think content)
+    buf = "";
+    return "";
+  }
+
+  return { feed, flush };
 }
+
+// ─── Text chunking ────────────────────────────────────────────────────────────
 
 function chunkText(text: string, maxChunkSize: number): string[] {
   if (!text) return [];

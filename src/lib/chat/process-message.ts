@@ -42,9 +42,6 @@ export interface ProcessMessageResult {
 
 export async function processMessage(options: ProcessMessageOptions): Promise<ProcessMessageResult> {
   const supabase = options.supabase || createAdminClient();
-  const conversation = options.conversationId
-    ? { id: options.conversationId }
-    : await getOrCreateConversation(supabase, options.userId);
   const runId = crypto.randomUUID();
   const agentRunStartedAt = Date.now();
   const toolCallLog: AgentRunToolCall[] = [];
@@ -55,48 +52,51 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   let responseText = "";
   let thrownError: unknown = null;
   let result: ProcessMessageResult | null = null;
-  const agentRunId = await createAgentRunRecord({
-    supabase,
-    conversationId: conversation.id,
-    source: options.source,
-    userId: options.userId,
-    input: options.message,
-    runId,
-  });
 
-  const userMessage = options.userMessageId
-    ? { id: options.userMessageId }
-    : await saveMessage(
-        supabase,
-        conversation.id,
-        "user",
-        options.message,
-        {
-          source: options.source,
-          runId,
-        },
-      );
+  // Round 1: fetch conversation + integrations in parallel (both independent)
+  const [conversation, integrationsResult] = await Promise.all([
+    options.conversationId
+      ? Promise.resolve({ id: options.conversationId })
+      : getOrCreateConversation(supabase, options.userId),
+    supabase.from("integrations").select("provider").eq("user_id", options.userId),
+  ]);
 
-  const { data: integrations } = await supabase
-    .from("integrations")
-    .select("provider")
-    .eq("user_id", options.userId);
+  const connectedIntegrations = (
+    (integrationsResult.data as Array<{ provider: string }> | null) ?? []
+  ).map((row) => row.provider);
 
   const toolContext: ToolContext = {
     userId: options.userId,
     source: options.source,
     supabase,
   };
-  const tools = createTools(toolContext, {
-    connectedIntegrations: (integrations || []).map((row) => row.provider),
-  });
+  const tools = createTools(toolContext, { connectedIntegrations });
 
-  const builtPrompt = await buildSystemPrompt({
-    supabase,
-    userId: options.userId,
-    source: options.source,
-    tools,
-  });
+  // Round 2: everything that needs conversationId or tools, all in parallel
+  const [agentRunId, userMessage, builtPrompt, context] = await Promise.all([
+    createAgentRunRecord({
+      supabase,
+      conversationId: conversation.id,
+      source: options.source,
+      userId: options.userId,
+      input: options.message,
+      runId,
+    }),
+    options.userMessageId
+      ? Promise.resolve({ id: options.userMessageId })
+      : saveMessage(supabase, conversation.id, "user", options.message, {
+          source: options.source,
+          runId,
+        }),
+    buildSystemPrompt({
+      supabase,
+      userId: options.userId,
+      source: options.source,
+      tools,
+      connectedIntegrations,
+    }),
+    assembleConversationContext({ supabase, conversationId: conversation.id }),
+  ]);
 
   toolContext.timezone =
     typeof builtPrompt.userSettings.timezone === "string"
@@ -110,10 +110,6 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     allowModelOverrides ? builtPrompt.userSettings : undefined,
   );
   const systemPrompt = appendRuntimeIdentitySection(builtPrompt.prompt, provider);
-  const context = await assembleConversationContext({
-    supabase,
-    conversationId: conversation.id,
-  });
 
   let assembled = "";
   let fatalError: string | null = null;

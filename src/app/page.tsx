@@ -52,7 +52,6 @@ export default function Home() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="max-w-3xl"
         >
-          <p className="label mb-4">AI Assistant</p>
           <h1 className="text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
             Your AI assistant that{" "}
             <span className="gradient-text">actually does things</span>

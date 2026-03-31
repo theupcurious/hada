@@ -42,6 +42,10 @@ export interface LLMResult {
   toolCalls: LLMToolCall[];
 }
 
+export type LLMStreamEvent =
+  | { type: "text"; chunk: string }
+  | { type: "done"; content: string; toolCalls: LLMToolCall[] };
+
 export const PROVIDERS: Record<LLMProviderName, ProviderConfig> = {
   minimax: {
     baseUrl: "https://api.minimax.io/v1",
@@ -139,6 +143,201 @@ export async function callLLM(options: {
     throw error;
   }
 }
+
+// ─── Streaming API ────────────────────────────────────────────────────────────
+
+export async function* callLLMStream(options: {
+  selection: ProviderSelection;
+  messages: LLMMessage[];
+  tools?: LLMToolDefinition[];
+  signal?: AbortSignal;
+}): AsyncGenerator<LLMStreamEvent> {
+  if (options.selection.config.native) {
+    // Anthropic: no streaming yet — emit full response as single chunk
+    const result = await callAnthropic(options);
+    if (result.content) yield { type: "text", chunk: result.content };
+    yield { type: "done", content: result.content, toolCalls: result.toolCalls };
+    return;
+  }
+
+  const maxRetries = 2;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      yield* streamOpenAICompatibleBody(options);
+      return;
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      lastError = error;
+      if (!isTransientError(error) || attempt >= maxRetries) {
+        // Attempt fallback model (non-streaming)
+        const fallback = options.selection.config.fallbackModel;
+        if (fallback && fallback !== options.selection.model) {
+          try {
+            const result = await callOpenAICompatible({
+              ...options,
+              selection: { ...options.selection, model: fallback },
+            });
+            if (result.content) yield { type: "text", chunk: result.content };
+            yield { type: "done", content: result.content, toolCalls: result.toolCalls };
+            return;
+          } catch {
+            // fallback also failed — fall through and throw original
+          }
+        }
+        throw error;
+      }
+      const delayMs = isRateLimitError(error) ? Math.pow(2, attempt + 1) * 1_000 : 1_000;
+      await sleepMs(delayMs, options.signal);
+    }
+  }
+  throw lastError;
+}
+
+async function* streamOpenAICompatibleBody(options: {
+  selection: ProviderSelection;
+  messages: LLMMessage[];
+  tools?: LLMToolDefinition[];
+  signal?: AbortSignal;
+}): AsyncGenerator<LLMStreamEvent> {
+  const { selection, messages, tools = [], signal } = options;
+  const url = `${selection.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${selection.apiKey}`,
+      ...selection.config.extraHeaders,
+    },
+    body: JSON.stringify({
+      model: selection.model,
+      messages,
+      tools: tools.length
+        ? tools.map((t) => ({
+            type: "function",
+            function: { name: t.name, description: t.description, parameters: t.parameters },
+          }))
+        : undefined,
+      tool_choice: tools.length ? "auto" : undefined,
+      temperature: 0.4,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`LLM request failed (${response.status}): ${await safeErrorText(response)}`);
+  }
+
+  const body = response.body;
+  if (!body) throw new Error("Response body is null");
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let sseBuffer = "";
+  let fullContent = "";
+
+  // Accumulate tool call deltas keyed by index
+  const toolCallAcc = new Map<number, { id: string; name: string; args: string }>();
+
+  try {
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      sseBuffer += decoder.decode(value, { stream: true });
+      const lines = sseBuffer.split("\n");
+      sseBuffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(":")) continue;
+        if (!trimmed.startsWith("data: ")) continue;
+
+        const data = trimmed.slice(6).trim();
+        if (data === "[DONE]") break outer;
+
+        let parsed: unknown;
+        try { parsed = JSON.parse(data); } catch { continue; }
+
+        type SSEChunk = {
+          choices?: Array<{
+            delta?: {
+              content?: string | null;
+              tool_calls?: Array<{
+                index: number;
+                id?: string;
+                function?: { name?: string; arguments?: string };
+              }>;
+            };
+          }>;
+        };
+
+        const delta = (parsed as SSEChunk).choices?.[0]?.delta;
+        if (!delta) continue;
+
+        if (delta.content) {
+          fullContent += delta.content;
+          yield { type: "text", chunk: delta.content };
+        }
+
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0;
+            if (!toolCallAcc.has(idx)) {
+              toolCallAcc.set(idx, { id: tc.id ?? "", name: tc.function?.name ?? "", args: "" });
+            }
+            const acc = toolCallAcc.get(idx)!;
+            if (tc.id) acc.id = tc.id;
+            if (tc.function?.name) acc.name = tc.function.name;
+            if (tc.function?.arguments) acc.args += tc.function.arguments;
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const toolCalls: LLMToolCall[] = [];
+  for (const [, acc] of toolCallAcc) {
+    if (!acc.name) continue;
+    let args: Record<string, unknown> = {};
+    try { args = toObject(JSON.parse(acc.args)); } catch {}
+    toolCalls.push({ id: acc.id || crypto.randomUUID(), name: acc.name, arguments: args });
+  }
+
+  yield { type: "done", content: fullContent, toolCalls };
+}
+
+function isRateLimitError(error: unknown): boolean {
+  return error instanceof Error && /\(429\)/.test(error.message);
+}
+
+function isTransientError(error: unknown): boolean {
+  if (isRateLimitError(error)) return true;
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("fetch failed");
+}
+
+function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    if (signal) {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      if (signal.aborted) { onAbort(); return; }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+}
+
+// ─── Existing helpers ─────────────────────────────────────────────────────────
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
