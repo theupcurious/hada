@@ -50,7 +50,7 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="max-w-3xl"
+          className="max-w-3xl pt-12"
         >
           <h1 className="text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
             Your AI assistant that{" "}
