@@ -23,13 +23,17 @@ Hada is an assistant application built around a local agent loop. It supports we
 - Automatic memory capture before compaction and after completed turns
 - Semantic memory recall via pgvector embeddings with text-search fallback
 - Web tools: `web_search`, `web_fetch`
+- **Hada Canvas**: Side-by-side collaborative document co-authoring with `create_document` and `update_document`
+- **MCP Support**: Model Context Protocol bridge via `mcp_call` for external tool integration
+- **Proactive Time Defense**: Advanced scheduling in the `scheduler` agent to protect focus time and preempt conflicts
 - Rich inline cards for supported structured outputs in chat
 - Google Calendar tools
 - Scheduled one-time and recurring tasks
 - Telegram integration with account linking
 - Agent personas (Balanced, Concise, Friendly, Professional, Academic) and custom instructions, configurable per user in Settings
 - Settings at `/settings` for runtime status, integrations, preferences, persona, memory management, and chat reset
-- Responsive chat/settings layouts tuned for mobile and narrow viewports
+- Documents workspace at `/docs` for RAG context and co-authored artifacts
+- Responsive chat/settings/docs layouts tuned for mobile and narrow viewports
 
 ## Quick Start
 
@@ -92,6 +96,7 @@ Run these migrations in Supabase SQL Editor:
 - `supabase/migrations/005_agent_runs.sql`
 - `supabase/migrations/006_background_jobs.sql`
 - `supabase/migrations/007_memory_embeddings.sql`
+- `supabase/migrations/010_documents.sql`
 
 Notes:
 - `007_memory_embeddings.sql` is required for semantic memory recall and adds the `match_user_memories` function plus the `user_memories.embedding` column.
@@ -105,6 +110,7 @@ npm run dev
 
 Open:
 - `http://localhost:3000/chat`
+- `http://localhost:3000/docs`
 - `http://localhost:3000/settings`
 
 ## Verification
@@ -119,11 +125,13 @@ npm run build
 - `src/app/api/chat/route.ts` - web chat SSE API
 - `src/app/api/background-jobs/[id]/route.ts` - background job poll API
 - `src/app/api/background-jobs/[id]/run/route.ts` - background job processor trigger
+- `src/app/api/documents/` - documents workspace API
 - `src/app/api/tools/route.ts` - tool manifest introspection
 - `src/app/api/dashboard/` - dashboard data APIs (activity, analytics, memories, tasks)
 - `src/app/api/webhooks/telegram/route.ts` - Telegram webhook
 - `src/app/api/cron/route.ts` - scheduled task runner
 - `src/app/chat/page.tsx` - chat UI
+- `src/app/docs/page.tsx` - documents workspace UI
 - `src/lib/chat/agent-loop.ts` - core runtime loop
 - `src/lib/chat/process-message.ts` - orchestration + telemetry
 - `src/lib/chat/card-extraction.ts` - tool-result to rich-card extraction
@@ -135,6 +143,7 @@ npm run build
 - `src/lib/chat/tools/` - tool implementations
 - `src/lib/chat/agents/` - sub-agent profiles
 - `src/components/chat/agent-trace.tsx` - trace/delegation UI
+- `src/components/chat/artifact-panel.tsx` - Hada Canvas side-panel
 - `src/components/chat/task-plan-card.tsx` - plan UI
 - `src/components/chat/search-results-card.tsx` - rich search result renderer
 - `src/components/chat/schedule-view-card.tsx` - rich schedule renderer
@@ -150,3 +159,6 @@ npm run build
 - Background job progress is persisted in `background_job_events` and replayed into chat by polling `/api/background-jobs/[id]`.
 - Dashboard task `Run now` is intentionally guarded until immediate execution is wired through the scheduler path.
 - Next.js currently emits a `middleware` → `proxy` deprecation warning during build; the app still builds successfully.
+- **Hada Canvas**: Document creation/updates automatically open a side-by-side workspace in the web chat.
+- **Time Defense**: The `scheduler` sub-agent is instructed to proactively protect deep work blocks and identify schedule conflicts.
+

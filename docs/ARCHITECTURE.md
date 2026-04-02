@@ -24,6 +24,7 @@ Next.js App
   ├─ API Routes
   │   ├─ /api/chat              (SSE stream + background job enqueue)
   │   ├─ /api/background-jobs/*
+  │   ├─ /api/documents/*       (Documents workspace CRUD)
   │   ├─ /api/tools
   │   ├─ /api/dashboard/*
   │   ├─ /api/webhooks/telegram
@@ -40,12 +41,14 @@ Next.js App
   │   ├─ memory tools
   │   ├─ web tools
   │   ├─ calendar tools
+  │   ├─ document tools         (list, read, create, update)
   │   ├─ planning tool
-  │   └─ delegation tool
+  │   ├─ delegation tool
+  │   └─ MCP bridge             (mcp_call)
   └─ Sub-agent profiles
       ├─ researcher
       ├─ memory_manager
-      └─ scheduler
+      └─ scheduler              (Proactive Time Defense)
 
 Storage / services
   ├─ Supabase Postgres + Auth
@@ -85,6 +88,7 @@ Chat UI
 Key properties:
 - `/api/chat` returns an SSE stream, not a single JSON blob.
 - The frontend updates assistant text, trace cards, task plans, and delegated sub-agent groups in real time for direct runs.
+- **Hada Canvas**: When an agent uses `create_document` or `update_document`, the chat UI automatically opens the `ArtifactPanel` side-panel to show the document in real time.
 - Long-form research jobs move out of the request path but still surface progress through persisted events and polling.
 - The final assistant message and `agent_runs` telemetry are saved after the loop completes.
 
@@ -132,18 +136,18 @@ Cron trigger
 
 ### Rich Output Lifecycle
 
-Structured assistant outputs now flow through a separate rich-card path:
+Structured assistant outputs now flow through two separate paths:
 
-1. Shared types:
-   `src/lib/types/cards.ts` defines the card payload contracts used across server and client.
-2. Server-side extraction:
-   `extractCardsFromToolResults()` inspects tool outputs after the agent loop finishes and converts supported results into typed card payloads.
-3. Persistence:
-   extracted cards are stored on the assistant message under `metadata.cards`.
-4. Delivery:
-   direct `/api/chat` completions include cards in the terminal SSE event, and background-job polling reloads them from the saved assistant message metadata.
-5. Rendering:
-   `/chat` renders supported card types inline alongside markdown content.
+#### 1. Rich Cards (Inline)
+- Shared types: `src/lib/types/cards.ts` defines the card payload contracts.
+- Server-side extraction: `extractCardsFromToolResults()` inspects tool outputs.
+- Rendering: `/chat` renders supported card types (`search_results`, `schedule_view`, etc.) inline.
+
+#### 2. Hada Canvas (Side-panel Artifacts)
+- Trigger: The agent calls `create_document` or `update_document`.
+- Delivery: Tool results containing `status: "created"` or `status: "updated"` are intercepted by the chat UI.
+- Rendering: The `ArtifactPanel` displays the document content side-by-side with the chat.
+- Workspace Bridge: Users can click "Full View" to open the document in the `/docs` workspace for dedicated editing.
 
 Current supported automatic extraction:
 - `search_results` cards from `web_search`
@@ -219,6 +223,11 @@ Tools are no longer hardcoded as a plain list. `src/lib/chat/tools/tool-registry
 - manifests for `/api/tools`
 - category/risk metadata for UI/control-plane usage
 
+Recent additions:
+- `create_document`: Creates a new doc in the `/docs` workspace.
+- `update_document`: Modifies an existing doc.
+- `mcp_call`: A bridge tool that forwards requests to Model Context Protocol (MCP) servers via JSON-RPC.
+
 Memory-related tools currently split responsibilities this way:
 - `save_memory` writes durable facts/preferences into `user_memories`
 - `recall_memory` exposes hybrid semantic + fuzzy retrieval over `user_memories`
@@ -252,6 +261,9 @@ The selected persona ID and optional custom instructions are stored in `users.se
 - `memory_manager`
 - `scheduler`
 
+**Proactive Scheduler (Time Defense)**:
+The `scheduler` agent is configured with "Time Defense" instructions. It doesn't just manage events; it actively identifies schedule gaps for deep work and preemptively identifies conflicts.
+
 Each delegated run:
 - builds a focused system prompt
 - filters the allowed tool set
@@ -268,7 +280,7 @@ Each delegated run:
 
 Key UI elements:
 - streaming markdown message content
-- inline rich cards for supported structured outputs
+- **Hada Canvas**: Side-by-side artifact panel for document co-authoring
 - `AgentTraceTimeline` for tool/reasoning execution
 - `TaskPlanCard` for plan progress
 - nested delegation trace groups for sub-agent work
@@ -277,14 +289,14 @@ Key UI elements:
 
 ### Dashboard
 
-`/dashboard` is the control plane.
+`/dashboard` is the control plane for activity, tools, and scheduled tasks.
 
-Current sections:
-- activity feed from `agent_runs`
-- tool analytics from `agent_runs.tool_calls`
-- memory browser/editor backed by `user_memories`
-- task manager backed by `scheduled_tasks`
-- mobile layout prioritizes active tab content ahead of large summary chrome
+### Docs Workspace
+
+`/docs` is the primary library for user documents.
+- Obsidian-style markdown editor (Tiptap-powered).
+- Two-pane layout with folder navigation.
+- Agent-readable: Documents act as RAG context when referenced or attached in chat.
 
 ### Settings
 
@@ -306,6 +318,7 @@ Primary persisted entities:
 - `integrations`
 - `user_memories`
 - `scheduled_tasks`
+- `documents`                (Title, content, folder, user_id)
 - `telegram_link_tokens`
 - `agent_runs`
 - `background_jobs`
@@ -324,6 +337,12 @@ Memory-specific persisted data:
 
 Rich-output persisted data:
 - assistant `messages.metadata.cards` stores typed rich-card payloads for inline UI rendering
+
+## MCP Integration
+
+Hada supports the Model Context Protocol (MCP) via a dedicated `mcp_call` tool. 
+- **Bridge Pattern**: The agent acts as an MCP client, calling out to local or remote MCP servers.
+- **Dynamic Capabilities**: This allows Hada to gain new tools (filesystem access, GitHub, database queries) without changes to the core codebase.
 
 ## Security Model
 
