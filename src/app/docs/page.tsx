@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import Image from "next/image";
 import Link from "next/link";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -65,6 +65,18 @@ Hada can also list and read your documents on its own when relevant.
 `;
 
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-dvh items-center justify-center bg-zinc-50 dark:bg-zinc-950 text-zinc-400">
+        Loading...
+      </div>
+    }>
+      <DashboardPageContent />
+    </Suspense>
+  );
+}
+
+function DashboardPageContent() {
   const [docs, setDocs] = useState<DocListItem[]>([]);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [activeDoc, setActiveDoc] = useState<Document | null>(null);
