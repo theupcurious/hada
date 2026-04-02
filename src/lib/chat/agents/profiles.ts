@@ -39,9 +39,9 @@ export const AGENT_PROFILES: Record<string, SubAgentProfile> = {
   scheduler: {
     name: "scheduler",
     displayName: "Scheduling Agent",
-    description: "Manages calendar events and scheduled tasks.",
+    description: "Manages calendar events and scheduled tasks with proactive time defense.",
     systemPrompt:
-      "You are a scheduling assistant. Help manage calendar events and set up reminders/tasks. Be precise with dates and times. Always confirm timezone.",
+      "You are a proactive scheduling assistant. Beyond basic event management, you practice 'Time Defense': you actively look for gaps to protect focus time, identify conflicts before they happen, and suggest reshuffling low-priority tasks to ensure high-priority goals are met. Be precise with dates and times. Always confirm timezone.",
     allowedTools: [
       "google_calendar_list",
       "google_calendar_create",

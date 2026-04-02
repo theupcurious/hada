@@ -2,14 +2,17 @@
 
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bookmark, X } from "lucide-react";
+import { ExternalLink, Bookmark, X } from "lucide-react";
 import { MermaidDiagram } from "@/components/chat/mermaid-diagram";
 import { InlineChart } from "@/components/chat/inline-chart";
 import { RichMessageContent } from "@/components/chat/rich-message-content";
 import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export interface ArtifactData {
+  id?: string;
+  type: "response" | "document";
   title: string;
   content?: string;
   visuals?: Array<{ type: "mermaid" | "chart"; code: string }>;
@@ -25,6 +28,7 @@ export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
   const [showSaveModal, setShowSaveModal] = useState(false);
 
   const saveContent = artifact.content ?? "";
+  const isDoc = artifact.type === "document";
 
   return (
     <AnimatePresence>
@@ -38,25 +42,43 @@ export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <span className="shrink-0 rounded-md bg-teal-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-teal-600 dark:bg-teal-500/10 dark:text-teal-400">
-              Doc
+            <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] ${
+              isDoc 
+                ? "bg-teal-500/15 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400" 
+                : "bg-blue-500/15 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
+            }`}>
+              {isDoc ? "Doc" : "Canvas"}
             </span>
             <span className="truncate text-sm font-medium text-zinc-700 dark:text-zinc-300">
               {artifact.title}
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-              onClick={() => setShowSaveModal(true)}
-              title="Save to Docs"
-            >
-              <Bookmark className="h-3.5 w-3.5" />
-              Save
-            </Button>
+            {isDoc && artifact.id ? (
+              <Link href={`/docs?id=${artifact.id}`} target="_blank">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  title="Open in Docs"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Full View
+                </Button>
+              </Link>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                onClick={() => setShowSaveModal(true)}
+                title="Save to Docs"
+              >
+                <Bookmark className="h-3.5 w-3.5" />
+                Save
+              </Button>
+            )}
             <button
               type="button"
               onClick={onClose}

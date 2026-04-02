@@ -9,7 +9,7 @@ import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { ChatMessageRow } from "@/components/chat/chat-message-row";
-import { ArtifactPanel } from "@/components/chat/artifact-panel";
+import { ArtifactPanel, type ArtifactData } from "@/components/chat/artifact-panel";
 import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
 import { DocAttachPicker, AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
 import type { TaskPlan } from "@/lib/types/database";
@@ -127,7 +127,7 @@ export default function ChatPage() {
   const [recentRuns, setRecentRuns] = useState<Array<{ id: string; input_preview: string | null; source: string; status: string; started_at: string }>>([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [artifactContent, setArtifactContent] = useState<{ title: string; content: string } | null>(null);
+  const [artifactContent, setArtifactContent] = useState<ArtifactData | null>(null);
   const [saveModalContent, setSaveModalContent] = useState<string | null>(null);
   const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([]);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
@@ -267,6 +267,22 @@ export default function ChatPage() {
       const result = typeof event.result === "string" ? event.result : "";
       const durationMs = typeof event.durationMs === "number" ? event.durationMs : undefined;
       const truncated = !!event.truncated;
+
+      // Automatically open ArtifactPanel for document creation/update
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed.status === "created" || parsed.status === "updated") {
+          setArtifactContent({
+            id: parsed.id,
+            type: "document",
+            title: parsed.title,
+            content: (event.args as any)?.content || "",
+          });
+        }
+      } catch {
+        // Not a JSON result or doesn't match our document tools
+      }
+
       updateMessage(assistantMessageId, (message) => ({
         ...message,
         traceEvents: (message.traceEvents || []).map((trace) =>
@@ -938,7 +954,7 @@ export default function ChatPage() {
   const handleOpenArtifact = (_messageId: string, content: string) => {
     const titleMatch = content.match(/^#{1,3}\s+(.+)/m);
     const title = titleMatch ? titleMatch[1].trim() : "Response";
-    setArtifactContent({ title, content });
+    setArtifactContent({ title, content, type: "response" });
   };
 
   const handleAttachDoc = (doc: AttachedDoc) => {
@@ -1130,32 +1146,32 @@ export default function ChatPage() {
 
   const starterPrompts = [
     {
-      title: "Today's briefing",
-      subtitle: "Top stories in tech",
-      icon: "☀️",
+      title: "Design a Project",
+      subtitle: "Research & create a doc",
+      icon: "🎨",
       prompt:
-        "Give me today's tech briefing. Search for the most important tech and AI news from today, read the top articles, and summarize the 5 most important stories with key takeaways. Keep it concise and scannable.",
+        "I want to start a new project. Ask me what it's about, then research the best approach and create a 'Project Plan' document for me in the workspace so we can refine it together.",
     },
     {
-      title: "Research a company",
-      subtitle: "Competitive intel memo",
+      title: "Defend My Time",
+      subtitle: "Proactive scheduling",
+      icon: "🛡️",
+      prompt:
+        "Help me protect my time this week. Use 'Time Defense' to look at my upcoming schedule, identify conflicts, and suggest blocks for deep work on my top priorities.",
+    },
+    {
+      title: "Research & Memo",
+      subtitle: "Web intel to workspace",
       icon: "🔍",
       prompt:
-        "I'd like a competitive intel report on a company. Ask me which company I'm interested in, then research it thoroughly — recent funding rounds, product launches, key executive hires, market positioning, and anything notable. Write it up as a structured memo.",
+        "Research a specific company or technology for me. Summarize the latest news and competitive landscape into a structured 'Research Memo' document in my workspace.",
     },
     {
-      title: "Plan a trip",
-      subtitle: "Flights, stays & itinerary",
-      icon: "✈️",
+      title: "Quick Briefing",
+      subtitle: "Daily tech summary",
+      icon: "☀️",
       prompt:
-        "Help me plan an amazing trip. Ask me where I want to go and when, then research the best flight options, top-rated hotels, must-see attractions, best restaurants, and local tips. Put it all together into a day-by-day itinerary I can actually follow.",
-    },
-    {
-      title: "Prep me for a meeting",
-      subtitle: "Talking points & context",
-      icon: "🎯",
-      prompt:
-        "Help me prepare for an upcoming meeting. Ask me what the meeting is about and who I'm meeting with, then research the relevant topics, industry trends, and any recent news. Give me structured talking points, smart questions to ask, and key data points I can reference.",
+        "Give me today's tech briefing. Search for the top AI and tech stories from today and summarize them. If there's a major launch, create a 'New Tech' document with the details.",
     },
   ];
 
@@ -1523,7 +1539,7 @@ export default function ChatPage() {
               className="hidden md:flex flex-col shrink-0 overflow-hidden"
             >
               <ArtifactPanel
-                artifact={{ title: artifactContent.title, content: artifactContent.content }}
+                artifact={artifactContent}
                 onClose={() => setArtifactContent(null)}
               />
             </motion.div>
