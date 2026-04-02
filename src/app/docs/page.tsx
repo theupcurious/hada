@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
@@ -78,6 +78,7 @@ export default function DashboardPage() {
   const [renameValue, setRenameValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const loadDocs = useCallback(async () => {
@@ -96,6 +97,20 @@ export default function DashboardPage() {
       if (!active) return;
       if (error || !data.user) { router.push("/auth/login"); return; }
       const list = await loadDocs();
+      
+      // Handle deep-linking via ?id= query param
+      const initialId = searchParams.get("id");
+      if (initialId) {
+        const found = list.find(d => d.id === initialId);
+        if (found) {
+          setActiveDocId(initialId);
+          await loadFullDoc(initialId);
+          if (found.folder) {
+            setExpandedFolders(prev => new Set([...prev, found.folder as string]));
+          }
+        }
+      }
+
       // Seed welcome doc for new users
       if (active && list.length === 0) {
         const res = await fetch("/api/documents", {

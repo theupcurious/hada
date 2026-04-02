@@ -196,9 +196,17 @@ export default function ChatPage() {
     created_at: msg.created_at,
   });
 
-  const updateMessage = useCallback((messageId: string, updater: (message: Message) => Message) => {
-    setMessages((prev) => prev.map((message) => (message.id === messageId ? updater(message) : message)));
-  }, []);
+  const updateMessage = useCallback(
+    (messageId: string, updater: (message: Message) => Message) => {
+      let updated: Message[] = [];
+      setMessages((prev) => {
+        updated = prev.map((message) => (message.id === messageId ? updater(message) : message));
+        return updated;
+      });
+      return updated;
+    },
+    [],
+  );
 
   const stopBackgroundJobPolling = useCallback((jobId: string) => {
     const poller = backgroundJobPollersRef.current.get(jobId);
@@ -268,22 +276,7 @@ export default function ChatPage() {
       const durationMs = typeof event.durationMs === "number" ? event.durationMs : undefined;
       const truncated = !!event.truncated;
 
-      // Automatically open ArtifactPanel for document creation/update
-      try {
-        const parsed = JSON.parse(result);
-        if (parsed.status === "created" || parsed.status === "updated") {
-          setArtifactContent({
-            id: parsed.id,
-            type: "document",
-            title: parsed.title,
-            content: (event.args as any)?.content || "",
-          });
-        }
-      } catch {
-        // Not a JSON result or doesn't match our document tools
-      }
-
-      updateMessage(assistantMessageId, (message) => ({
+      const updatedMessages = updateMessage(assistantMessageId, (message) => ({
         ...message,
         traceEvents: (message.traceEvents || []).map((trace) =>
           trace.callId === callId
@@ -299,6 +292,25 @@ export default function ChatPage() {
             : trace,
         ),
       }));
+
+      // Automatically open ArtifactPanel for document creation/update
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed.status === "created" || parsed.status === "updated") {
+          const assistantMsg = updatedMessages.find((m) => m.id === assistantMessageId);
+          const trace = assistantMsg?.traceEvents?.find((t) => t.callId === callId);
+          const content = String(trace?.args?.content || "");
+
+          setArtifactContent({
+            id: parsed.id,
+            type: "document",
+            title: parsed.title,
+            content,
+          });
+        }
+      } catch {
+        // Not a JSON result or doesn't match our document tools
+      }
       return;
     }
 
