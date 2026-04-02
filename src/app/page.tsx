@@ -102,8 +102,8 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-hidden shadow-md shadow-teal-500/20">
-                  <Image src="/hada-logo.png" alt="Hada" width={32} height={32} className="h-8 w-8 object-cover" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full gradient-brand text-white shadow-md shadow-teal-500/20">
+                  <span className="text-sm font-bold">H</span>
                 </div>
                 <div className="flex-1 space-y-3 text-left">
                   <div className="inline-block max-w-[80%] rounded-2xl rounded-tl-sm bg-muted/60 px-4 py-2">
