@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -71,8 +72,8 @@ export default function SignUpPage() {
           <Link href="/" className="inline-flex items-center gap-2">
             <div className="relative">
               <div className="absolute inset-0 -m-2 rounded-2xl bg-gradient-to-br from-teal-500/20 to-cyan-500/20 blur-lg" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-lg gradient-brand shadow-lg shadow-teal-500/25">
-                <span className="text-lg font-bold text-white">H</span>
+              <div className="relative flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden shadow-lg shadow-teal-500/25">
+                <Image src="/hada-logo.png" alt="Hada" width={40} height={40} className="h-10 w-10 object-cover" />
               </div>
             </div>
           </Link>

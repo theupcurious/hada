@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import Link from "next/link";
 
 const featureCardVariants = {
@@ -26,8 +27,8 @@ export default function Home() {
       {/* Header */}
       <header className="relative flex items-center justify-between px-6 py-4 lg:px-8 border-b border-border/50 bg-background/70 backdrop-blur-md">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-lg shadow-teal-500/20">
-            <span className="text-sm font-bold text-white">H</span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shadow-lg shadow-teal-500/20">
+            <Image src="/hada-logo.png" alt="Hada" width={32} height={32} className="h-8 w-8 object-cover" />
           </div>
           <span className="text-xl font-semibold">Hada</span>
         </div>
@@ -101,8 +102,8 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full gradient-brand text-white shadow-md shadow-teal-500/20">
-                  <span className="text-sm font-bold">H</span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-hidden shadow-md shadow-teal-500/20">
+                  <Image src="/hada-logo.png" alt="Hada" width={32} height={32} className="h-8 w-8 object-cover" />
                 </div>
                 <div className="flex-1 space-y-3 text-left">
                   <div className="inline-block max-w-[80%] rounded-2xl rounded-tl-sm bg-muted/60 px-4 py-2">

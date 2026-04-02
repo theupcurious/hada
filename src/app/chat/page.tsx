@@ -16,6 +16,7 @@ import type { TaskPlan } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
 import type { StreamingSegment } from "@/components/chat/streaming-message";
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 import { LayoutDashboard, LogOut, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -1228,8 +1229,8 @@ export default function ChatPage() {
       <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
         <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand shadow-md shadow-teal-500/20">
-              <span className="text-sm font-bold text-white">H</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shadow-md shadow-teal-500/20">
+              <Image src="/hada-logo.png" alt="Hada" width={32} height={32} className="h-8 w-8 object-cover" />
             </div>
             <span className="truncate font-semibold">Hada</span>
             <Link
@@ -1340,8 +1341,8 @@ export default function ChatPage() {
                   >
                     <div className="relative mb-5 hidden sm:block sm:mb-6">
                       <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-teal-400/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
-                      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl gradient-brand shadow-lg shadow-teal-500/25">
-                        <span className="text-2xl font-bold text-white">H</span>
+                      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl overflow-hidden shadow-lg shadow-teal-500/25">
+                        <Image src="/hada-logo.png" alt="Hada" width={64} height={64} className="h-16 w-16 object-cover" />
                       </div>
                     </div>
                     <h1 className="w-full max-w-full text-center break-words text-2xl font-semibold sm:text-3xl">
