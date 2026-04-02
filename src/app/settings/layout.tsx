@@ -28,8 +28,8 @@ export default function SettingsLayout({
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <Link href="/chat" className="flex items-center gap-3">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shadow-md shadow-teal-500/20">
-                <Image src="/hada-logo.png" alt="Hada" width={28} height={28} className="h-7 w-7 object-cover" />
+              <div className="flex h-6 w-6 items-center justify-center rounded-lg overflow-hidden shadow-md shadow-teal-500/20">
+                <Image src="/hada-logo.png" alt="Hada" width={24} height={24} className="h-6 w-6 object-cover" />
               </div>
               <span className="font-semibold">Hada</span>
             </Link>

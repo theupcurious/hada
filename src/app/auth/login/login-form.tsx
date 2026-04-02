@@ -133,8 +133,8 @@ export default function LoginForm() {
           <Link href="/" className="inline-flex items-center gap-2">
             <div className="relative">
               <div className="absolute inset-0 -m-2 rounded-2xl bg-gradient-to-br from-teal-500/20 to-cyan-500/20 blur-lg" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
-              <div className="relative flex h-9 w-9 items-center justify-center rounded-lg overflow-hidden shadow-lg shadow-teal-500/25">
-                <Image src="/hada-logo.png" alt="Hada" width={36} height={36} className="h-9 w-9 object-cover" />
+              <div className="relative flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shadow-lg shadow-teal-500/25">
+                <Image src="/hada-logo.png" alt="Hada" width={28} height={28} className="h-7 w-7 object-cover" />
               </div>
             </div>
           </Link>
