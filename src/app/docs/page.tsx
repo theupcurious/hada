@@ -296,8 +296,8 @@ export default function DashboardPage() {
             <button className="rounded-md p-1 text-zinc-500 md:hidden hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => setSidebarOpen(!sidebarOpen)}>
               <FileText className="h-4 w-4" />
             </button>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shadow-sm shadow-teal-500/20">
-              <Image src="/hada-logo.png" alt="Hada" width={28} height={28} className="h-7 w-7 object-cover" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg overflow-hidden shadow-sm shadow-teal-500/20">
+              <Image src="/hada-logo.png" alt="Hada" width={24} height={24} className="h-6 w-6 object-cover" />
             </div>
             <span className="font-semibold">Docs</span>
           </div>

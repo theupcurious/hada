@@ -1229,8 +1229,8 @@ export default function ChatPage() {
       <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
         <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shadow-md shadow-teal-500/20">
-              <Image src="/hada-logo.png" alt="Hada" width={32} height={32} className="h-8 w-8 object-cover" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shadow-md shadow-teal-500/20">
+              <Image src="/hada-logo.png" alt="Hada" width={28} height={28} className="h-7 w-7 object-cover" />
             </div>
             <span className="truncate font-semibold">Hada</span>
             <Link

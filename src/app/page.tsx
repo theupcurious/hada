@@ -27,8 +27,8 @@ export default function Home() {
       {/* Header */}
       <header className="relative flex items-center justify-between px-6 py-4 lg:px-8 border-b border-border/50 bg-background/70 backdrop-blur-md">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shadow-lg shadow-teal-500/20">
-            <Image src="/hada-logo.png" alt="Hada" width={32} height={32} className="h-8 w-8 object-cover" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shadow-lg shadow-teal-500/20">
+            <Image src="/hada-logo.png" alt="Hada" width={28} height={28} className="h-7 w-7 object-cover" />
           </div>
           <span className="text-xl font-semibold">Hada</span>
         </div>
