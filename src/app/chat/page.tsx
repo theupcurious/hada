@@ -196,9 +196,17 @@ export default function ChatPage() {
     created_at: msg.created_at,
   });
 
-  const updateMessage = useCallback((messageId: string, updater: (message: Message) => Message) => {
-    setMessages((prev) => prev.map((message) => (message.id === messageId ? updater(message) : message)));
-  }, []);
+  const updateMessage = useCallback(
+    (messageId: string, updater: (message: Message) => Message) => {
+      let updated: Message[] = [];
+      setMessages((prev) => {
+        updated = prev.map((message) => (message.id === messageId ? updater(message) : message));
+        return updated;
+      });
+      return updated;
+    },
+    [],
+  );
 
   const stopBackgroundJobPolling = useCallback((jobId: string) => {
     const poller = backgroundJobPollersRef.current.get(jobId);
@@ -268,7 +276,7 @@ export default function ChatPage() {
       const durationMs = typeof event.durationMs === "number" ? event.durationMs : undefined;
       const truncated = !!event.truncated;
 
-      updateMessage(assistantMessageId, (message) => ({
+      const updatedMessages = updateMessage(assistantMessageId, (message) => ({
         ...message,
         traceEvents: (message.traceEvents || []).map((trace) =>
           trace.callId === callId
@@ -284,6 +292,25 @@ export default function ChatPage() {
             : trace,
         ),
       }));
+
+      // Automatically open ArtifactPanel for document creation/update
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed.status === "created" || parsed.status === "updated") {
+          const assistantMsg = updatedMessages.find((m) => m.id === assistantMessageId);
+          const trace = assistantMsg?.traceEvents?.find((t) => t.callId === callId);
+          const content = String(trace?.args?.content || "");
+
+          setArtifactContent({
+            id: parsed.id,
+            type: "document",
+            title: parsed.title,
+            content,
+          });
+        }
+      } catch {
+        // Not a JSON result or doesn't match our document tools
+      }
       return;
     }
 
@@ -1135,7 +1162,7 @@ export default function ChatPage() {
       subtitle: "Research & create a doc",
       icon: "🎨",
       prompt:
-        "I want to start a new project. Ask me what it's about, then research the best approach and create a 'Project Plan' document with a link for me so we can refine it together.",
+        "I want to start a new project. Ask me what it's about, then research the best approach and create a 'Project Plan' document for me in the workspace so we can refine it together.",
     },
     {
       title: "Defend My Time",
@@ -1149,14 +1176,14 @@ export default function ChatPage() {
       subtitle: "Web intel to workspace",
       icon: "🔍",
       prompt:
-        "Research a specific company or technology for me. Summarize the latest news and competitive landscape into a structured 'Research Memo' document and provide a link to it.",
+        "Research a specific company or technology for me. Summarize the latest news and competitive landscape into a structured 'Research Memo' document in my workspace.",
     },
     {
       title: "Quick Briefing",
       subtitle: "Daily tech summary",
       icon: "☀️",
       prompt:
-        "Give me today's tech briefing. Search for the top AI and tech stories from today and summarize them. If there's a major launch, create a 'New Tech' document with a link.",
+        "Give me today's tech briefing. Search for the top AI and tech stories from today and summarize them. If there's a major launch, create a 'New Tech' document with the details.",
     },
   ];
 

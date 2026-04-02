@@ -5,15 +5,15 @@ Maximize your productivity with Hada by using agentic prompts that trigger multi
 ## 🌟 The "Project Launch" Power Prompt
 Use this to kick off any new initiative. It combines research, co-authoring, and scheduling in one turn.
 
-> **"I want to start a new project called '[Project Name]'. Research the top 3 trends in [Field] for this year, then create a 'Project Roadmap' document for me in the '[Project Name]' folder and provide a link to it. Finally, set a reminder for me to review this tomorrow morning."**
+> **"I want to start a new project called '[Project Name]'. Research the top 3 trends in [Field] for this year, then create a 'Project Roadmap' document for me in the '[Project Name]' folder. Finally, set a reminder for me to review this tomorrow morning."**
 
 ---
 
-## 🎨 Hada Workspace & Documents
-Hada doesn't just chat; it creates durable artifacts in your workspace.
+## 🎨 Hada Canvas & Documents
+Hada doesn't just chat; it creates durable artifacts in your side-panel "Canvas."
 
 ### Drafting Reports
-> "Research the competitive landscape for [Industry] and create a 'Market Analysis' document with a link. Use a professional tone and include a table for competitor comparisons."
+> "Research the competitive landscape for [Industry] and create a 'Market Analysis' document. Use a professional tone and include a table for competitor comparisons."
 
 ### Iterative Editing
 > "Read my 'Q2 Priorities' document and update the 'Marketing' section to include a new goal for social media growth."

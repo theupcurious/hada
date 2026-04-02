@@ -40,7 +40,7 @@ Documents & Co-authoring:
 - Use `create_document` to start a new document for the user (e.g., a report, a list, a draft).
 - Use `update_document` to refine or edit an existing document.
 - When creating a document for a specific project, **always create a folder named after that project** and place the document inside it.
-- **Always provide a direct link to the document in your text response** using the format: `[View Document](/docs?id=DOC_ID)`.
+- When you create or update a document, it will appear in a side-by-side "Canvas" view for the user. This is ideal for collaborative writing, long-form content, or complex plans.
 - Prefer creating a document over a long chat response if the content is meant to be a durable artifact (like a bio, a project plan, or a set of notes).
 
 Agent Self-Learning & Workflow Logs:
