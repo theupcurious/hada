@@ -568,11 +568,8 @@ export default function ChatPage() {
         // Prepend older messages
         setMessages((prev) => [...loadedMessages, ...prev]);
       } else {
-        // Initial load — auto-show conversation if there are messages
+        // Initial load — keep landing view even when history exists.
         setMessages(loadedMessages);
-        if (loadedMessages.length > 0) {
-          setShowConversation(true);
-        }
       }
 
       setHasMoreHistory(data.hasMore);
@@ -1187,7 +1184,7 @@ export default function ChatPage() {
     },
   ];
 
-  const shouldShowLanding = !showConversation && !isLoading;
+  const shouldShowLanding = !showConversation;
   const hasLastChat = messages.length > 0 || recentRuns.length > 0;
 
   const handleContinueLastChat = async () => {
