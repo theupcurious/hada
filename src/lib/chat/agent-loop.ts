@@ -227,7 +227,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
               name: call.name,
               arguments: JSON.stringify(call.arguments),
             },
-            extra_content: call.extraContent,
+            extra_content: getToolCallExtraContent(call),
           })),
         });
 
@@ -617,6 +617,32 @@ function parseProtocolToolCalls(
   }
 
   return calls;
+}
+
+function getToolCallExtraContent(
+  call: { id: string; name: string; arguments: Record<string, unknown> },
+): { google?: { thought_signature?: string } } | undefined {
+  const record = call as Record<string, unknown>;
+  const value = record.extraContent;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const googleRaw = (value as Record<string, unknown>).google;
+  if (!googleRaw || typeof googleRaw !== "object" || Array.isArray(googleRaw)) {
+    return undefined;
+  }
+
+  const thoughtSignature = (googleRaw as Record<string, unknown>).thought_signature;
+  if (typeof thoughtSignature !== "string" || !thoughtSignature) {
+    return undefined;
+  }
+
+  return {
+    google: {
+      thought_signature: thoughtSignature,
+    },
+  };
 }
 
 function extractJsonObjects(text: string): string[] {
