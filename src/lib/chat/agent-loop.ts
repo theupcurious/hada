@@ -126,7 +126,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           if (streamEvent.type === "text") {
             rawContent += streamEvent.chunk;
             const emittable = thinkFilter.feed(streamEvent.chunk);
-            // Emit early thinking signal as soon as we detect a <think> block
+            // Emit early thinking signal as soon as we detect a reasoning block
             // so the UI can show "Thinking..." instead of being silent for 60+ seconds.
             if (thinkFilter.phase === "in_think" && !thinkingEventYielded) {
               thinkingEventYielded = true;
@@ -227,6 +227,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
               name: call.name,
               arguments: JSON.stringify(call.arguments),
             },
+            extra_content: call.extraContent,
           })),
         });
 
@@ -764,9 +765,10 @@ function formatDurationForMessage(durationMs: number): string {
   return `${minutes.toFixed(1)} minutes`;
 }
 
-// ─── Think-block stream filter ────────────────────────────────────────────────
-// Buffers content at the start of a response to detect and suppress <think>…</think>
-// blocks. Once we know we're past any think block, content flows through directly.
+// ─── Reasoning-tag stream filter ──────────────────────────────────────────────
+// Buffers content at the start of a response to detect and suppress reasoning
+// blocks (for example <think>…</think> or <thought>…</thought>). Once we know
+// we're past any reasoning block, content flows through directly.
 
 interface ThinkFilter {
   feed(chunk: string): string;
@@ -774,12 +776,31 @@ interface ThinkFilter {
   readonly phase: "detecting" | "in_think" | "streaming";
 }
 
+const REASONING_TAG_PAIRS = [
+  { open: "<think>", close: "</think>" },
+  { open: "<thought>", close: "</thought>" },
+] as const;
+
 function createThinkFilter(): ThinkFilter {
   type Phase = "detecting" | "in_think" | "streaming";
   let phase: Phase = "detecting";
   let buf = "";
-  const THINK_OPEN = "<think>";
-  const THINK_CLOSE = "</think>";
+  let activeCloseTag: string | null = null;
+
+  function detectLeadingReasoningTagClose(text: string): string | null {
+    const lower = text.toLowerCase();
+    for (const pair of REASONING_TAG_PAIRS) {
+      if (lower.startsWith(pair.open)) {
+        return pair.close;
+      }
+    }
+    return null;
+  }
+
+  function hasReasoningTagPrefix(text: string): boolean {
+    const lower = text.toLowerCase();
+    return REASONING_TAG_PAIRS.some((pair) => pair.open.startsWith(lower));
+  }
 
   function feed(chunk: string): string {
     if (phase === "streaming") return chunk;
@@ -787,33 +808,47 @@ function createThinkFilter(): ThinkFilter {
     buf += chunk;
 
     if (phase === "in_think") {
-      const end = buf.toLowerCase().indexOf(THINK_CLOSE);
+      const closeTag = activeCloseTag;
+      if (!closeTag) {
+        return "";
+      }
+
+      const end = buf.toLowerCase().indexOf(closeTag);
       if (end !== -1) {
-        const after = buf.slice(end + THINK_CLOSE.length);
+        const after = buf.slice(end + closeTag.length);
         buf = "";
         phase = "streaming";
+        activeCloseTag = null;
         return after;
       }
       return "";
     }
 
-    // "detecting" — buffer until we can tell if it starts with <think>
+    // "detecting" — buffer until we can tell if it starts with a reasoning tag
     const trimmed = buf.trimStart();
-    if (trimmed.length < THINK_OPEN.length) return ""; // not enough data yet
+    if (!trimmed) return "";
 
-    if (trimmed.toLowerCase().startsWith(THINK_OPEN)) {
+    const leadingCloseTag = detectLeadingReasoningTagClose(trimmed);
+    if (leadingCloseTag) {
       phase = "in_think";
-      const end = buf.toLowerCase().indexOf(THINK_CLOSE);
+      activeCloseTag = leadingCloseTag;
+      const end = buf.toLowerCase().indexOf(leadingCloseTag);
       if (end !== -1) {
-        const after = buf.slice(end + THINK_CLOSE.length);
+        const after = buf.slice(end + leadingCloseTag.length);
         buf = "";
         phase = "streaming";
+        activeCloseTag = null;
         return after;
       }
       return "";
     }
 
-    // Doesn't start with <think> — flush and stream
+    if (hasReasoningTagPrefix(trimmed)) {
+      // Potential partial tag (e.g. "<thou"), wait for more tokens.
+      return "";
+    }
+
+    // Doesn't start with a reasoning tag — flush and stream
     phase = "streaming";
     const out = buf;
     buf = "";
@@ -828,8 +863,9 @@ function createThinkFilter(): ThinkFilter {
       buf = "";
       return out;
     }
-    // phase === "in_think" and never closed — suppress (it's all think content)
+    // phase === "in_think" and never closed — suppress (it's all reasoning content)
     buf = "";
+    activeCloseTag = null;
     return "";
   }
 
@@ -857,8 +893,8 @@ function chunkText(text: string, maxChunkSize: number): string[] {
 
 function extractThinkingContent(text: string): string | null {
   if (!text) return null;
-  const match = text.match(/<think>([\s\S]*?)<\/think>/i);
-  return match?.[1]?.trim() || null;
+  const match = text.match(/<\s*(think|thought)\s*>([\s\S]*?)<\s*\/\s*\1\s*>/i);
+  return match?.[2]?.trim() || null;
 }
 
 function summarizeThinkingForDisplay(text: string): string | null {
@@ -912,7 +948,7 @@ export function isDeferredToolIntentResponse(text: string): boolean {
   ].some((pattern) => pattern.test(normalized));
 }
 
-function sanitizeAssistantContent(text: string): string {
+export function sanitizeAssistantContent(text: string): string {
   if (!text) {
     return "";
   }
@@ -920,9 +956,9 @@ function sanitizeAssistantContent(text: string): string {
   let output = text;
 
   // Hide model reasoning and raw tool protocol text.
-  output = output.replace(/<think>[\s\S]*?<\/think>/gi, "");
-  output = output.replace(/<think>[\s\S]*$/gi, "");
-  output = output.replace(/<\/?think>/gi, "");
+  output = output.replace(/<\s*(?:think|thought)\s*>[\s\S]*?<\s*\/\s*(?:think|thought)\s*>/gi, "");
+  output = output.replace(/<\s*(?:think|thought)\s*>[\s\S]*$/gi, "");
+  output = output.replace(/<\s*\/?\s*(?:think|thought)\s*>/gi, "");
   output = output.replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/gi, "");
   output = output.replace(/\[TOOL_RESULT\][\s\S]*?\[\/TOOL_RESULT\]/gi, "");
   output = output.replace(/\[TOOL_CALL\][\s\S]*$/gi, "");

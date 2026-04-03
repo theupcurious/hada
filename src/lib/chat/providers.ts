@@ -20,6 +20,11 @@ export interface LLMToolCall {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
+  extraContent?: {
+    google?: {
+      thought_signature?: string;
+    };
+  };
 }
 
 export interface LLMMessage {
@@ -33,6 +38,11 @@ export interface LLMMessage {
     function: {
       name: string;
       arguments: string;
+    };
+    extra_content?: {
+      google?: {
+        thought_signature?: string;
+      };
     };
   }>;
 }
@@ -246,7 +256,19 @@ async function* streamOpenAICompatibleBody(options: {
   let fullContent = "";
 
   // Accumulate tool call deltas keyed by index
-  const toolCallAcc = new Map<number, { id: string; name: string; args: string }>();
+  const toolCallAcc = new Map<
+    number,
+    {
+      id: string;
+      name: string;
+      args: string;
+      extraContent?: {
+        google?: {
+          thought_signature?: string;
+        };
+      };
+    }
+  >();
 
   try {
     outer: while (true) {
@@ -276,6 +298,11 @@ async function* streamOpenAICompatibleBody(options: {
                 index: number;
                 id?: string;
                 function?: { name?: string; arguments?: string };
+                extra_content?: {
+                  google?: {
+                    thought_signature?: string;
+                  };
+                };
               }>;
             };
           }>;
@@ -293,12 +320,21 @@ async function* streamOpenAICompatibleBody(options: {
           for (const tc of delta.tool_calls) {
             const idx = tc.index ?? 0;
             if (!toolCallAcc.has(idx)) {
-              toolCallAcc.set(idx, { id: tc.id ?? "", name: tc.function?.name ?? "", args: "" });
+              toolCallAcc.set(idx, {
+                id: tc.id ?? "",
+                name: tc.function?.name ?? "",
+                args: "",
+                extraContent: normalizeToolCallExtraContent(tc.extra_content),
+              });
             }
             const acc = toolCallAcc.get(idx)!;
             if (tc.id) acc.id = tc.id;
             if (tc.function?.name) acc.name = tc.function.name;
             if (tc.function?.arguments) acc.args += tc.function.arguments;
+            const mergedExtra = normalizeToolCallExtraContent(tc.extra_content);
+            if (mergedExtra?.google?.thought_signature) {
+              acc.extraContent = mergedExtra;
+            }
           }
         }
       }
@@ -312,7 +348,12 @@ async function* streamOpenAICompatibleBody(options: {
     if (!acc.name) continue;
     let args: Record<string, unknown> = {};
     try { args = toObject(JSON.parse(acc.args)); } catch {}
-    toolCalls.push({ id: acc.id || crypto.randomUUID(), name: acc.name, arguments: args });
+    toolCalls.push({
+      id: acc.id || crypto.randomUUID(),
+      name: acc.name,
+      arguments: args,
+      extraContent: acc.extraContent,
+    });
   }
 
   yield { type: "done", content: fullContent, toolCalls };
@@ -463,6 +504,11 @@ async function callAnthropic(options: {
 function parseOpenAIToolCall(toolCall: {
   id?: string;
   function?: { name?: string; arguments?: string };
+  extra_content?: {
+    google?: {
+      thought_signature?: string;
+    };
+  };
 }): LLMToolCall | null {
   if (!toolCall?.function?.name) {
     return null;
@@ -481,6 +527,34 @@ function parseOpenAIToolCall(toolCall: {
     id: toolCall.id || crypto.randomUUID(),
     name: toolCall.function.name,
     arguments: toObject(parsed),
+    extraContent: normalizeToolCallExtraContent(toolCall.extra_content),
+  };
+}
+
+function normalizeToolCallExtraContent(value: unknown): LLMToolCall["extraContent"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const googleRaw = record.google;
+  if (!googleRaw || typeof googleRaw !== "object" || Array.isArray(googleRaw)) {
+    return undefined;
+  }
+
+  const google = googleRaw as Record<string, unknown>;
+  const thoughtSignature = typeof google.thought_signature === "string"
+    ? google.thought_signature
+    : undefined;
+
+  if (!thoughtSignature) {
+    return undefined;
+  }
+
+  return {
+    google: {
+      thought_signature: thoughtSignature,
+    },
   };
 }
 
