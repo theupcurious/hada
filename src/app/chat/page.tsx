@@ -1366,8 +1366,8 @@ export default function ChatPage() {
                   >
                     <div className="relative mb-5 hidden sm:block sm:mb-6">
                       <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-teal-400/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
-                      <div className="relative h-16 w-16 overflow-hidden rounded-2xl shadow-lg shadow-teal-500/25">
-                        <Image src="/hada-logo.png" alt="Hada logo" fill sizes="64px" className="object-cover" />
+                      <div className="relative h-12 w-12 overflow-hidden rounded-xl shadow-lg shadow-teal-500/25">
+                        <Image src="/hada-logo.png" alt="Hada logo" fill sizes="48px" className="object-cover" />
                       </div>
                     </div>
                     <h1 className="w-full max-w-full text-center break-words text-2xl font-semibold sm:text-3xl">
