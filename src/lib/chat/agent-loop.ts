@@ -556,12 +556,12 @@ function clonePlan(plan: TaskPlan): TaskPlan {
 
 function parseProtocolToolCalls(
   content: string,
-): Array<{ id: string; name: string; arguments: Record<string, unknown> }> {
+): LLMToolCall[] {
   if (!content) {
     return [];
   }
 
-  const calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+  const calls: LLMToolCall[] = [];
   const seen = new Set<string>();
 
   const pushCall = (name: string, args: Record<string, unknown>) => {
