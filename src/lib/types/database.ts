@@ -12,7 +12,8 @@ export type LLMProviderName =
   | "kimi"
   | "deepseek"
   | "groq"
-  | "openrouter";
+  | "openrouter"
+  | "mimo";
 
 export interface UserPermissions {
   google_calendar_read?: PermissionMode;

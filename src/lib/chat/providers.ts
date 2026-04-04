@@ -94,6 +94,13 @@ export const PROVIDERS: Record<LLMProviderName, ProviderConfig> = {
     defaultModel: "llama-3.3-70b",
     contextWindow: 32_000,
   },
+  mimo: {
+    // Xiaomi MiMo via HuggingFace serverless inference (OpenAI-compatible).
+    // API key: HuggingFace token. Override base URL with LLM_BASE_URL if self-hosting.
+    baseUrl: "https://api-inference.huggingface.co/v1",
+    defaultModel: "XiaomiMiMo/MiMo-7B-RL-0131",
+    contextWindow: 32_000,
+  },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
     defaultModel: "minimax/minimax-m2.7",

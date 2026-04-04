@@ -28,6 +28,7 @@ const PROVIDER_OPTIONS: Array<{ value: LLMProviderName; label: string }> = [
   { value: "kimi", label: "Kimi (Moonshot)" },
   { value: "deepseek", label: "DeepSeek" },
   { value: "groq", label: "Groq" },
+  { value: "mimo", label: "Xiaomi MiMo" },
 ];
 
 interface OpenRouterModelsApiResponse {
