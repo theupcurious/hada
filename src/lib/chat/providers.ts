@@ -9,6 +9,7 @@ export interface ProviderConfig {
   native?: boolean;
   extraHeaders?: Record<string, string>;
   contextWindow?: number;  // tokens
+  apiKeyHeader?: string;  // if set, use this header name instead of "Authorization: Bearer"
 }
 
 export interface LLMToolDefinition {
@@ -96,8 +97,9 @@ export const PROVIDERS: Record<LLMProviderName, ProviderConfig> = {
   },
   mimo: {
     baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1",
-    defaultModel: "mimo-v2-omni",
+    defaultModel: "mimo-v2-pro",
     contextWindow: 256_000,
+    apiKeyHeader: "api-key",
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
@@ -240,7 +242,9 @@ async function* streamOpenAICompatibleBody(options: {
     signal,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${selection.apiKey}`,
+      ...(selection.config.apiKeyHeader
+        ? { [selection.config.apiKeyHeader]: selection.apiKey }
+        : { Authorization: `Bearer ${selection.apiKey}` }),
       ...selection.config.extraHeaders,
     },
     body: JSON.stringify({
@@ -421,7 +425,9 @@ async function callOpenAICompatible(options: {
     signal,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${selection.apiKey}`,
+      ...(selection.config.apiKeyHeader
+        ? { [selection.config.apiKeyHeader]: selection.apiKey }
+        : { Authorization: `Bearer ${selection.apiKey}` }),
       ...selection.config.extraHeaders,
     },
     body: JSON.stringify({
