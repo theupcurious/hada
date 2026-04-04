@@ -137,6 +137,10 @@ export default function ChatPage() {
   const backgroundJobPollersRef = useRef(new Map<string, number>());
   const backgroundJobCursorRef = useRef(new Map<string, number>());
   const pendingResponsePollRef = useRef<number | null>(null);
+  // Token drain queue: buffer text_delta tokens and release at a steady pace to smooth
+  // out network bursts (TCP delivers batches of tokens at once → visually choppy).
+  const pendingTokensRef = useRef<Map<string, string>>(new Map());
+  const drainRafRef = useRef<number | null>(null);
   const router = useRouter();
   const supabase = createClient();
   const { status: connectionStatus } = useHealthStatus(30000); // Poll every 30s
@@ -208,6 +212,38 @@ export default function ChatPage() {
     [],
   );
 
+  // Drain up to N chars per animation frame so fast bursts render smoothly.
+  const DRAIN_CHARS_PER_FRAME = 16;
+  const startDrainLoop = useCallback(() => {
+    if (drainRafRef.current !== null) return;
+    const drain = () => {
+      const queue = pendingTokensRef.current;
+      if (queue.size === 0) {
+        drainRafRef.current = null;
+        return;
+      }
+      const updates = new Map<string, string>();
+      for (const [msgId, pending] of queue.entries()) {
+        const chunk = pending.slice(0, DRAIN_CHARS_PER_FRAME);
+        const remaining = pending.slice(DRAIN_CHARS_PER_FRAME);
+        updates.set(msgId, chunk);
+        if (remaining) {
+          queue.set(msgId, remaining);
+        } else {
+          queue.delete(msgId);
+        }
+      }
+      setMessages((prev) =>
+        prev.map((msg) => {
+          const chunk = updates.get(msg.id);
+          return chunk ? { ...msg, content: msg.content + chunk } : msg;
+        }),
+      );
+      drainRafRef.current = requestAnimationFrame(drain);
+    };
+    drainRafRef.current = requestAnimationFrame(drain);
+  }, []);
+
   const stopBackgroundJobPolling = useCallback((jobId: string) => {
     const poller = backgroundJobPollersRef.current.get(jobId);
     if (poller != null) {
@@ -219,16 +255,9 @@ export default function ChatPage() {
   const applyAgentEventToMessage = useCallback((assistantMessageId: string, event: Record<string, unknown>) => {
     if (event.type === "text_delta" && typeof event.content === "string") {
       setIsThinking(false);
-      const deltaText = event.content;
-      const segmentId = `${assistantMessageId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      updateMessage(assistantMessageId, (message) => ({
-        ...message,
-        content: message.content + deltaText,
-        streamSegments: [
-          ...(message.streamSegments || []),
-          { id: segmentId, text: deltaText },
-        ],
-      }));
+      const existing = pendingTokensRef.current.get(assistantMessageId) ?? "";
+      pendingTokensRef.current.set(assistantMessageId, existing + event.content);
+      startDrainLoop();
       return;
     }
 
@@ -467,7 +496,7 @@ export default function ChatPage() {
         isError: true,
       }));
     }
-  }, [updateMessage]);
+  }, [updateMessage, startDrainLoop]);
 
   const pollBackgroundJob = useCallback(async (jobId: string, assistantMessageId: string) => {
     const cursor = backgroundJobCursorRef.current.get(jobId) || 0;
@@ -759,6 +788,9 @@ export default function ChatPage() {
       if (pendingResponsePollRef.current !== null) {
         window.clearTimeout(pendingResponsePollRef.current);
       }
+      if (drainRafRef.current !== null) {
+        cancelAnimationFrame(drainRafRef.current);
+      }
     };
   }, []);
 
@@ -794,6 +826,8 @@ export default function ChatPage() {
     const processStreamEvent = (event: Record<string, unknown>) => {
       if (event.type === "complete") {
         receivedTerminalEvent = true;
+        // Flush any buffered tokens before applying the terminal state.
+        pendingTokensRef.current.delete(currentAssistantId);
         const realAssistantId = String(event.id ?? currentAssistantId);
         const terminalResponse =
           typeof event.response === "string" ? event.response : null;
@@ -849,6 +883,7 @@ export default function ChatPage() {
         );
       } else if (event.type === "error") {
         receivedTerminalEvent = true;
+        pendingTokensRef.current.delete(currentAssistantId);
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === currentAssistantId
