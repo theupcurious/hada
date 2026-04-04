@@ -143,7 +143,9 @@ export function resolveProviderSelection(settings?: UserSettings): ProviderSelec
     config.fallbackModel ||
     undefined;
 
-  const apiKey = process.env.LLM_API_KEY || "";
+  // Per-provider key (e.g. MIMO_API_KEY) takes precedence over the generic LLM_API_KEY.
+  const providerEnvKey = `${provider.toUpperCase()}_API_KEY`;
+  const apiKey = process.env[providerEnvKey] || process.env.LLM_API_KEY || "";
 
   if (!apiKey) {
     throw new Error(`Missing API key for provider "${provider}". Set the LLM_API_KEY environment variable.`);
