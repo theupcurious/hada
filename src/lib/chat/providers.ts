@@ -95,11 +95,9 @@ export const PROVIDERS: Record<LLMProviderName, ProviderConfig> = {
     contextWindow: 32_000,
   },
   mimo: {
-    // Xiaomi MiMo via HuggingFace serverless inference (OpenAI-compatible).
-    // API key: HuggingFace token. Override base URL with LLM_BASE_URL if self-hosting.
-    baseUrl: "https://api-inference.huggingface.co/v1",
-    defaultModel: "XiaomiMiMo/MiMo-7B-RL-0131",
-    contextWindow: 32_000,
+    baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1",
+    defaultModel: "mimo-v2-omni",
+    contextWindow: 256_000,
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
@@ -250,9 +248,9 @@ async function* streamOpenAICompatibleBody(options: {
       messages,
       tools: tools.length
         ? tools.map((t) => ({
-            type: "function",
-            function: { name: t.name, description: t.description, parameters: t.parameters },
-          }))
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.parameters },
+        }))
         : undefined,
       tool_choice: tools.length ? "auto" : undefined,
       temperature: 0.4,
@@ -364,7 +362,7 @@ async function* streamOpenAICompatibleBody(options: {
   for (const [, acc] of toolCallAcc) {
     if (!acc.name) continue;
     let args: Record<string, unknown> = {};
-    try { args = toObject(JSON.parse(acc.args)); } catch {}
+    try { args = toObject(JSON.parse(acc.args)); } catch { }
     toolCalls.push({
       id: acc.id || crypto.randomUUID(),
       name: acc.name,
@@ -431,13 +429,13 @@ async function callOpenAICompatible(options: {
       messages,
       tools: tools.length
         ? tools.map((tool) => ({
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            },
-          }))
+          type: "function",
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
+          },
+        }))
         : undefined,
       tool_choice: tools.length ? "auto" : undefined,
       temperature: 0.4,
@@ -455,8 +453,8 @@ async function callOpenAICompatible(options: {
   const content = typeof message?.content === "string" ? message.content : "";
   const toolCalls = Array.isArray(message?.tool_calls)
     ? message.tool_calls
-        .map(parseOpenAIToolCall)
-        .filter((tool: LLMToolCall | null): tool is LLMToolCall => Boolean(tool))
+      .map(parseOpenAIToolCall)
+      .filter((tool: LLMToolCall | null): tool is LLMToolCall => Boolean(tool))
     : [];
 
   return { content, toolCalls };
@@ -601,24 +599,24 @@ function toAnthropicPayload(messages: LLMMessage[]): {
   anthropicMessages: Array<{
     role: "user" | "assistant";
     content:
-      | string
-      | Array<
-          | { type: "text"; text: string }
-          | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-          | { type: "tool_result"; tool_use_id: string; content: string }
-        >;
+    | string
+    | Array<
+      | { type: "text"; text: string }
+      | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+      | { type: "tool_result"; tool_use_id: string; content: string }
+    >;
   }>;
 } {
   const systemParts: string[] = [];
   const anthropicMessages: Array<{
     role: "user" | "assistant";
     content:
-      | string
-      | Array<
-          | { type: "text"; text: string }
-          | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-          | { type: "tool_result"; tool_use_id: string; content: string }
-        >;
+    | string
+    | Array<
+      | { type: "text"; text: string }
+      | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+      | { type: "tool_result"; tool_use_id: string; content: string }
+    >;
   }> = [];
 
   for (const message of messages) {
