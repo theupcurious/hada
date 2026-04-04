@@ -7,6 +7,7 @@ import { generateFollowUpSuggestions } from "@/lib/chat/follow-up-suggestions";
 import { extractMemoriesFromTurn } from "@/lib/chat/memory-extraction";
 import { resolveProviderSelection } from "@/lib/chat/providers";
 import { resolveRunBudget } from "@/lib/chat/runtime-budgets";
+import { DEFAULT_POLICY } from "@/lib/chat/tool-permissions";
 import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -116,7 +117,8 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   const provider = resolveProviderSelection(
     allowModelOverrides ? builtPrompt.userSettings : undefined,
   );
-  const systemPrompt = appendRuntimeIdentitySection(builtPrompt.prompt, provider);
+  const runtimeSection = buildRuntimeIdentitySection(provider);
+  const systemPrompt = builtPrompt.prompt + "\n\n" + runtimeSection;
 
   let assembled = "";
   let fatalError: string | null = null;
@@ -126,10 +128,15 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     for await (const event of agentLoop({
       messages: context.messages,
       systemPrompt,
+      systemPromptParts: {
+        stable: builtPrompt.stablePrompt,
+        dynamic: builtPrompt.dynamicPrompt + "\n\n" + runtimeSection,
+      },
       tools,
       provider,
       timeout: runBudget.timeoutMs,
       idleTimeout: runBudget.idleTimeoutMs,
+      permissionPolicy: DEFAULT_POLICY,
     })) {
       if (event.type === "tool_call") {
         toolCallArgs.set(event.callId, event.args);
@@ -381,11 +388,10 @@ function isToolResultError(result: string): boolean {
   }
 }
 
-function appendRuntimeIdentitySection(
-  prompt: string,
+function buildRuntimeIdentitySection(
   provider: ReturnType<typeof resolveProviderSelection>,
 ): string {
-  const runtimeLines = [
+  return [
     "## Runtime Identity",
     "- Assistant: Hada",
     "- Runtime: Hada built-in agent loop",
@@ -393,7 +399,5 @@ function appendRuntimeIdentitySection(
     `- Current LLM model: ${provider.model}`,
     "- When asked about your model/provider/runtime, answer using these values.",
     "- Do not mention internal or legacy platform names unless they are explicitly provided in this section.",
-  ];
-
-  return `${prompt}\n\n${runtimeLines.join("\n")}`;
+  ].join("\n");
 }

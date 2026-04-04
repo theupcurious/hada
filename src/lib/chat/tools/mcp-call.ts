@@ -8,7 +8,7 @@ export const mcpCallManifest: ToolManifest = {
   description:
     "Call a tool on a Model Context Protocol (MCP) server. Use this to access external capabilities not built into Hada.",
   category: "custom",
-  riskLevel: "high",
+  riskLevel: "medium",
   parameters: {
     type: "object",
     properties: {

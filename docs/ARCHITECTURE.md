@@ -19,14 +19,19 @@ Users (Web / Telegram)
 Next.js App
   ├─ App Router UI
   │   ├─ /chat
-  │   ├─ /dashboard
+  │   ├─ /docs
   │   └─ /settings
   ├─ API Routes
   │   ├─ /api/chat              (SSE stream + background job enqueue)
   │   ├─ /api/background-jobs/*
+  │   ├─ /api/conversations/*   (conversation management)
+  │   ├─ /api/messages/*        (message management, regeneration)
   │   ├─ /api/documents/*       (Documents workspace CRUD)
+  │   ├─ /api/integrations/*    (integration management)
+  │   ├─ /api/openrouter/models (model list)
   │   ├─ /api/tools
   │   ├─ /api/dashboard/*
+  │   ├─ /api/health
   │   ├─ /api/webhooks/telegram
   │   └─ /api/cron
   ├─ Shared orchestration
@@ -38,14 +43,15 @@ Next.js App
   │   ├─ memory-extraction
   │   └─ embeddings
   ├─ Tool registry
-  │   ├─ memory tools
-  │   ├─ web tools
+  │   ├─ memory tools           (save_memory, recall_memory)
+  │   ├─ web tools              (web_search, web_fetch)
   │   ├─ calendar tools
   │   ├─ document tools         (list, read, create, update)
-  │   ├─ planning tool
-  │   ├─ delegation tool
+  │   ├─ planning tool          (plan_task)
+  │   ├─ delegation tool        (delegate_task)
+  │   ├─ smart card tool        (render_card)
   │   └─ MCP bridge             (mcp_call)
-  └─ Sub-agent profiles
+  └─ Sub-agent profiles         (src/lib/chat/agents/profiles.ts)
       ├─ researcher
       ├─ memory_manager
       └─ scheduler              (Proactive Time Defense)
@@ -160,6 +166,12 @@ Current supported renderers:
 Follow-up gap:
 - `schedule_view` and `data_table` renderers exist, but they still need prompt/tool-side structured payload emission before they will appear automatically in normal conversations.
 
+#### 3. Smart Cards (render_card)
+- Trigger: The agent calls `render_card` with a `type` of `comparison`, `steps`, or `checklist`.
+- Delivery: The tool result is normalized server-side and stored in `messages.metadata.cards`.
+- Rendering: `src/components/chat/smart-cards/` renders each card type inline in the chat.
+- Use cases: comparison tables, step-by-step plans, checklists — structured output without custom tool results.
+
 ### Memory Lifecycle
 
 Long-term memory now has three write paths and one hybrid read path:
@@ -178,14 +190,21 @@ Design properties:
 - embeddings are optional; if embedding generation fails or `OPENAI_API_KEY` is missing, memory save/flush/extraction still persist text memories
 - compaction summaries remain in `messages`, while durable facts live separately in `user_memories`
 
+### Follow-up Suggestions
+
+After `processMessage()` completes, `generateFollowUpSuggestions()` runs fire-and-forget on the final user/assistant turn. It generates up to 3 short contextual prompt suggestions and delivers them as a `follow_up_suggestions` SSE event. The chat renders them as clickable chips below the assistant response. Suggestions are not persisted.
+
 ### `agentLoop()`
 
 `src/lib/chat/agent-loop.ts` is the core execution engine.
 
 Current runtime behaviors:
 - calls the selected LLM with the available tool schema
-- executes tool calls sequentially
+- executes `plan_task` calls sequentially (they mutate plan state), then runs all other tool calls in parallel via `Promise.allSettled` — all `tool_call` events are emitted before execution starts so the UI sees them simultaneously
+- checks permissions via the active `PermissionPolicy` before executing each tool; denied tools receive a synthetic error result sent back to the model
 - refreshes an idle-progress timer whenever real work advances
+- performs mid-run context compaction at the start of each iteration when the accumulated `llmMessages` exceed the provider's effective token budget (75% of `contextWindow`); compacted messages are replaced with a summary system message
+- performs intra-run sliding window trimming after each tool batch; keeps initial context and the last 4 messages, replaces the middle with a summary
 - emits enriched events:
   - `text_delta`
   - `thinking`
@@ -195,8 +214,11 @@ Current runtime behaviors:
   - `step_started`
   - `step_completed`
   - `step_failed`
+  - `context_compacted`
+  - `permission_request` / `permission_response` (infrastructure for future confirmation UI)
   - `delegation_started`
   - `delegation_completed`
+  - `follow_up_suggestions`
   - `done`
   - `error`
 - supports hard timeout and idle timeout handling
@@ -216,17 +238,34 @@ Current request/runtime split:
 
 ## Orchestration Layers
 
+### Tool Permission Gates
+
+`src/lib/chat/tool-permissions.ts` defines the permission policy layer that gates tool execution before it reaches the tool registry.
+
+- `PermissionPolicy` specifies a default decision (`"allow"` / `"deny"` / `"confirm"`) for each risk level, per-tool overrides, and per-tool call-count caps for the current run.
+- `DEFAULT_POLICY`: low → allow, medium → allow, high → confirm; `delegate_task` capped at 3 calls/run.
+- `checkPermission()` evaluates: tool override > rate limit > risk default.
+- `"deny"` → synthetic error result sent to the model; tool does not execute.
+- `"confirm"` → treated as `"allow"` in all current channels; `permission_request`/`permission_response` events are emitted as infrastructure for a future confirmation UI.
+- `processMessage()` passes `DEFAULT_POLICY` into `agentLoop()` on every run.
+
 ### Tool Registry
 
 Tools are no longer hardcoded as a plain list. `src/lib/chat/tools/tool-registry.ts` registers manifests and factories, and exposes:
-- available tool instances for runtime execution
+- available tool instances for runtime execution, with `riskLevel` threaded from the manifest onto each `AgentTool`
 - manifests for `/api/tools`
 - category/risk metadata for UI/control-plane usage
 
-Recent additions:
-- `create_document`: Creates a new doc in the `/docs` workspace.
-- `update_document`: Modifies an existing doc.
-- `mcp_call`: A bridge tool that forwards requests to Model Context Protocol (MCP) servers via JSON-RPC.
+Current tool set:
+- `save_memory` / `recall_memory`: durable memory write and hybrid semantic+keyword read
+- `web_search` / `web_fetch`: web research
+- `google_calendar_list` / `google_calendar_create` / `google_calendar_update` / `google_calendar_delete`: calendar management
+- `list_documents` / `read_document` / `create_document` / `update_document`: documents workspace CRUD
+- `plan_task`: ephemeral multi-step task planning
+- `delegate_task`: nested specialist sub-agent execution
+- `render_card`: structured smart card output (comparison, steps, checklist)
+- `schedule_task`: create or update scheduled tasks
+- `mcp_call`: JSON-RPC bridge to external MCP servers
 
 Memory-related tools currently split responsibilities this way:
 - `save_memory` writes durable facts/preferences into `user_memories`
@@ -285,6 +324,11 @@ Key UI elements:
 - `TaskPlanCard` for plan progress
 - nested delegation trace groups for sub-agent work
 - background-job progress replay for queued long-form runs
+- smart card renderers inline (comparison, steps, checklist via `render_card`)
+- follow-up suggestion chips below each assistant response
+- tool status pills showing active search/fetch/delegation during streaming
+- message actions (regenerate, feedback, save to doc)
+- doc attach picker for pulling `/docs` content into a message
 - responsive chat layout that keeps long links/code/tables viewable on narrow viewports
 
 ### Dashboard
@@ -329,6 +373,7 @@ Important non-persisted orchestration state:
 - current step progress
 - delegated sub-agent event grouping
 - per-run timeout/idle budget selection
+- per-run tool call counts (for permission rate limiting)
 
 Memory-specific persisted data:
 - `messages` stores raw chat history plus compaction summaries (`metadata.type = "compaction"`)
@@ -371,7 +416,23 @@ Service-role access is used for:
 
 LLM providers are resolved through `src/lib/chat/providers.ts`.
 
+The default provider is **OpenRouter** (`DEFAULT_PROVIDER = "openrouter"`). All providers share a single `LLM_API_KEY` environment variable. `LLM_PROVIDER` selects which provider to use. `LLM_MODEL` and `LLM_BASE_URL` optionally override the provider's defaults.
+
+Each provider config now includes a `contextWindow` field (tokens) used to derive the intra-run context budget (`75%` of the window). Default values:
+
+| Provider | Context window |
+|----------|---------------|
+| Anthropic | 200,000 |
+| OpenAI | 128,000 |
+| Gemini | 1,000,000 |
+| OpenRouter | 128,000 |
+| Kimi | 128,000 |
+| DeepSeek | 64,000 |
+| MiniMax | 40,000 |
+| Groq | 32,000 |
+
 Supported providers:
+- OpenRouter (default)
 - MiniMax
 - OpenAI
 - Anthropic
@@ -381,6 +442,14 @@ Supported providers:
 - Groq
 
 Most providers use an OpenAI-compatible request shape; Anthropic uses a native path.
+
+### Prompt Caching
+
+`buildSystemPrompt()` now returns two segments in addition to the combined `prompt` string:
+- `stablePrompt` — base system prompt, persona, custom instructions, tool list (changes only on deploy or settings change)
+- `dynamicPrompt` — user context, memories, channel context, runtime identity (changes per turn)
+
+When calling Anthropic, the agent loop passes these segments as a two-element `system` array with `cache_control: { type: "ephemeral" }` on the stable part and on the last tool definition. This enables Anthropic prompt caching across turns in a conversation, reducing cost and latency for the cacheable prefix. OpenAI-compatible providers receive automatic prefix caching with no explicit changes needed.
 
 ## Observability
 
@@ -401,7 +470,8 @@ There are two observability layers:
 ## Scaling Notes
 
 - The app is largely stateless between requests; durable state lives in Postgres.
-- Context compaction keeps prompt size bounded over time.
+- Context compaction keeps prompt size bounded over time (post-response, async).
+- Intra-run sliding window trimming (Gap 2) and mid-run reactive compaction (Gap 4) prevent the in-memory `llmMessages` array from exceeding the provider's context window during a single multi-tool run.
 - Telemetry and dashboard queries are indexed by user and time.
 - Delegation currently runs sequentially inside a parent tool call; it does not fan out sub-agents in parallel inside the app runtime.
 - Long-running research-style work now uses a background-job path; truly short interactive work still runs inline inside the request.

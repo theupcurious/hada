@@ -342,3 +342,45 @@ function fallbackSummary(lines: string[]): string {
   }
   return `Conversation summary: ${text.slice(0, 1200)}${text.length > 1200 ? "..." : ""}`;
 }
+
+export function compactMessagesInPlace(
+  messages: LLMMessage[],
+  options: {
+    tokenBudget: number;
+    protectLastN: number;
+    initialCount: number;
+  },
+): { compacted: boolean; removedCount: number } {
+  const totalTokens = messages.reduce(
+    (sum, msg) => sum + estimateTokens(typeof msg.content === "string" ? msg.content : ""),
+    0,
+  );
+
+  if (totalTokens <= options.tokenBudget) {
+    return { compacted: false, removedCount: 0 };
+  }
+
+  const trimStart = options.initialCount;
+  const trimEnd = messages.length - options.protectLastN;
+
+  if (trimEnd <= trimStart) {
+    return { compacted: false, removedCount: 0 };
+  }
+
+  const compactable = messages.slice(trimStart, trimEnd).filter(
+    (m) => m.role === "user" || m.role === "assistant",
+  );
+
+  const compactedSummary = compactable
+    .map((m) => `${m.role}: ${(typeof m.content === "string" ? m.content : "").slice(0, 200)}`)
+    .join("\n")
+    .slice(0, 2000);
+
+  const removedCount = trimEnd - trimStart;
+  messages.splice(trimStart, removedCount, {
+    role: "system",
+    content: `[Context compacted: ${removedCount} messages summarized to stay within token budget]\n${compactedSummary}`,
+  });
+
+  return { compacted: true, removedCount };
+}

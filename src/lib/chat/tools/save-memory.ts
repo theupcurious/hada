@@ -13,7 +13,7 @@ export const saveMemoryManifest: ToolManifest = {
   displayName: "Save Memory",
   description: "Save or update long-term memory for this user under a concise topic key.",
   category: "memory",
-  riskLevel: "low",
+  riskLevel: "medium",
   parameters: {
     type: "object",
     properties: {

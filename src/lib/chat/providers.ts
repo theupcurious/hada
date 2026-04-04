@@ -8,6 +8,7 @@ export interface ProviderConfig {
   fallbackModel?: string;
   native?: boolean;
   extraHeaders?: Record<string, string>;
+  contextWindow?: number;  // tokens
 }
 
 export interface LLMToolDefinition {
@@ -60,36 +61,44 @@ export const PROVIDERS: Record<LLMProviderName, ProviderConfig> = {
   minimax: {
     baseUrl: "https://api.minimax.io/v1",
     defaultModel: "MiniMax-M2.7",
+    contextWindow: 40_000,
   },
   anthropic: {
     baseUrl: "https://api.anthropic.com/v1",
     defaultModel: "claude-sonnet-4-5-20250929",
     native: true,
+    contextWindow: 200_000,
   },
   openai: {
     baseUrl: "https://api.openai.com/v1",
     defaultModel: "gpt-4o",
+    contextWindow: 128_000,
   },
   gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     defaultModel: "gemini-2.5-flash",
+    contextWindow: 1_000_000,
   },
   kimi: {
     baseUrl: "https://api.moonshot.cn/v1",
     defaultModel: "moonshot-v1-auto",
+    contextWindow: 128_000,
   },
   deepseek: {
     baseUrl: "https://api.deepseek.com/v1",
     defaultModel: "deepseek-chat",
+    contextWindow: 64_000,
   },
   groq: {
     baseUrl: "https://api.groq.com/openai/v1",
     defaultModel: "llama-3.3-70b",
+    contextWindow: 32_000,
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
     defaultModel: "minimax/minimax-m2.7",
     fallbackModel: "moonshotai/kimi-k2.5",
+    contextWindow: 128_000,
     extraHeaders: {
       "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://hada.app",
       "X-Title": "Hada",
@@ -167,6 +176,7 @@ export async function* callLLMStream(options: {
   messages: LLMMessage[];
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
+  systemPromptParts?: { stable: string; dynamic: string };
 }): AsyncGenerator<LLMStreamEvent> {
   if (options.selection.config.native) {
     // Anthropic: no streaming yet — emit full response as single chunk
@@ -450,9 +460,33 @@ async function callAnthropic(options: {
   messages: LLMMessage[];
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
+  systemPromptParts?: { stable: string; dynamic: string };
 }): Promise<LLMResult> {
-  const { selection, messages, tools = [], signal } = options;
-  const { system, anthropicMessages } = toAnthropicPayload(messages);
+  const { selection, messages, tools = [], signal, systemPromptParts } = options;
+
+  const useCaching = Boolean(systemPromptParts);
+  let systemValue: unknown;
+  let anthropicMessages: ReturnType<typeof toAnthropicPayload>["anthropicMessages"];
+
+  if (systemPromptParts) {
+    const { anthropicMessages: msgs } = toAnthropicPayload(messages);
+    anthropicMessages = msgs;
+    systemValue = [
+      { type: "text", text: systemPromptParts.stable, cache_control: { type: "ephemeral" } },
+      { type: "text", text: systemPromptParts.dynamic },
+    ];
+  } else {
+    const payload = toAnthropicPayload(messages);
+    anthropicMessages = payload.anthropicMessages;
+    systemValue = payload.system;
+  }
+
+  const mappedTools = tools.map((tool, idx) => ({
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.parameters,
+    ...(useCaching && idx === tools.length - 1 ? { cache_control: { type: "ephemeral" } } : {}),
+  }));
 
   const response = await fetch(`${selection.config.baseUrl.replace(/\/+$/, "")}/messages`, {
     method: "POST",
@@ -461,17 +495,14 @@ async function callAnthropic(options: {
       "Content-Type": "application/json",
       "x-api-key": selection.apiKey,
       "anthropic-version": "2023-06-01",
+      ...(useCaching ? { "anthropic-beta": "prompt-caching-2024-07-31" } : {}),
     },
     body: JSON.stringify({
       model: selection.model,
       max_tokens: 1024,
-      system,
+      system: systemValue,
       messages: anthropicMessages,
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.parameters,
-      })),
+      tools: mappedTools,
       temperature: 0.4,
     }),
   });

@@ -13,6 +13,8 @@ let cachedBasePrompt: string | null = null;
 
 export interface BuildSystemPromptResult {
   prompt: string;
+  stablePrompt: string;
+  dynamicPrompt: string;
   userSettings: UserSettings;
   userEmail: string | null;
   connectedIntegrations: string[];
@@ -98,26 +100,34 @@ export async function buildSystemPrompt(options: {
     `- Current date/time: ${localDatetime}`,
   ];
 
-  const sections = [
+  const stableSections = [
     basePrompt,
-    "## User Context",
-    userContextLines.join("\n"),
     ...(persona.promptModifier
       ? ["## Persona", persona.promptModifier]
       : []),
     ...(customInstructions
       ? ["## Custom Instructions", customInstructions]
       : []),
-    "## Your Memory",
-    memorySection,
     "## Available Tools",
     summarizeToolList(options.tools),
+  ];
+
+  const dynamicSections = [
+    "## User Context",
+    userContextLines.join("\n"),
+    "## Your Memory",
+    memorySection,
     "## Channel Context",
     channelContext,
   ];
 
+  const stablePrompt = stableSections.join("\n\n");
+  const dynamicPrompt = dynamicSections.join("\n\n");
+
   return {
-    prompt: sections.join("\n\n"),
+    prompt: stablePrompt + "\n\n" + dynamicPrompt,
+    stablePrompt,
+    dynamicPrompt,
     userSettings,
     userEmail: user?.email || null,
     connectedIntegrations,

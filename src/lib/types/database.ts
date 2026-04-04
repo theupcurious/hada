@@ -237,7 +237,10 @@ export type AgentEvent =
   | { type: "done"; content: string; agentName?: string }
   | { type: "message_saved"; id: string }
   | { type: "follow_up_suggestions"; suggestions: string[] }
-  | { type: "error"; message: string; agentName?: string };
+  | { type: "context_compacted"; removedCount: number }
+  | { type: "error"; message: string; agentName?: string }
+  | { type: "permission_request"; callId: string; toolName: string; args: Record<string, unknown> }
+  | { type: "permission_response"; callId: string; allowed: boolean };
 
 export type Database = {
   public: {

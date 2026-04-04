@@ -6,11 +6,18 @@ import {
   type LLMToolDefinition,
   type ProviderSelection,
 } from "@/lib/chat/providers";
+import { compactMessagesInPlace } from "@/lib/chat/context-manager";
+import {
+  checkPermission,
+  DEFAULT_POLICY,
+  type PermissionPolicy,
+} from "@/lib/chat/tool-permissions";
 
 export interface AgentTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  riskLevel?: "low" | "medium" | "high";
   execute: (
     args: Record<string, unknown>,
     options?: { signal?: AbortSignal },
@@ -26,6 +33,9 @@ export interface AgentLoopOptions {
   idleTimeout?: number;
   maxErrors?: number;
   maxIterations?: number;
+  maxRunContextTokens?: number;
+  systemPromptParts?: { stable: string; dynamic: string };
+  permissionPolicy?: PermissionPolicy;
 }
 
 const DEFAULT_TIMEOUT_MS = 240_000;
@@ -33,6 +43,8 @@ const DEFAULT_IDLE_TIMEOUT_MS = 150_000;
 const DEFAULT_MAX_ERRORS = 3;
 const TOOL_RESULT_LIMIT = 8_000;
 const PLAN_TASK_TOOL_NAME = "plan_task";
+const MAX_RUN_CONTEXT_TOKENS = 80_000;
+const DEFAULT_CONTEXT_WINDOW = 64_000;
 
 export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<AgentEvent> {
   const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT_MS;
@@ -70,10 +82,14 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
     }, idleTimeoutMs);
   };
   const toolMap = new Map(options.tools.map((tool) => [tool.name, tool]));
+  const toolCallCounts = new Map<string, number>();
   const llmMessages: LLMMessage[] = [
     { role: "system", content: options.systemPrompt },
     ...options.messages,
   ];
+  const initialMessageCount = llmMessages.length;
+  const contextWindow = options.provider.config.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+  const effectiveTokenBudget = Math.floor(contextWindow * 0.75);
   const llmTools: LLMToolDefinition[] = options.tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
@@ -107,6 +123,17 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         iterationCount += 1;
         markProgress();
 
+        const compactionResult = compactMessagesInPlace(llmMessages, {
+          tokenBudget: effectiveTokenBudget,
+          protectLastN: 6,
+          initialCount: initialMessageCount,
+        });
+        if (compactionResult.compacted) {
+          markProgress();
+          yield { type: "context_compacted", removedCount: compactionResult.removedCount };
+          console.warn(`[agent-loop] Mid-run compaction: removed ${compactionResult.removedCount} messages`);
+        }
+
         // Stream the LLM response, emitting text_delta events in real time.
         // iterationText tracks what was streamed this iteration only; it is
         // only moved into finalText if this turns out to be the terminal iteration.
@@ -121,6 +148,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           messages: buildMessagesForIteration(llmMessages, activePlan, currentStepIndex),
           tools: llmTools,
           signal: timeoutController.signal,
+          systemPromptParts: options.systemPromptParts,
         })) {
           markProgress();
           if (streamEvent.type === "text") {
@@ -231,47 +259,35 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           })),
         });
 
-        for (const call of effectiveToolCalls) {
-          const callId = call.id;
-          const matchedStep =
-            call.name === PLAN_TASK_TOOL_NAME
-              ? null
-              : findStepForToolCall(activePlan, currentStepIndex, call.name);
+        const planCalls = effectiveToolCalls.filter((c) => c.name === PLAN_TASK_TOOL_NAME);
+        const regularCalls = effectiveToolCalls.filter((c) => c.name !== PLAN_TASK_TOOL_NAME);
 
-          if (activePlan && matchedStep) {
-            const matchedIndex = activePlan.steps.findIndex((step) => step.id === matchedStep.id);
-            if (matchedIndex >= 0) {
-              currentStepIndex = matchedIndex;
-            }
+        const policy = options.permissionPolicy ?? DEFAULT_POLICY;
 
-            if (matchedStep.status !== "running") {
-              matchedStep.status = "running";
-              markProgress();
-              yield { type: "step_started", stepId: matchedStep.id, planId: activePlan.id };
-            }
-          }
+        for (const call of planCalls) {
+          const planTool = toolMap.get(call.name);
+          const planRiskLevel = planTool?.riskLevel ?? "medium";
+          const planCount = toolCallCounts.get(call.name) ?? 0;
+          const planDecision = checkPermission(policy, call.name, planRiskLevel, planCount);
 
           markProgress();
-          yield { type: "tool_call", name: call.name, args: call.arguments, callId };
-
+          yield { type: "tool_call", name: call.name, args: call.arguments, callId: call.id };
           markProgress();
-          const tool = toolMap.get(call.name);
-          const toolStart = Date.now();
-          const toolResult = await runTool(tool, call.arguments, timeoutController.signal);
-          const durationMs = Date.now() - toolStart;
-          const sanitized = sanitizeToolResult(toolResult);
-          const truncated = toolResult.trim().length > TOOL_RESULT_LIMIT;
 
-          markProgress();
-          yield { type: "tool_result", name: call.name, result: sanitized, callId, durationMs, truncated };
-          llmMessages.push({
-            role: "tool",
-            name: call.name,
-            tool_call_id: call.id,
-            content: sanitized,
-          });
-
-          if (call.name === PLAN_TASK_TOOL_NAME) {
+          if (planDecision === "deny") {
+            const denyReason = `Permission denied: tool "${call.name}" is not allowed by the current policy.`;
+            yield { type: "tool_result", name: call.name, result: denyReason, callId: call.id, durationMs: 0, truncated: false };
+            llmMessages.push({ role: "tool", name: call.name, tool_call_id: call.id, content: denyReason });
+          } else {
+            const toolStart = Date.now();
+            const toolResult = await runTool(planTool, call.arguments, timeoutController.signal);
+            const durationMs = Date.now() - toolStart;
+            const sanitized = sanitizeToolResult(toolResult);
+            const truncated = toolResult.trim().length > TOOL_RESULT_LIMIT;
+            markProgress();
+            yield { type: "tool_result", name: call.name, result: sanitized, callId: call.id, durationMs, truncated };
+            llmMessages.push({ role: "tool", name: call.name, tool_call_id: call.id, content: sanitized });
+            toolCallCounts.set(call.name, (toolCallCounts.get(call.name) ?? 0) + 1);
             const parsedPlan = parseTaskPlanResult(toolResult);
             if (parsedPlan) {
               activePlan = parsedPlan;
@@ -280,22 +296,71 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
               markProgress();
               yield { type: "plan_created", plan: clonePlan(parsedPlan) };
             }
+          }
+        }
+
+        const allowedCalls: LLMToolCall[] = [];
+        const deniedCalls: Array<{ call: LLMToolCall; reason: string }> = [];
+
+        for (const call of regularCalls) {
+          const tool = toolMap.get(call.name);
+          const riskLevel = tool?.riskLevel ?? "medium";
+          const count = toolCallCounts.get(call.name) ?? 0;
+          const decision = checkPermission(policy, call.name, riskLevel, count);
+
+          if (decision === "deny") {
+            deniedCalls.push({
+              call,
+              reason: `Permission denied: tool "${call.name}" is not allowed by the current policy.`,
+            });
+          } else {
+            allowedCalls.push(call);
+          }
+        }
+
+        for (const call of allowedCalls) {
+          const matchedStep = findStepForToolCall(activePlan, currentStepIndex, call.name);
+          if (activePlan && matchedStep) {
+            const matchedIndex = activePlan.steps.findIndex((s) => s.id === matchedStep.id);
+            if (matchedIndex >= 0) currentStepIndex = matchedIndex;
+            if (matchedStep.status !== "running") {
+              matchedStep.status = "running";
+              markProgress();
+              yield { type: "step_started", stepId: matchedStep.id, planId: activePlan.id };
+            }
+          }
+          markProgress();
+          yield { type: "tool_call", name: call.name, args: call.arguments, callId: call.id };
+        }
+
+        const settled = await Promise.allSettled(
+          allowedCalls.map((call) => executeToolCall(call, toolMap, timeoutController.signal)),
+        );
+
+        for (let i = 0; i < allowedCalls.length; i++) {
+          const call = allowedCalls[i];
+          const outcome = settled[i];
+
+          toolCallCounts.set(call.name, (toolCallCounts.get(call.name) ?? 0) + 1);
+
+          if (outcome.status === "rejected") {
+            llmMessages.push({ role: "tool", name: call.name, tool_call_id: call.id, content: "Tool error: execution failed." });
             continue;
           }
 
-          if (!activePlan || !matchedStep) {
-            continue;
-          }
+          const { sanitized, durationMs, truncated } = outcome.value;
+          markProgress();
+          yield { type: "tool_result", name: call.name, result: sanitized, callId: call.id, durationMs, truncated };
+          llmMessages.push({ role: "tool", name: call.name, tool_call_id: call.id, content: sanitized });
 
-          if (didToolFail(toolResult)) {
+          if (!activePlan) continue;
+          const matchedStep = findStepForToolCall(activePlan, currentStepIndex, call.name);
+          if (!matchedStep) continue;
+
+          if (didToolFail(outcome.value.result)) {
             matchedStep.status = "failed";
             markProgress();
-            yield {
-              type: "step_failed",
-              stepId: matchedStep.id,
-              planId: activePlan.id,
-              error: sanitized,
-            };
+            yield { type: "step_failed", stepId: matchedStep.id, planId: activePlan.id, error: sanitized };
             continue;
           }
 
@@ -303,21 +368,25 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           if (isStepComplete(matchedStep, completedStepTools)) {
             matchedStep.status = "done";
             markProgress();
-            yield {
-              type: "step_completed",
-              stepId: matchedStep.id,
-              planId: activePlan.id,
-              result: sanitized,
-            };
-
+            yield { type: "step_completed", stepId: matchedStep.id, planId: activePlan.id, result: sanitized };
             currentStepIndex = findNextOpenStepIndex(activePlan, currentStepIndex + 1);
-            if (activePlan.steps.every((step) => step.status === "done")) {
+            if (activePlan.steps.every((s) => s.status === "done")) {
               activePlan = null;
               currentStepIndex = 0;
               completedStepTools.clear();
             }
           }
         }
+
+        for (const { call, reason } of deniedCalls) {
+          markProgress();
+          yield { type: "tool_call", name: call.name, args: call.arguments, callId: call.id };
+          markProgress();
+          yield { type: "tool_result", name: call.name, result: reason, callId: call.id, durationMs: 0, truncated: false };
+          llmMessages.push({ role: "tool", name: call.name, tool_call_id: call.id, content: reason });
+        }
+
+        trimRunContext(llmMessages, initialMessageCount, options.maxRunContextTokens ?? MAX_RUN_CONTEXT_TOKENS);
 
         consecutiveErrors = 0;
       } catch (error) {
@@ -1016,4 +1085,86 @@ function toObject(value: unknown): Record<string, unknown> {
     return {};
   }
   return value as Record<string, unknown>;
+}
+
+async function executeToolCall(
+  call: LLMToolCall,
+  toolMap: Map<string, AgentTool>,
+  signal: AbortSignal,
+): Promise<{
+  call: LLMToolCall;
+  result: string;
+  sanitized: string;
+  durationMs: number;
+  truncated: boolean;
+}> {
+  const toolStart = Date.now();
+  const result = await runTool(toolMap.get(call.name), call.arguments, signal);
+  const durationMs = Date.now() - toolStart;
+  const sanitized = sanitizeToolResult(result);
+  const truncated = result.trim().length > TOOL_RESULT_LIMIT;
+  return { call, result, sanitized, durationMs, truncated };
+}
+
+function trimRunContext(
+  messages: LLMMessage[],
+  initialCount: number,
+  maxTokens: number,
+): void {
+  function localEstimateTokens(text: string): number {
+    return Math.ceil((text || "").length / 4);
+  }
+
+  const totalTokens = messages.reduce((sum, msg) => {
+    const content = typeof msg.content === "string" ? msg.content : "";
+    return sum + localEstimateTokens(content);
+  }, 0);
+
+  if (totalTokens <= maxTokens) return;
+
+  const runMessages = messages.slice(initialCount);
+  const keepTail = 4;
+
+  if (runMessages.length <= keepTail) return;
+
+  const trimStart = initialCount;
+  const trimEnd = messages.length - keepTail;
+
+  if (trimEnd <= trimStart) return;
+
+  const trimmed = messages.splice(trimStart, trimEnd - trimStart);
+  const toolNames = [...new Set(
+    trimmed
+      .filter((m) => m.role === "tool" && m.name)
+      .map((m) => m.name!),
+  )];
+  const summary = `[${trimmed.length} earlier tool interactions trimmed to stay within context limits.${toolNames.length ? ` Tools used: ${toolNames.join(", ")}.` : ""}]`;
+
+  messages.splice(trimStart, 0, { role: "system", content: summary });
+
+  console.warn(`[agent-loop] Trimmed ${trimmed.length} messages (estimated ${totalTokens} tokens exceeded ${maxTokens} limit)`);
+
+  const newTotal = messages.reduce((sum, msg) => sum + localEstimateTokens(typeof msg.content === "string" ? msg.content : ""), 0);
+  if (newTotal > maxTokens * 1.5) {
+    let largestIdx = -1;
+    let largestSize = 0;
+    for (let i = initialCount; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role === "tool") {
+        const size = localEstimateTokens(typeof msg.content === "string" ? msg.content : "");
+        if (size > largestSize) {
+          largestSize = size;
+          largestIdx = i;
+        }
+      }
+    }
+    if (largestIdx >= 0) {
+      const msg = messages[largestIdx];
+      if (typeof msg.content === "string") {
+        const limit = maxTokens * 4;
+        msg.content = msg.content.slice(0, limit) + "\n\n[truncated by context safety net]";
+        console.warn(`[agent-loop] Hard safety net: truncated large tool result at index ${largestIdx}`);
+      }
+    }
+  }
 }

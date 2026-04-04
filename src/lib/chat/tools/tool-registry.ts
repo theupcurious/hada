@@ -35,7 +35,8 @@ export class ToolRegistry {
         !registration.manifest.requiresIntegration ||
         integrations.has(registration.manifest.requiresIntegration)
       ) {
-        availableTools.push(registration.create(context));
+        const tool = registration.create(context);
+        availableTools.push({ ...tool, riskLevel: registration.manifest.riskLevel });
       }
     }
 
