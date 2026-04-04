@@ -239,6 +239,11 @@ async function* streamOpenAICompatibleBody(options: {
   const { selection, messages, tools = [], signal } = options;
   const url = `${selection.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
 
+  console.log("[LLM]", selection.provider, url, {
+    authHeader: selection.config.apiKeyHeader ?? "Authorization",
+    keyPrefix: selection.apiKey.slice(0, 8),
+  });
+
   const response = await fetch(url, {
     method: "POST",
     signal,
