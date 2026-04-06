@@ -6,7 +6,7 @@ Hada is a multi-tenant assistant application built around a local agent loop. Th
 
 1. Simplicity: orchestration happens inside the app, without an external AI gateway layer.
 2. Multi-channel continuity: web, Telegram, and scheduled runs share the same conversation model.
-3. Observability: chat exposes live traces, and `/dashboard` exposes persisted run telemetry.
+3. Observability: chat exposes live traces, and `/api/dashboard/*` exposes persisted run telemetry.
 4. Extensibility: tools are registry-driven and delegation is profile-driven.
 5. Security: Supabase Auth plus RLS isolate user data.
 
@@ -177,7 +177,7 @@ Follow-up gap:
 Long-term memory now has three write paths and one hybrid read path:
 
 1. Explicit save:
-   `save_memory` validates a durable fact, allows up to 500 characters of content, generates an embedding when `OPENAI_API_KEY` is available, and upserts the row into `user_memories`.
+   `save_memory` validates a durable fact, allows up to 500 characters of content, generates an embedding when `EMBEDDING_API_KEY` (or fallback `LLM_API_KEY`) is available, and upserts the row into `user_memories`.
 2. Pre-compaction flush:
    `maybeCompactConversation()` extracts durable facts from the soon-to-be-compacted transcript before that context is replaced by a summary, then upserts the extracted memories directly.
 3. Post-turn extraction:
@@ -187,7 +187,7 @@ Long-term memory now has three write paths and one hybrid read path:
 
 Design properties:
 - automatic memory capture is best-effort and silent on failure so the user-facing response path stays resilient
-- embeddings are optional; if embedding generation fails or `OPENAI_API_KEY` is missing, memory save/flush/extraction still persist text memories
+- embeddings are optional; if embedding generation fails or `EMBEDDING_API_KEY`/`LLM_API_KEY` is missing, memory save/flush/extraction still persist text memories
 - compaction summaries remain in `messages`, while durable facts live separately in `user_memories`
 
 ### Follow-up Suggestions
@@ -205,6 +205,7 @@ Current runtime behaviors:
 - refreshes an idle-progress timer whenever real work advances
 - performs mid-run context compaction at the start of each iteration when the accumulated `llmMessages` exceed the provider's effective token budget (75% of `contextWindow`); compacted messages are replaced with a summary system message
 - performs intra-run sliding window trimming after each tool batch; keeps initial context and the last 4 messages, replaces the middle with a summary
+- sanitizes internal reasoning tags (for example `<think>` / `<thought>`) from user-visible assistant text while still emitting high-level `thinking` status events
 - emits enriched events:
   - `text_delta`
   - `thinking`
@@ -319,6 +320,7 @@ Each delegated run:
 
 Key UI elements:
 - streaming markdown message content
+- welcome-first landing screen on refresh/login, with explicit "Continue last chat" action
 - **Hada Canvas**: Side-by-side artifact panel for document co-authoring
 - `AgentTraceTimeline` for tool/reasoning execution
 - `TaskPlanCard` for plan progress
@@ -331,9 +333,9 @@ Key UI elements:
 - doc attach picker for pulling `/docs` content into a message
 - responsive chat layout that keeps long links/code/tables viewable on narrow viewports
 
-### Dashboard
+### Dashboard APIs
 
-`/dashboard` is the control plane for activity, tools, and scheduled tasks.
+`/api/dashboard/*` provides activity, analytics, memory, and task control-plane data for the web settings surfaces.
 
 ### Docs Workspace
 
@@ -395,7 +397,7 @@ Hada supports the Model Context Protocol (MCP) via a dedicated `mcp_call` tool.
 
 - Supabase Auth handles sign-in/session management
 - server/client middleware refreshes sessions
-- protected routes include `/chat`, `/dashboard`, and `/settings`
+- protected routes include `/chat`, `/docs`, and `/settings`
 
 ### Authorization
 
@@ -426,6 +428,7 @@ Each provider config now includes a `contextWindow` field (tokens) used to deriv
 | OpenAI | 128,000 |
 | Gemini | 1,000,000 |
 | OpenRouter | 128,000 |
+| Xiaomi MiMo | 256,000 |
 | Kimi | 128,000 |
 | DeepSeek | 64,000 |
 | MiniMax | 40,000 |
@@ -437,11 +440,15 @@ Supported providers:
 - OpenAI
 - Anthropic
 - Gemini
+- Xiaomi MiMo
 - Kimi
 - DeepSeek
 - Groq
 
 Most providers use an OpenAI-compatible request shape; Anthropic uses a native path.
+
+Gemini note:
+- For Gemini tool-calling models that emit `extra_content.google.thought_signature`, the runtime preserves and replays that signature on subsequent tool turns.
 
 ### Prompt Caching
 
@@ -457,7 +464,7 @@ There are two observability layers:
 
 1. Live UI trace:
 - SSE events stream directly into chat
-- users can inspect reasoning/tool activity inline
+- users can inspect tool activity and high-level thinking status inline; raw chain-of-thought text is sanitized from assistant message content
 
 2. Persisted run telemetry:
 - `agent_runs` records per-run status, duration, previews, tool calls, and errors

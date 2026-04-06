@@ -15,7 +15,7 @@ Hada is an assistant application built around a local agent loop. It supports we
 ## What’s Implemented
 
 - Persistent per-user conversation history
-- Inline chat execution traces with tool calls, reasoning, and latencies
+- Inline chat execution traces with tool calls, reasoning status, and latencies
 - Progress-aware timeout handling with larger budgets for long-form research/memo jobs
 - Background execution for long-form research/memo jobs, with persisted progress events and chat polling
 - **Parallel tool execution**: when the model returns multiple tool calls, they run concurrently via `Promise.allSettled` (`plan_task` still runs first to protect plan state)
@@ -38,6 +38,9 @@ Hada is an assistant application built around a local agent loop. It supports we
 - **Tool status pills**: Live streaming indicators showing active search, fetch, and delegation work
 - **Message regeneration**: Re-run any assistant turn with the same or revised prompt
 - **Doc attach**: Attach documents from the `/docs` workspace directly into a chat message for context
+- **Welcome-first chat landing**: Refresh/login opens the greeting + starter prompts view by default, with an explicit "Continue last chat" action
+- **Reasoning output hygiene**: Internal model reasoning tags (for example `<think>` / `<thought>`) are suppressed from user-visible responses
+- **Gemini tool-call compatibility**: Preserves `extra_content.google.thought_signature` across tool-call turns for Gemini models that require it
 - Google Calendar tools
 - Scheduled one-time and recurring tasks
 - Telegram integration with account linking
@@ -186,4 +189,5 @@ npm run build
 - **Parallel tool execution**: `plan_task` always runs first; all other tool calls in a batch execute concurrently. UI receives all `tool_call` events before any results land.
 - **Permission policy**: `DEFAULT_POLICY` in `tool-permissions.ts` is passed into every `agentLoop()` call. To restrict or rate-limit a specific tool, add a `toolOverrides` or `maxCallsPerTool` entry to a custom policy and pass it in `AgentLoopOptions`.
 - **Prompt caching** requires Anthropic as the provider. The `anthropic-beta: prompt-caching-2024-07-31` header is sent automatically when `systemPromptParts` is present. No configuration needed — it activates whenever `LLM_PROVIDER=anthropic`.
-
+- **Reasoning traces vs response text**: The UI can show high-level thinking status events, but raw chain-of-thought content is sanitized before assistant text is displayed.
+- **Gemini thought signatures**: Gemini function-calling turns that emit `extra_content.google.thought_signature` are replayed with that signature on subsequent tool turns to avoid 400 validation errors.

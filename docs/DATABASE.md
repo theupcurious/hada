@@ -11,6 +11,10 @@ Current migration chain:
 - `005_agent_runs.sql`
 - `006_background_jobs.sql`
 - `007_memory_embeddings.sql`
+- `008_messages_update_policy.sql` — adds UPDATE RLS policy for messages (required for feedback/metadata updates)
+- `009_default_openrouter_provider.sql` — sets OpenRouter as the default `llm_provider` in `users.settings`
+- `010_documents.sql` — adds the `documents` table with RLS and indexes
+- `011_agent_runs_delete_policy.sql` — allows users to delete their own run history rows
 
 ## Entity Relationship Diagram
 
@@ -18,10 +22,10 @@ Current migration chain:
 auth.users
     │ 1:1
     ▼
-users ────────────────┬───────────────┬───────────────┬──────────────────┐
-                      │               │               │                  │
-                      ▼               ▼               ▼                  ▼
-                conversations    user_memories   scheduled_tasks    integrations
+users ────────────────┬───────────────┬───────────────┬──────────────────┬──────────────┐
+                      │               │               │                  │              │
+                      ▼               ▼               ▼                  ▼              ▼
+                conversations    user_memories   scheduled_tasks    integrations    documents
                       │
                       ▼
                    messages ────────────────┬─────────────────────────▶ agent_runs
@@ -114,7 +118,6 @@ Common `metadata` fields:
     "status": "queued",
     "pending": true
   },
-  "thinking": "...",
   "cards": [
     {
       "type": "search_results",
@@ -138,14 +141,19 @@ Common `metadata` fields:
 Notes:
 - assistant messages may persist `gatewayError` when the run completes with a surfaced agent/runtime failure
 - assistant messages for queued long-form jobs persist `backgroundJob` state so the chat UI can resume polling after reload
-- assistant messages may persist rich card payloads in `metadata.cards`; these currently back inline `search_results`, `schedule_view`, and `data_table` renderers in the chat UI
+- assistant messages may persist rich card payloads in `metadata.cards`; these currently back inline search, schedule, table, and smart-card renderers in the chat UI
 - plan/delegation progress is streamed live to the UI but not stored as first-class relational rows
+- high-level thinking status is streamed as live events; raw chain-of-thought text is not persisted as canonical assistant content
+- Gemini `thought_signature` values used for tool-call replay are runtime transport fields and are not stored in relational columns
 
 Current card payload families stored in `metadata.cards`:
 - `search_results`
 - `schedule_view`
 - `data_table`
 - `link_preview`
+- `comparison`
+- `steps`
+- `checklist`
 
 ### integrations
 
@@ -207,6 +215,29 @@ Assistant-created once or recurring tasks.
 | enabled | boolean | Whether the task is active |
 | last_run_at | timestamptz | Last execution timestamp, nullable |
 | created_at | timestamptz | Creation time |
+
+### documents
+
+User-managed documents for the `/docs` workspace. Documents act as RAG context when referenced in chat and as co-authored artifacts via Hada Canvas.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | Owner |
+| title | text | Document title |
+| content | text | Markdown content, defaults to empty string |
+| folder | text | Optional single-level folder name, null = root |
+| created_at | timestamptz | Creation time |
+| updated_at | timestamptz | Last update time (auto-maintained by trigger) |
+
+Usage notes:
+- `folder` supports one level of nesting only (e.g., `"Work"`, not `"Work/Projects"`)
+- RLS grants full CRUD to the owning user; no service-role bypass is needed for document writes
+- Agent tools `list_documents`, `read_document`, `create_document`, and `update_document` all operate on this table
+
+Indexes:
+- `documents_user_id_idx` on `(user_id)`
+- `documents_user_folder_idx` on `(user_id, folder)`
 
 ### telegram_link_tokens
 
@@ -325,6 +356,7 @@ User-owned tables enforce `auth.uid() = user_id` semantics:
 - `integrations`
 - `user_memories`
 - `scheduled_tasks`
+- `documents`
 - `telegram_link_tokens`
 - `agent_runs`
 - `background_jobs`
@@ -352,6 +384,8 @@ CREATE INDEX idx_agent_runs_status ON agent_runs(user_id, status) WHERE status =
 CREATE INDEX idx_background_jobs_user_created ON background_jobs(user_id, created_at DESC);
 CREATE INDEX idx_background_jobs_queue ON background_jobs(status, created_at ASC) WHERE status in ('queued', 'running');
 CREATE INDEX idx_background_job_events_job_seq ON background_job_events(job_id, seq ASC);
+CREATE INDEX documents_user_id_idx ON documents(user_id);
+CREATE INDEX documents_user_folder_idx ON documents(user_id, folder);
 ```
 
 ## Notes
