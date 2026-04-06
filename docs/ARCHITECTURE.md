@@ -12,6 +12,44 @@ Hada is a multi-tenant assistant application built around a local agent loop. Th
 
 ## High-Level System
 
+```mermaid
+flowchart TD
+    U[Users: Web / Telegram / Scheduled] --> N[Next.js Application]
+
+    subgraph APP["App Runtime (Next.js)"]
+      N --> UI[App Router UI<br/>/chat, /docs, /settings]
+      N --> API[API Routes<br/>/api/chat, /api/background-jobs/*,<br/>/api/conversations/*, /api/messages/*,<br/>/api/documents/*, /api/integrations/*,<br/>/api/tools, /api/dashboard/*, /api/cron]
+      API --> PM[processMessage]
+      PM --> AL[agentLoop]
+      PM --> SP[buildSystemPrompt]
+      AL --> TR[Tool Registry]
+      TR --> T1[memory tools]
+      TR --> T2[web tools]
+      TR --> T3[calendar tools]
+      TR --> T4[document tools]
+      TR --> T5[plan_task]
+      TR --> T6[delegate_task]
+      TR --> T7[render_card]
+      TR --> T8[mcp_call]
+      AL --> AG[Sub-agent profiles<br/>researcher, memory_manager, scheduler]
+    end
+
+    subgraph DATA["Data + External Services"]
+      DB[(Supabase Postgres)]
+      AUTH[Supabase Auth + RLS]
+      LLM[LLM Providers]
+      GAPI[Google APIs]
+      TG[Telegram Bot API]
+    end
+
+    PM --> DB
+    UI --> AUTH
+    API --> AUTH
+    AL --> LLM
+    TR --> GAPI
+    API --> TG
+```
+
 ```text
 Users (Web / Telegram)
         │
