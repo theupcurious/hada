@@ -33,16 +33,9 @@ export function WelcomeHome({
       transition={{ duration: 0.25, ease: "easeOut" }}
       aria-labelledby={titleId}
       aria-describedby={subtitleId}
-      className={cn(
-        "relative w-full overflow-hidden rounded-[2rem] bg-background/80 px-5 py-10 shadow-sm backdrop-blur-sm sm:px-7 sm:py-14",
-        "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-teal-400/50 before:to-transparent",
-        "dark:bg-zinc-950/40",
-        className,
-      )}
+      className={cn("w-full px-5 py-10 sm:px-7 sm:py-14", className)}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.12),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.10),transparent_55%)]" />
-
-      <div className="relative mx-auto flex w-full max-w-xl flex-col items-center text-center">
+      <div className="mx-auto flex w-full max-w-xl flex-col items-center text-center">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-400 dark:text-zinc-500">
             Hada

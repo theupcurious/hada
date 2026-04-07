@@ -16,7 +16,7 @@ export function WelcomeStatusLine({ text, actionLabel, onAction, className }: We
       aria-live="polite"
       aria-atomic="true"
       className={cn(
-        "flex w-full flex-row items-center justify-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400",
+        "flex w-full flex-row items-center justify-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400",
         className,
       )}
     >
