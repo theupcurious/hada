@@ -16,22 +16,25 @@ export function WelcomeStatusLine({ text, actionLabel, onAction, className }: We
       aria-live="polite"
       aria-atomic="true"
       className={cn(
-        "flex w-full flex-col gap-3 text-xs text-zinc-500 dark:text-zinc-400 sm:flex-row sm:items-center sm:justify-between",
+        "flex w-full flex-row items-center justify-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400",
         className,
       )}
     >
-      <p className="min-w-0 truncate">{text}</p>
+      <p className="truncate">{text}</p>
       {actionLabel && onAction ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onAction}
-          aria-label={actionLabel}
-          className="-mr-2 h-7 rounded-full px-2.5 text-xs"
-        >
-          {actionLabel}
-        </Button>
+        <>
+          <span aria-hidden="true" className="shrink-0 opacity-40">·</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onAction}
+            aria-label={actionLabel}
+            className="h-auto shrink-0 rounded-full px-0 py-0 text-xs text-teal-600 hover:bg-transparent hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300"
+          >
+            {actionLabel}
+          </Button>
+        </>
       ) : null}
     </div>
   );
