@@ -138,10 +138,12 @@ export function resolveProviderSelection(settings?: UserSettings): ProviderSelec
     process.env.LLM_MODEL ||
     config.defaultModel;
 
-  const fallbackModel =
-    (typeof settings?.llm_fallback_model === "string" && settings.llm_fallback_model.trim()) ||
-    config.fallbackModel ||
-    undefined;
+  const hasExplicitFallbackSetting =
+    typeof settings?.llm_fallback_model === "string" || settings?.llm_fallback_model === null;
+
+  const fallbackModel = hasExplicitFallbackSetting
+    ? (typeof settings?.llm_fallback_model === "string" && settings.llm_fallback_model.trim()) || undefined
+    : config.fallbackModel || undefined;
 
   // Per-provider key (e.g. MIMO_API_KEY) takes precedence over the generic LLM_API_KEY.
   const providerEnvKey = `${provider.toUpperCase()}_API_KEY`;
@@ -167,7 +169,7 @@ export async function callLLM(options: {
   try {
     return await callOpenAICompatible(options);
   } catch (error) {
-    const fallback = selection.config.fallbackModel;
+    const fallback = selection.fallbackModel;
     if (fallback && fallback !== selection.model && !isAbortError(error)) {
       return callOpenAICompatible({
         ...options,
