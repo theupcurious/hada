@@ -15,6 +15,7 @@ export interface ArtifactData {
   type: "response" | "document";
   title: string;
   content?: string;
+  loading?: boolean;
   visuals?: Array<{ type: "mermaid" | "chart"; code: string }>;
 }
 
@@ -29,6 +30,7 @@ export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
 
   const saveContent = artifact.content ?? "";
   const isDoc = artifact.type === "document";
+  const showLoadingState = isDoc && artifact.loading && !artifact.content;
 
   return (
     <AnimatePresence>
@@ -93,6 +95,11 @@ export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
         {/* Content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="px-5 py-5 sm:px-6 sm:py-6">
+            {showLoadingState ? (
+              <div className="rounded-2xl border border-dashed border-zinc-200/80 px-4 py-8 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                Loading document...
+              </div>
+            ) : null}
             {artifact.content && (
               <RichMessageContent content={artifact.content} isStreaming={false} />
             )}
