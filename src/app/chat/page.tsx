@@ -1559,7 +1559,7 @@ export default function ChatPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-6 pt-4 sm:min-h-[60vh] sm:justify-center sm:px-4"
+                    className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-8 pt-5 sm:min-h-[60vh] sm:justify-center sm:px-4 sm:pb-10 sm:pt-6"
                   >
                     {showFirstRunSetup ? (
                       <FirstRunSetup
@@ -1586,7 +1586,7 @@ export default function ChatPage() {
                           }}
                         />
 
-                        <div className="mx-auto mt-5 w-full max-w-3xl">
+                        <div className="mx-auto mt-8 w-full max-w-3xl sm:mt-10">
                           {inputForm}
                         </div>
                       </div>
