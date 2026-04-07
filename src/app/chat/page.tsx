@@ -12,12 +12,15 @@ import { ChatMessageRow } from "@/components/chat/chat-message-row";
 import { ArtifactPanel, type ArtifactData } from "@/components/chat/artifact-panel";
 import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
 import { DocAttachPicker, AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
-import type { TaskPlan } from "@/lib/types/database";
+import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first-run-setup";
+import { WelcomeHome } from "@/components/chat/welcome-home";
+import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
+import type { TaskPlan, UserSettings } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
 import type { StreamingSegment } from "@/components/chat/streaming-message";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { LayoutDashboard, LogOut, Settings2 } from "lucide-react";
+import { Calendar, FileText, LayoutDashboard, LogOut, Search, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, type MutableRefObject } from "react";
@@ -112,6 +115,30 @@ interface BackgroundJobPollResponse {
   error?: string;
 }
 
+interface RecentRunSummary {
+  id: string;
+  input_preview: string | null;
+  source: string;
+  status: string;
+  started_at: string;
+}
+
+interface HomeDocumentSummary {
+  id: string;
+  title: string;
+  folder: string | null;
+  content: string;
+  preview: string;
+  updated_at: string;
+}
+
+interface HomeTaskSummary {
+  id: string;
+  description: string;
+  enabled: boolean;
+  next_run_at: string | null;
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -119,12 +146,13 @@ export default function ChatPage() {
   const [isThinking, setIsThinking] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
   const [user, setUser] = useState<{ email?: string; name?: string; id?: string } | null>(null);
-  const [showProfileSetup, setShowProfileSetup] = useState(false);
-  const [profileName, setProfileName] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [showFirstRunSetup, setShowFirstRunSetup] = useState(false);
   const [greetingText, setGreetingText] = useState("Hello");
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [recentRuns, setRecentRuns] = useState<Array<{ id: string; input_preview: string | null; source: string; status: string; started_at: string }>>([]);
+  const [recentRuns, setRecentRuns] = useState<RecentRunSummary[]>([]);
+  const [recentDocuments, setRecentDocuments] = useState<HomeDocumentSummary[]>([]);
+  const [upcomingTasks, setUpcomingTasks] = useState<HomeTaskSummary[]>([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [artifactContent, setArtifactContent] = useState<ArtifactData | null>(null);
@@ -655,30 +683,27 @@ export default function ChatPage() {
 
       const dbName = (dbUser as { name?: string | null } | null)?.name;
       const displayName = dbName || authUser.user_metadata?.name || null;
-      const settings = (dbUser as { settings?: Record<string, unknown> } | null)?.settings || {};
+      const settings = ((dbUser as { settings?: UserSettings } | null)?.settings || {}) as UserSettings;
 
       setUser({ email: authUser.email, name: displayName ?? undefined, id: authUser.id });
+      setUserSettings(settings);
 
       // Auto-detect and silently save timezone if not set
       if (!settings.timezone) {
         const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (detectedTimezone) {
+          const nextSettings = { ...settings, timezone: detectedTimezone };
           await supabase
             .from("users")
-            .update({ settings: { ...settings, timezone: detectedTimezone } })
+            .update({ settings: nextSettings })
             .eq("id", authUser.id);
+          setUserSettings(nextSettings);
         }
       }
 
-      // Show profile setup card for users with no name who haven't dismissed it
-      const dismissed = typeof window !== "undefined"
-        ? localStorage.getItem("hada_profile_setup_dismissed")
-        : null;
-      if (!displayName && !dismissed) {
-        setShowProfileSetup(true);
-      }
+      setShowFirstRunSetup(settings.onboarding_completed !== true);
 
-      // Load message history + recent activity in parallel
+      // Load message history + home surface data in parallel.
       const [initialMessages] = await Promise.all([
         loadHistory(),
         fetch("/api/dashboard/activity?limit=3", { cache: "no-store" })
@@ -687,6 +712,27 @@ export default function ChatPage() {
             if (!d) return;
             const runs = Array.isArray(d?.runs) ? d.runs : [];
             setRecentRuns(runs);
+          })
+          .catch(() => null),
+        fetch("/api/documents", { cache: "no-store" })
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => {
+            const documents = Array.isArray(d?.documents) ? d.documents : [];
+            setRecentDocuments(documents);
+          })
+          .catch(() => null),
+        fetch("/api/dashboard/tasks", { cache: "no-store" })
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => {
+            const tasks = Array.isArray(d?.tasks) ? (d.tasks as unknown[]) : [];
+            const sortedTasks = tasks
+              .filter((task: unknown): task is HomeTaskSummary => !!task && typeof task === "object" && typeof (task as { id?: unknown }).id === "string")
+              .sort((a, b) => {
+                const aTime = a.next_run_at ? new Date(a.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
+                const bTime = b.next_run_at ? new Date(b.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
+                return aTime - bTime;
+              });
+            setUpcomingTasks(sortedTasks);
           })
           .catch(() => null),
       ]);
@@ -730,24 +776,6 @@ export default function ChatPage() {
     };
     initialize();
   }, [router, supabase, loadHistory]);
-
-  const handleProfileSave = async () => {
-    if (!user?.id) return;
-    setSavingProfile(true);
-    const name = profileName.trim();
-    if (name) {
-      await supabase.from("users").update({ name }).eq("id", user.id);
-      setUser((prev) => prev ? { ...prev, name } : prev);
-    }
-    localStorage.setItem("hada_profile_setup_dismissed", "1");
-    setShowProfileSetup(false);
-    setSavingProfile(false);
-  };
-
-  const handleProfileSkip = () => {
-    localStorage.setItem("hada_profile_setup_dismissed", "1");
-    setShowProfileSetup(false);
-  };
 
   useEffect(() => {
     if (!showConversation) {
@@ -1188,39 +1216,18 @@ export default function ChatPage() {
     }
   }, []);
 
-  const starterPrompts = [
-    {
-      title: "Design a Project",
-      subtitle: "Research & create a doc",
-      icon: "🎨",
-      prompt:
-        "I want to start a new project. Ask me what it's about, then research the best approach and create a 'Project Plan' document for me in the workspace so we can refine it together.",
-    },
-    {
-      title: "Defend My Time",
-      subtitle: "Proactive scheduling",
-      icon: "🛡️",
-      prompt:
-        "Help me protect my time this week. Use 'Time Defense' to look at my upcoming schedule, identify conflicts, and suggest blocks for deep work on my top priorities.",
-    },
-    {
-      title: "Research & Memo",
-      subtitle: "Web intel to workspace",
-      icon: "🔍",
-      prompt:
-        "Research a specific company or technology for me. Summarize the latest news and competitive landscape into a structured 'Research Memo' document in my workspace.",
-    },
-    {
-      title: "Quick Briefing",
-      subtitle: "Daily tech summary",
-      icon: "☀️",
-      prompt:
-        "Give me today's tech briefing. Search for the top AI and tech stories from today and summarize them. If there's a major launch, create a 'New Tech' document with the details.",
-    },
-  ];
-
   const shouldShowLanding = !showConversation;
   const hasLastChat = messages.length > 0 || recentRuns.length > 0;
+
+  const handleOpenDocumentWorkspace = (document: HomeDocumentSummary) => {
+    setArtifactContent({
+      id: document.id,
+      title: document.title,
+      content: document.content,
+      type: "document",
+    });
+    setShowConversation(true);
+  };
 
   const handleContinueLastChat = async () => {
     if (!messages.length) {
@@ -1228,6 +1235,161 @@ export default function ChatPage() {
     }
     setShowConversation(true);
   };
+
+  const handleStarterAction = (prompt: string) => {
+    void sendMessage(prompt);
+  };
+
+  const handleDismissStarterAction = async (starterActionId: string) => {
+    if (!user?.id) {
+      return;
+    }
+
+    const dismissedStarterIds = Array.from(
+      new Set([...(userSettings?.welcome_state?.dismissed_starter_ids || []), starterActionId]),
+    );
+    const nextSettings: UserSettings = {
+      ...(userSettings || {}),
+      welcome_state: {
+        ...(userSettings?.welcome_state || {}),
+        dismissed_starter_ids: dismissedStarterIds,
+      },
+    };
+
+    setUserSettings(nextSettings);
+
+    const { error } = await supabase
+      .from("users")
+      .update({ settings: nextSettings })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("Failed to save welcome preferences:", error);
+      setUserSettings(userSettings);
+    }
+  };
+
+  const handleFirstRunComplete = async (values: FirstRunSetupValues) => {
+    if (!user?.id) {
+      return;
+    }
+
+    const nextSettings: UserSettings = {
+      ...(userSettings || {}),
+      onboarding_completed: true,
+      persona: values.remember.assistantVoice ? mapAssistantVoiceToPersona(values.assistantVoice) : userSettings?.persona,
+      working_style: {
+        writing_style: values.remember.workingStyle ? values.writingStyle : undefined,
+        recommendation_style: values.remember.recommendationStyle ? values.recommendationStyle : undefined,
+        planning_style: values.remember.planningStyle ? values.planningStyle : undefined,
+        work_rhythm: values.remember.workRhythm ? values.workRhythm : undefined,
+      },
+      assistant_preferences: {
+        primary_goals: values.remember.primaryGoals ? values.primaryGoals : [],
+        calendar_habits: values.remember.calendarHabits ? values.calendarHabits : [],
+        current_projects: values.remember.currentProjects ? values.currentProjects : [],
+        voice: values.remember.assistantVoice ? values.assistantVoice : undefined,
+        setup_version: 1,
+      },
+    };
+
+    const { error } = await supabase
+      .from("users")
+      .update({ settings: nextSettings })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("Failed to save onboarding settings:", error);
+      return;
+    }
+
+    setUserSettings(nextSettings);
+    setShowFirstRunSetup(false);
+  };
+
+  const handleFirstRunSkip = async () => {
+    if (!user?.id) {
+      return;
+    }
+
+    const nextSettings: UserSettings = {
+      ...(userSettings || {}),
+      onboarding_completed: true,
+    };
+
+    const { error } = await supabase
+      .from("users")
+      .update({ settings: nextSettings })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("Failed to skip onboarding:", error);
+      return;
+    }
+
+    setUserSettings(nextSettings);
+    setShowFirstRunSetup(false);
+  };
+
+  const welcomeGreeting = `${greetingText}, ${user?.name || "there"}`;
+  const welcomeSubtitle = buildWelcomeSubtitle(userSettings);
+  const latestDocument = recentDocuments[0];
+  const dueTodayCount = upcomingTasks.filter((task) => isTaskDueToday(task.next_run_at)).length;
+  const welcomeStatusText = buildWelcomeStatusText(recentDocuments.length, dueTodayCount);
+  const dismissedStarterIds = new Set(userSettings?.welcome_state?.dismissed_starter_ids || []);
+  const welcomeStarterActions: WelcomeStarterAction[] = [
+    {
+      id: "plan-my-day",
+      label: "Plan My Day",
+      description: "Review today, protect focus, and order the work.",
+      icon: <Calendar className="h-4 w-4" />,
+      onClick: () => handleStarterAction(
+        "Review my calendar and tasks for today. Give me a practical day plan with top priorities, conflict warnings, and the best deep-work block to protect before 3 PM.",
+      ),
+      onDismiss: () => void handleDismissStarterAction("plan-my-day"),
+    },
+    {
+      id: "research-topic",
+      label: "Research A Topic",
+      description: "Use current sources and turn them into something useful.",
+      icon: <Search className="h-4 w-4" />,
+      onClick: () => handleStarterAction(
+        "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
+      ),
+      onDismiss: () => void handleDismissStarterAction("research-topic"),
+    },
+    {
+      id: "create-roadmap",
+      label: "Create Roadmap",
+      description: "Start a project and draft the plan in Canvas.",
+      icon: <FileText className="h-4 w-4" />,
+      onClick: () => handleStarterAction(
+        "Help me create a project roadmap. First ask what project I want to start, then research the space, create a roadmap document in the workspace, and give me a short execution summary in chat.",
+      ),
+      onDismiss: () => void handleDismissStarterAction("create-roadmap"),
+    },
+  ].filter((action) => !dismissedStarterIds.has(action.id));
+  const welcomeContinueRow = latestDocument && !hasLastChat
+    ? {
+        label: latestDocument.title,
+        description: `Updated ${formatShortDate(latestDocument.updated_at)}`,
+        actionLabel: "Open",
+        onContinue: () => handleOpenDocumentWorkspace(latestDocument),
+      }
+    : {
+        label: recentRuns[0]?.input_preview || "Continue your last workspace",
+        description: hasLastChat
+          ? "Resume the latest conversation thread."
+          : "Open an empty conversation and start from scratch.",
+        actionLabel: hasLastChat ? "Continue" : "Open chat",
+        onContinue: () => {
+          if (hasLastChat) {
+            void handleContinueLastChat();
+            return;
+          }
+          setShowConversation(true);
+        },
+      };
 
   const inputForm = (
     <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
@@ -1397,141 +1559,38 @@ export default function ChatPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-6 pt-4 text-center sm:min-h-[60vh] sm:justify-center sm:px-4"
+                    className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-6 pt-4 sm:min-h-[60vh] sm:justify-center sm:px-4"
                   >
-                    <div className="relative mb-5 hidden sm:block sm:mb-6">
-                      <div className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-teal-400/20 blur-xl" style={{ animation: "glow-pulse 3s ease-in-out infinite" }} />
-                      <div className="relative h-9 w-9 overflow-hidden rounded-xl shadow-lg shadow-teal-500/25">
-                        <Image src="/hada-logo.png" alt="Hada logo" fill sizes="36px" className="object-cover" />
+                    {showFirstRunSetup ? (
+                      <FirstRunSetup
+                        className="w-full max-w-4xl"
+                        initialValues={buildInitialSetupValues(userSettings)}
+                        onComplete={(values) => void handleFirstRunComplete(values)}
+                        onSkip={() => void handleFirstRunSkip()}
+                      />
+                    ) : (
+                      <div className="w-full max-w-4xl">
+                        <WelcomeHome
+                          greeting={welcomeGreeting}
+                          subtitle={welcomeSubtitle}
+                          starterActions={welcomeStarterActions}
+                          continueRow={welcomeContinueRow}
+                          statusLine={{
+                            text: welcomeStatusText,
+                            actionLabel: recentDocuments.length > 0 ? "View docs" : dueTodayCount > 0 ? "View tasks" : undefined,
+                            onAction: recentDocuments.length > 0
+                              ? () => router.push("/docs")
+                              : dueTodayCount > 0
+                              ? () => router.push("/settings?tab=tasks")
+                              : undefined,
+                          }}
+                        />
+
+                        <div className="mx-auto mt-5 w-full max-w-3xl">
+                          {inputForm}
+                        </div>
                       </div>
-                    </div>
-                    <h1 className="w-full max-w-full text-center break-words text-2xl font-semibold sm:text-3xl">
-                      <span className="gradient-text">{greetingText}</span>, {user?.name || "there"}
-                    </h1>
-                    <p className="mt-2 w-full max-w-md text-sm text-zinc-500 sm:text-lg">What can I help you with today?</p>
-
-                    <div className="mt-5 w-full max-w-2xl sm:hidden">
-                      {inputForm}
-                    </div>
-
-                    {showProfileSetup && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="mt-5 w-full max-w-2xl rounded-2xl border border-teal-200/60 bg-teal-50/60 p-4 text-left shadow-sm backdrop-blur-sm dark:border-teal-900/40 dark:bg-teal-950/20 sm:mt-6"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Quick setup</p>
-                            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Help Hada personalise your experience.</p>
-                          </div>
-                          <button
-                            onClick={handleProfileSkip}
-                            className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                          >
-                            Skip
-                          </button>
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="What should I call you?"
-                            value={profileName}
-                            onChange={(e) => setProfileName(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") void handleProfileSave(); }}
-                            className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:border-teal-600 dark:focus:ring-teal-600"
-                            autoFocus
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => void handleProfileSave()}
-                            disabled={savingProfile}
-                            className="shrink-0"
-                          >
-                            {savingProfile ? "Saving…" : "Save"}
-                          </Button>
-                        </div>
-                      </motion.div>
                     )}
-
-                    <div className="mt-5 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:mt-8 sm:grid-cols-2 sm:gap-3">
-                      {starterPrompts.map((shortcut) => (
-                        <button
-                          key={shortcut.title}
-                          onClick={() => void sendMessage(shortcut.prompt)}
-                          className="glass group min-w-0 rounded-xl p-3 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-teal-500/5 sm:p-4"
-                        >
-                          <div className="flex items-start gap-2.5 sm:gap-3">
-                            <span className="mt-0.5 text-base leading-none sm:text-lg">{shortcut.icon}</span>
-                            <div>
-                              <p className="text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">
-                                {shortcut.title}
-                              </p>
-                              <p className="mt-1 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400 sm:text-xs">
-                                {shortcut.subtitle}
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-
-                    {hasLastChat ? (
-                      <div className="mt-5 w-full max-w-2xl sm:hidden">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => void handleContinueLastChat()}
-                        >
-                          Continue last chat
-                        </Button>
-                      </div>
-                    ) : null}
-
-                    {recentRuns.length > 0 ? (
-                      <div className="mt-5 hidden w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6 sm:block">
-                        <div className="mb-3 flex items-center justify-between">
-                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Recent activity</p>
-                          {hasLastChat && (
-                            <Button size="sm" variant="outline" onClick={() => void handleContinueLastChat()}>
-                              Open chat
-                            </Button>
-                          )}
-                        </div>
-                        <div className="space-y-2">
-                          {recentRuns.map((run) => (
-                            <div key={run.id} className="flex min-w-0 items-center gap-3 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950/60">
-                              <p className="min-w-0 flex-1 truncate text-xs text-zinc-700 dark:text-zinc-300">
-                                {run.input_preview ?? "Task ran"}
-                              </p>
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                <span className={`h-1.5 w-1.5 rounded-full ${run.status === "completed" ? "bg-green-500" : run.status === "running" ? "bg-yellow-500" : "bg-red-500"}`} />
-                                <span className="text-[10px] text-zinc-400">
-                                  {new Date(run.started_at).toLocaleDateString()}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : messages.length > 0 ? (
-                      <div className="mt-5 hidden w-full max-w-2xl rounded-2xl border border-zinc-200/70 bg-white/70 p-4 text-left shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50 sm:mt-6 sm:block">
-                        <div className="flex min-w-0 items-center justify-between gap-3">
-                          <p className="min-w-0 flex-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                            Continue where you left off
-                          </p>
-                          <Button size="sm" variant="outline" onClick={() => void handleContinueLastChat()}>
-                            Open chat
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="mt-8 hidden w-full max-w-2xl sm:block">
-                      {inputForm}
-                    </div>
                   </motion.div>
                 ) : (
                   <AnimatePresence>
@@ -1565,7 +1624,7 @@ export default function ChatPage() {
           </div>
 
           {/* Input Area - Fixed at bottom when there are messages */}
-          {showConversation && messages.length > 0 && (
+          {showConversation && (
             <div className="shrink-0 border-t border-border/50 bg-background/80 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 backdrop-blur-md">
               {inputForm}
             </div>
@@ -1633,4 +1692,98 @@ function isToolErrorResult(result: string): boolean {
 function nextEventOrder(ref: MutableRefObject<number>): number {
   ref.current += 1;
   return ref.current;
+}
+
+function buildInitialSetupValues(settings: UserSettings | null): Partial<FirstRunSetupValues> | undefined {
+  if (!settings) {
+    return undefined;
+  }
+
+  return {
+    writingStyle: settings.working_style?.writing_style,
+    recommendationStyle: settings.working_style?.recommendation_style,
+    planningStyle: settings.working_style?.planning_style,
+    workRhythm: settings.working_style?.work_rhythm,
+    primaryGoals: settings.assistant_preferences?.primary_goals,
+    calendarHabits: settings.assistant_preferences?.calendar_habits,
+    currentProjects: settings.assistant_preferences?.current_projects,
+    assistantVoice: settings.assistant_preferences?.voice,
+  };
+}
+
+function mapAssistantVoiceToPersona(voice: FirstRunSetupValues["assistantVoice"]): string {
+  switch (voice) {
+    case "friendly":
+      return "friendly";
+    case "professional":
+      return "professional";
+    case "academic":
+      return "academic";
+    case "pragmatic":
+    default:
+      return "concise";
+  }
+}
+
+function buildWelcomeSubtitle(settings: UserSettings | null): string {
+  const writingStyle = settings?.working_style?.writing_style;
+  const recommendationStyle = settings?.working_style?.recommendation_style;
+  const workRhythm = settings?.working_style?.work_rhythm;
+
+  if (!writingStyle && !recommendationStyle && !workRhythm) {
+    return "What do you want to move forward today?";
+  }
+
+  const parts: string[] = [];
+  if (writingStyle) {
+    parts.push(writingStyle.replace(/_/g, " "));
+  }
+  if (recommendationStyle) {
+    parts.push(recommendationStyle === "decision_first" ? "decision-first" : "context-first");
+  }
+  if (workRhythm) {
+    parts.push(
+      workRhythm === "morning_deep_work"
+        ? "morning deep work"
+        : workRhythm === "afternoon_deep_work"
+        ? "afternoon deep work"
+        : "a flexible work rhythm",
+    );
+  }
+
+  return `Ready to work in your style: ${parts.join(", ")}.`;
+}
+
+function buildWelcomeStatusText(documentCount: number, dueTodayCount: number): string {
+  if (documentCount > 0 && dueTodayCount > 0) {
+    return `${documentCount} docs in progress • ${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
+  }
+  if (documentCount > 0) {
+    return `${documentCount} doc${documentCount === 1 ? "" : "s"} in progress`;
+  }
+  if (dueTodayCount > 0) {
+    return `${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
+  }
+  return "Your workspace is ready.";
+}
+
+function isTaskDueToday(nextRunAt: string | null): boolean {
+  if (!nextRunAt) {
+    return false;
+  }
+
+  const runDate = new Date(nextRunAt);
+  const now = new Date();
+  return (
+    runDate.getFullYear() === now.getFullYear() &&
+    runDate.getMonth() === now.getMonth() &&
+    runDate.getDate() === now.getDate()
+  );
+}
+
+function formatShortDate(value: string): string {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }

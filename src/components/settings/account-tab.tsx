@@ -7,7 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { PERSONAS } from "@/lib/chat/personas";
-import type { LLMProviderName, UserSettings } from "@/lib/types/database";
+import type {
+  AssistantVoice,
+  LLMProviderName,
+  PlanningStyle,
+  RecommendationStyle,
+  UserSettings,
+  WorkRhythm,
+  WritingStyle,
+} from "@/lib/types/database";
 import type { OpenRouterModelOption } from "@/lib/openrouter/models";
 
 interface UserProfile {
@@ -52,9 +60,17 @@ export function AccountTab() {
   const [timezone, setTimezone] = useState("");
   const [persona, setPersona] = useState<string>("default");
   const [customInstructions, setCustomInstructions] = useState<string>("");
+  const [writingStyle, setWritingStyle] = useState<WritingStyle | "">("");
+  const [recommendationStyle, setRecommendationStyle] = useState<RecommendationStyle | "">("");
+  const [planningStyle, setPlanningStyle] = useState<PlanningStyle | "">("");
+  const [workRhythm, setWorkRhythm] = useState<WorkRhythm | "">("");
+  const [primaryGoals, setPrimaryGoals] = useState("");
+  const [calendarHabits, setCalendarHabits] = useState("");
+  const [currentProjects, setCurrentProjects] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [resettingOnboarding, setResettingOnboarding] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
   const [clearChatMessage, setClearChatMessage] = useState<string | null>(null);
 
@@ -105,8 +121,19 @@ export function AccountTab() {
       setFallbackModel(loadedFallback);
       setFallbackQuery(loadedFallback);
       setTimezone(typeof loaded.settings.timezone === "string" ? loaded.settings.timezone : "");
-      setPersona(typeof loaded.settings.persona === "string" ? loaded.settings.persona : "default");
+      setPersona(
+        typeof loaded.settings.persona === "string"
+          ? loaded.settings.persona
+          : mapAssistantVoiceToPersona(loaded.settings.assistant_preferences?.voice),
+      );
       setCustomInstructions(typeof loaded.settings.custom_instructions === "string" ? loaded.settings.custom_instructions : "");
+      setWritingStyle(loaded.settings.working_style?.writing_style || "");
+      setRecommendationStyle(loaded.settings.working_style?.recommendation_style || "");
+      setPlanningStyle(loaded.settings.working_style?.planning_style || "");
+      setWorkRhythm(loaded.settings.working_style?.work_rhythm || "");
+      setPrimaryGoals(formatListField(loaded.settings.assistant_preferences?.primary_goals));
+      setCalendarHabits(formatListField(loaded.settings.assistant_preferences?.calendar_habits));
+      setCurrentProjects(formatListField(loaded.settings.assistant_preferences?.current_projects));
     };
 
     void loadProfile();
@@ -204,6 +231,41 @@ export function AccountTab() {
       persona,
       custom_instructions: customInstructions.trim() || null,
     };
+
+    const nextWorkingStyle = {
+      writing_style: writingStyle || undefined,
+      recommendation_style: recommendationStyle || undefined,
+      planning_style: planningStyle || undefined,
+      work_rhythm: workRhythm || undefined,
+    };
+    if (Object.values(nextWorkingStyle).some(Boolean)) {
+      nextSettings.working_style = nextWorkingStyle;
+    } else {
+      delete nextSettings.working_style;
+    }
+
+    const nextAssistantPreferences = {
+      ...(profile.settings.assistant_preferences || {}),
+      primary_goals: splitListField(primaryGoals),
+      calendar_habits: splitListField(calendarHabits),
+      current_projects: splitListField(currentProjects),
+      voice: mapPersonaToAssistantVoice(persona),
+      setup_version: profile.settings.assistant_preferences?.setup_version || 1,
+    };
+    if (
+      nextAssistantPreferences.primary_goals.length > 0 ||
+      nextAssistantPreferences.calendar_habits.length > 0 ||
+      nextAssistantPreferences.current_projects.length > 0 ||
+      nextAssistantPreferences.voice
+    ) {
+      if (!nextAssistantPreferences.voice) {
+        delete nextAssistantPreferences.voice;
+      }
+      nextSettings.assistant_preferences = nextAssistantPreferences;
+    } else {
+      delete nextSettings.assistant_preferences;
+    }
+
     if (isAdmin) {
       nextSettings.llm_provider = provider;
       nextSettings.llm_model = model.trim() || null;
@@ -262,6 +324,51 @@ export function AccountTab() {
     } finally {
       setClearingChat(false);
     }
+  }
+
+  async function resetOnboarding() {
+    if (!profile || resettingOnboarding) {
+      return;
+    }
+
+    if (!window.confirm("Reset onboarding? This will clear your saved working style, welcome state, and show first-run setup again in chat.")) {
+      return;
+    }
+
+    setResettingOnboarding(true);
+    setSaveMessage(null);
+
+    const nextSettings: UserSettings = {
+      ...(profile.settings || {}),
+      onboarding_completed: false,
+      persona: "default",
+    };
+    delete nextSettings.working_style;
+    delete nextSettings.assistant_preferences;
+    delete nextSettings.welcome_state;
+
+    const { error } = await supabase
+      .from("users")
+      .update({ settings: nextSettings })
+      .eq("id", profile.id);
+
+    if (error) {
+      setSaveMessage("Failed to reset onboarding.");
+      setResettingOnboarding(false);
+      return;
+    }
+
+    setProfile({ ...profile, settings: nextSettings });
+    setPersona("default");
+    setWritingStyle("");
+    setRecommendationStyle("");
+    setPlanningStyle("");
+    setWorkRhythm("");
+    setPrimaryGoals("");
+    setCalendarHabits("");
+    setCurrentProjects("");
+    setSaveMessage("Onboarding reset. You will see setup again in chat.");
+    setResettingOnboarding(false);
   }
 
   const tierConfig = {
@@ -497,6 +604,134 @@ export function AccountTab() {
               placeholder="e.g. America/Los_Angeles"
             />
           </div>
+
+          <div className="rounded-xl border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-zinc-950/40">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Working style</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  These settings shape onboarding, summaries, and planning defaults.
+                </p>
+              </div>
+              <p className="text-xs text-zinc-400">Optional</p>
+            </div>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Writing style</label>
+                <select
+                  className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+                  value={writingStyle}
+                  onChange={(event) => setWritingStyle(event.target.value as WritingStyle | "")}
+                >
+                  <option value="">Use default</option>
+                  <option value="concise">Concise</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="detailed">Detailed</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Recommendation style</label>
+                <select
+                  className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+                  value={recommendationStyle}
+                  onChange={(event) => setRecommendationStyle(event.target.value as RecommendationStyle | "")}
+                >
+                  <option value="">Use default</option>
+                  <option value="decision_first">Decision first</option>
+                  <option value="context_first">Context first</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Planning style</label>
+                <select
+                  className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+                  value={planningStyle}
+                  onChange={(event) => setPlanningStyle(event.target.value as PlanningStyle | "")}
+                >
+                  <option value="">Use default</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Work rhythm</label>
+                <select
+                  className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+                  value={workRhythm}
+                  onChange={(event) => setWorkRhythm(event.target.value as WorkRhythm | "")}
+                >
+                  <option value="">Use default</option>
+                  <option value="morning_deep_work">Morning deep work</option>
+                  <option value="afternoon_deep_work">Afternoon deep work</option>
+                  <option value="flexible">Flexible</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Primary goals</label>
+                <textarea
+                  value={primaryGoals}
+                  onChange={(event) => setPrimaryGoals(event.target.value)}
+                  rows={2}
+                  placeholder="Protect focus time, turn ideas into docs, stay on top of projects"
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-teal-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Calendar habits</label>
+                <textarea
+                  value={calendarHabits}
+                  onChange={(event) => setCalendarHabits(event.target.value)}
+                  rows={2}
+                  placeholder="Avoid mornings, batch meetings, protect 2h focus blocks"
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-teal-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Current projects</label>
+                <textarea
+                  value={currentProjects}
+                  onChange={(event) => setCurrentProjects(event.target.value)}
+                  rows={2}
+                  placeholder="Agent 2026, Parenting with AI"
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-teal-400"
+                />
+              </div>
+
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Separate items with commas or new lines.
+              </p>
+
+              <div className="flex flex-col gap-3 rounded-lg border border-dashed border-zinc-200/80 bg-background/70 px-3 py-3 dark:border-zinc-800/70 dark:bg-zinc-950/40 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Reset onboarding</p>
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Clear saved working-style and welcome preferences, then show first-run setup again in chat.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void resetOnboarding()}
+                  disabled={resettingOnboarding}
+                  className="shrink-0"
+                >
+                  {resettingOnboarding ? "Resetting..." : "Reset onboarding"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs text-zinc-500">{saveMessage || ""}</span>
             <Button size="sm" onClick={saveSettings} disabled={saving}>
@@ -512,7 +747,7 @@ export function AccountTab() {
           Persona
         </h3>
         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Choose how Hada communicates with you.
+          Choose how Hada communicates with you. This is the same tone control used in first-run onboarding.
         </p>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -608,4 +843,49 @@ function formatDate(isoString: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+function splitListField(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatListField(values?: string[] | null): string {
+  if (!Array.isArray(values) || values.length === 0) {
+    return "";
+  }
+
+  return values.join(", ");
+}
+
+function mapAssistantVoiceToPersona(voice?: AssistantVoice): string {
+  switch (voice) {
+    case "friendly":
+      return "friendly";
+    case "professional":
+      return "professional";
+    case "academic":
+      return "academic";
+    case "pragmatic":
+      return "concise";
+    default:
+      return "default";
+  }
+}
+
+function mapPersonaToAssistantVoice(persona: string): AssistantVoice | undefined {
+  switch (persona) {
+    case "concise":
+      return "pragmatic";
+    case "friendly":
+      return "friendly";
+    case "professional":
+      return "professional";
+    case "academic":
+      return "academic";
+    default:
+      return undefined;
+  }
 }

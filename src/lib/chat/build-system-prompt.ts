@@ -60,6 +60,7 @@ export async function buildSystemPrompt(options: {
   const customInstructions = typeof userSettings.custom_instructions === "string"
     ? userSettings.custom_instructions.trim()
     : "";
+  const onboardingPreferences = formatOnboardingPreferences(userSettings);
   const connectedIntegrations = options.connectedIntegrations ?? (
     (integrationResult as { data: Array<{ provider: string }> | null } | null)
       ?.data?.map((row) => row.provider) ?? []
@@ -107,6 +108,9 @@ export async function buildSystemPrompt(options: {
       : []),
     ...(customInstructions
       ? ["## Custom Instructions", customInstructions]
+      : []),
+    ...(onboardingPreferences
+      ? ["## User Preferences", onboardingPreferences]
       : []),
     "## Available Tools",
     summarizeToolList(options.tools),
@@ -165,4 +169,145 @@ function formatMemories(
   }
 
   return selected.length ? selected.join("\n") : "No memory entries fit token budget.";
+}
+
+function formatOnboardingPreferences(settings: UserSettings): string | null {
+  const workingStyle = settings.working_style;
+  const assistantPreferences = settings.assistant_preferences;
+  const lines: string[] = [];
+
+  if (workingStyle?.writing_style) {
+    lines.push(`- Writing style: ${formatWritingStyle(workingStyle.writing_style)}`);
+  }
+
+  if (workingStyle?.recommendation_style) {
+    lines.push(`- Recommendation style: ${formatRecommendationStyle(workingStyle.recommendation_style)}`);
+  }
+
+  if (workingStyle?.planning_style) {
+    lines.push(`- Planning style: ${formatPlanningStyle(workingStyle.planning_style)}`);
+  }
+
+  if (workingStyle?.work_rhythm) {
+    lines.push(`- Work rhythm: ${formatWorkRhythm(workingStyle.work_rhythm)}`);
+  }
+
+  if (assistantPreferences?.primary_goals?.length) {
+    lines.push(`- Primary goals: ${formatStringList(assistantPreferences.primary_goals)}`);
+  }
+
+  if (assistantPreferences?.calendar_habits?.length) {
+    lines.push(`- Calendar habits: ${formatStringList(assistantPreferences.calendar_habits)}`);
+  }
+
+  if (assistantPreferences?.current_projects?.length) {
+    lines.push(`- Current projects: ${formatStringList(assistantPreferences.current_projects)}`);
+  }
+
+  if (assistantPreferences?.voice) {
+    lines.push(`- Voice: ${formatAssistantVoice(assistantPreferences.voice)}`);
+  }
+
+  if (!lines.length) {
+    return null;
+  }
+
+  const guidance: string[] = [
+    "Use these preferences to shape your responses and recommendations when they are relevant.",
+    "Keep them lower priority than the persona and custom instructions sections above.",
+  ];
+
+  if (workingStyle?.writing_style) {
+    guidance.push(`Write in a ${formatWritingStyle(workingStyle.writing_style).toLowerCase()} style.`);
+  }
+
+  if (workingStyle?.recommendation_style) {
+    guidance.push(`When giving advice, default to a ${formatRecommendationStyle(workingStyle.recommendation_style).toLowerCase()} approach.`);
+  }
+
+  if (workingStyle?.planning_style) {
+    guidance.push(`For planning requests, match the user's ${formatPlanningStyle(workingStyle.planning_style).toLowerCase()} planning style.`);
+  }
+
+  if (workingStyle?.work_rhythm) {
+    guidance.push(`Respect the user's ${formatWorkRhythm(workingStyle.work_rhythm).toLowerCase()} work rhythm when suggesting timing or structure.`);
+  }
+
+  if (assistantPreferences?.calendar_habits?.length) {
+    guidance.push(`When discussing schedule changes, account for calendar habits: ${formatStringList(assistantPreferences.calendar_habits)}.`);
+  }
+
+  if (assistantPreferences?.current_projects?.length) {
+    guidance.push(`If relevant, anchor suggestions to active projects: ${formatStringList(assistantPreferences.current_projects)}.`);
+  }
+
+  if (assistantPreferences?.voice) {
+    guidance.push(`Keep tone aligned with the ${formatAssistantVoice(assistantPreferences.voice).toLowerCase()} voice preference unless the persona or custom instructions override it.`);
+  }
+
+  return lines.concat("", "Behavioral guidance:", guidance.map((line) => `- ${line}`).join("\n")).join("\n");
+}
+
+function formatStringList(values: string[]): string {
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatWritingStyle(value: NonNullable<NonNullable<UserSettings["working_style"]>["writing_style"]>): string {
+  switch (value) {
+    case "concise":
+      return "Concise";
+    case "balanced":
+      return "Balanced";
+    case "detailed":
+      return "Detailed";
+  }
+}
+
+function formatRecommendationStyle(
+  value: NonNullable<NonNullable<UserSettings["working_style"]>["recommendation_style"]>,
+): string {
+  switch (value) {
+    case "decision_first":
+      return "Decision-first";
+    case "context_first":
+      return "Context-first";
+  }
+}
+
+function formatPlanningStyle(value: NonNullable<NonNullable<UserSettings["working_style"]>["planning_style"]>): string {
+  switch (value) {
+    case "daily":
+      return "Daily";
+    case "weekly":
+      return "Weekly";
+    case "both":
+      return "Daily and weekly";
+  }
+}
+
+function formatWorkRhythm(value: NonNullable<NonNullable<UserSettings["working_style"]>["work_rhythm"]>): string {
+  switch (value) {
+    case "morning_deep_work":
+      return "Morning deep work";
+    case "afternoon_deep_work":
+      return "Afternoon deep work";
+    case "flexible":
+      return "Flexible";
+  }
+}
+
+function formatAssistantVoice(value: NonNullable<NonNullable<UserSettings["assistant_preferences"]>["voice"]>): string {
+  switch (value) {
+    case "pragmatic":
+      return "Pragmatic";
+    case "friendly":
+      return "Friendly";
+    case "professional":
+      return "Professional";
+    case "academic":
+      return "Academic";
+  }
 }

@@ -15,6 +15,31 @@ export type LLMProviderName =
   | "openrouter"
   | "mimo";
 
+export type WritingStyle = "concise" | "balanced" | "detailed";
+export type RecommendationStyle = "decision_first" | "context_first";
+export type PlanningStyle = "daily" | "weekly" | "both";
+export type WorkRhythm = "morning_deep_work" | "afternoon_deep_work" | "flexible";
+export type AssistantVoice = "pragmatic" | "friendly" | "professional" | "academic";
+
+export interface WorkingStyleSettings {
+  writing_style?: WritingStyle;
+  recommendation_style?: RecommendationStyle;
+  planning_style?: PlanningStyle;
+  work_rhythm?: WorkRhythm;
+}
+
+export interface AssistantPreferenceSettings {
+  primary_goals?: string[];
+  calendar_habits?: string[];
+  current_projects?: string[];
+  voice?: AssistantVoice;
+  setup_version?: number;
+}
+
+export interface WelcomeStateSettings {
+  dismissed_starter_ids?: string[];
+}
+
 export interface UserPermissions {
   google_calendar_read?: PermissionMode;
   google_calendar_write?: PermissionMode;
@@ -29,6 +54,10 @@ export interface UserSettings {
   timezone?: string | null;
   persona?: string;
   custom_instructions?: string | null;
+  onboarding_completed?: boolean;
+  working_style?: WorkingStyleSettings;
+  assistant_preferences?: AssistantPreferenceSettings;
+  welcome_state?: WelcomeStateSettings;
   [key: string]: unknown;
 }
 
