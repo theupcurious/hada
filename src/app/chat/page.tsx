@@ -1623,7 +1623,7 @@ export default function ChatPage() {
                           }}
                         />
 
-                        <div className="mx-auto mt-8 w-full max-w-3xl sm:mt-10">
+                        <div className="mx-auto mt-8 w-full max-w-xl sm:mt-10">
                           {inputForm}
                         </div>
                       </div>
