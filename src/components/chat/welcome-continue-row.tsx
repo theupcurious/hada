@@ -21,8 +21,8 @@ export function WelcomeContinueRow({
   return (
     <div
       className={cn(
-        "flex w-full flex-col gap-3 rounded-2xl border border-border/70 bg-background/70 px-5 py-4 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between",
-        "dark:bg-zinc-950/45",
+        "flex w-full flex-col gap-3 rounded-2xl border border-border/60 bg-background px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between",
+        "dark:bg-zinc-900/60",
         className,
       )}
     >
