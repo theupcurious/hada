@@ -20,7 +20,7 @@ import type { ChatCard } from "@/lib/types/cards";
 import type { StreamingSegment } from "@/components/chat/streaming-message";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Calendar, FileText, LayoutDashboard, LogOut, Search, Settings2 } from "lucide-react";
+import { Calendar, FileText, Lightbulb, LayoutDashboard, LogOut, Search, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, type MutableRefObject } from "react";
@@ -1375,39 +1375,40 @@ export default function ChatPage() {
   const latestDocument = recentDocuments[0];
   const dueTodayCount = upcomingTasks.filter((task) => isTaskDueToday(task.next_run_at)).length;
   const welcomeStatusText = buildWelcomeStatusText(recentDocuments.length, dueTodayCount);
-  const dismissedStarterIds = new Set(userSettings?.welcome_state?.dismissed_starter_ids || []);
   const welcomeStarterActions: WelcomeStarterAction[] = [
     {
       id: "plan-my-day",
       label: "Plan My Day",
-      description: "Review today, protect focus, and order the work.",
       icon: <Calendar className="h-4 w-4" />,
       onClick: () => handleStarterAction(
         "Review my calendar and tasks for today. Give me a practical day plan with top priorities, conflict warnings, and the best deep-work block to protect before 3 PM.",
       ),
-      onDismiss: () => void handleDismissStarterAction("plan-my-day"),
     },
     {
       id: "research-topic",
       label: "Research A Topic",
-      description: "Use current sources and turn them into something useful.",
       icon: <Search className="h-4 w-4" />,
       onClick: () => handleStarterAction(
         "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
       ),
-      onDismiss: () => void handleDismissStarterAction("research-topic"),
     },
     {
       id: "create-roadmap",
       label: "Create Roadmap",
-      description: "Start a project and draft the plan in Canvas.",
       icon: <FileText className="h-4 w-4" />,
       onClick: () => handleStarterAction(
         "Help me create a project roadmap. First ask what project I want to start, then research the space, create a roadmap document in the workspace, and give me a short execution summary in chat.",
       ),
-      onDismiss: () => void handleDismissStarterAction("create-roadmap"),
     },
-  ].filter((action) => !dismissedStarterIds.has(action.id));
+    {
+      id: "think-it-through",
+      label: "Think It Through",
+      icon: <Lightbulb className="h-4 w-4" />,
+      onClick: () => handleStarterAction(
+        "I have something I need to think through. Ask me what's on my mind, then help me examine it from multiple angles — assumptions, risks, and what a good decision actually looks like — and land on a clear next step.",
+      ),
+    },
+  ];
   const welcomeContinueRow = latestDocument && !hasLastChat
     ? {
         label: latestDocument.title,
@@ -1416,7 +1417,7 @@ export default function ChatPage() {
         onContinue: () => handleOpenDocumentWorkspace(latestDocument),
       }
     : {
-        label: recentRuns[0]?.input_preview || "Continue your last workspace",
+        label: [...messages].reverse().find(m => m.role === "user")?.content?.slice(0, 80) || "Continue your last workspace",
         actionLabel: hasLastChat ? "Continue" : "Open chat",
         onContinue: () => {
           if (hasLastChat) {
