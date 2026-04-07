@@ -26,7 +26,7 @@ export function WelcomeStarterActions({ actions, className }: WelcomeStarterActi
   }
 
   return (
-    <div className={cn("grid w-full gap-2 md:grid-cols-3 md:gap-3", className)}>
+    <div className={cn("grid w-full gap-3 md:grid-cols-3 md:gap-4", className)}>
       {actions.map((action) => (
         <div
           key={action.id}
@@ -41,7 +41,7 @@ export function WelcomeStarterActions({ actions, className }: WelcomeStarterActi
             onClick={action.onClick}
             disabled={action.disabled}
             aria-label={action.label}
-            className="flex h-full min-h-24 w-full justify-start whitespace-normal rounded-2xl px-4 py-3 text-left hover:bg-transparent"
+            className="flex h-full min-h-20 w-full justify-start whitespace-normal rounded-2xl px-4 py-4 text-left hover:bg-transparent"
           >
             <span className="flex w-full items-start gap-3 pr-8">
               {action.icon ? (
@@ -56,11 +56,6 @@ export function WelcomeStarterActions({ actions, className }: WelcomeStarterActi
                 <span className="block text-sm font-medium leading-5 text-zinc-950 dark:text-zinc-50">
                   {action.label}
                 </span>
-                {action.description ? (
-                  <span className="mt-1 block text-xs leading-5 text-zinc-500 dark:text-zinc-400">
-                    {action.description}
-                  </span>
-                ) : null}
               </span>
             </span>
           </Button>

@@ -34,7 +34,7 @@ export function WelcomeHome({
       aria-labelledby={titleId}
       aria-describedby={subtitleId}
       className={cn(
-        "relative w-full overflow-hidden rounded-[2rem] border border-border/60 bg-background/80 px-5 py-7 shadow-sm backdrop-blur-sm sm:px-7 sm:py-9",
+        "relative w-full overflow-hidden rounded-[2rem] border border-border/60 bg-background/80 px-5 py-10 shadow-sm backdrop-blur-sm sm:px-7 sm:py-14",
         "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-teal-400/60 before:to-transparent",
         "dark:bg-zinc-950/40",
         className,
@@ -62,16 +62,16 @@ export function WelcomeHome({
         </div>
 
         {starterActions.length > 0 ? (
-          <div className="mt-8 w-full max-w-4xl sm:mt-10">
+          <div className="mt-10 w-full max-w-4xl sm:mt-12">
             <WelcomeStarterActions actions={starterActions} />
           </div>
         ) : null}
 
-        <div className="mt-7 w-full max-w-3xl sm:mt-8">
+        <div className="mt-8 w-full max-w-3xl sm:mt-10">
           <WelcomeContinueRow {...continueRow} />
         </div>
 
-        <div className="mt-5 w-full max-w-3xl sm:mt-6">
+        <div className="mt-6 w-full max-w-3xl sm:mt-7">
           <WelcomeStatusLine {...statusLine} />
         </div>
       </div>

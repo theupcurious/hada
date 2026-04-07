@@ -280,6 +280,46 @@ export default function ChatPage() {
     }
   }, []);
 
+  const loadDocumentArtifact = useCallback(
+    async (documentId: string, fallbackTitle?: string, fallbackContent?: string) => {
+      setArtifactContent({
+        id: documentId,
+        type: "document",
+        title: fallbackTitle || "Document",
+        content: fallbackContent,
+        loading: true,
+      });
+
+      try {
+        const { data, error } = await supabase
+          .from("documents")
+          .select("id, title, content")
+          .eq("id", documentId)
+          .single();
+
+        if (error || !data) {
+          throw error || new Error("Document not found.");
+        }
+
+        setArtifactContent({
+          id: data.id,
+          type: "document",
+          title: data.title || fallbackTitle || "Document",
+          content: typeof data.content === "string" ? data.content : fallbackContent,
+        });
+      } catch (error) {
+        console.error("Failed to load artifact document", error);
+        setArtifactContent({
+          id: documentId,
+          type: "document",
+          title: fallbackTitle || "Document",
+          content: fallbackContent || "Unable to load the document preview. Open Full View to inspect it.",
+        });
+      }
+    },
+    [supabase],
+  );
+
   const applyAgentEventToMessage = useCallback((assistantMessageId: string, event: Record<string, unknown>) => {
     if (event.type === "text_delta" && typeof event.content === "string") {
       setIsThinking(false);
@@ -353,17 +393,16 @@ export default function ChatPage() {
       // Automatically open ArtifactPanel for document creation/update
       try {
         const parsed = JSON.parse(result);
-        if (parsed.status === "created" || parsed.status === "updated") {
+        if ((parsed.status === "created" || parsed.status === "updated") && typeof parsed.id === "string") {
           const assistantMsg = updatedMessages.find((m) => m.id === assistantMessageId);
           const trace = assistantMsg?.traceEvents?.find((t) => t.callId === callId);
-          const content = String(trace?.args?.content || "");
+          const content = typeof trace?.args?.content === "string" ? trace.args.content : undefined;
 
-          setArtifactContent({
-            id: parsed.id,
-            type: "document",
-            title: parsed.title,
+          void loadDocumentArtifact(
+            parsed.id,
+            typeof parsed.title === "string" ? parsed.title : undefined,
             content,
-          });
+          );
         }
       } catch {
         // Not a JSON result or doesn't match our document tools
@@ -524,7 +563,7 @@ export default function ChatPage() {
         isError: true,
       }));
     }
-  }, [updateMessage, startDrainLoop]);
+  }, [loadDocumentArtifact, updateMessage, startDrainLoop]);
 
   const pollBackgroundJob = useCallback(async (jobId: string, assistantMessageId: string) => {
     const cursor = backgroundJobCursorRef.current.get(jobId) || 0;
@@ -1378,9 +1417,6 @@ export default function ChatPage() {
       }
     : {
         label: recentRuns[0]?.input_preview || "Continue your last workspace",
-        description: hasLastChat
-          ? "Resume the latest conversation thread."
-          : "Open an empty conversation and start from scratch.",
         actionLabel: hasLastChat ? "Continue" : "Open chat",
         onContinue: () => {
           if (hasLastChat) {
