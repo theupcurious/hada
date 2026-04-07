@@ -18,12 +18,19 @@ import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-act
 import type { TaskPlan, UserSettings } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
 import type { StreamingSegment } from "@/components/chat/streaming-message";
+import {
+  detectPreferredLocale,
+  normalizeLocale,
+  setLocaleCookie,
+  toLocaleLanguageTag,
+  type AppLocale,
+} from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { Calendar, FileText, Lightbulb, LayoutDashboard, LogOut, Search, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useState, useRef, useCallback, type MutableRefObject } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
 
 interface Message {
   id: string;
@@ -139,6 +146,217 @@ interface HomeTaskSummary {
   next_run_at: string | null;
 }
 
+interface ChatLocaleCopy {
+  greetingMorning: string;
+  greetingAfternoon: string;
+  greetingEvening: string;
+  greetingFallbackName: string;
+  defaultWelcomeSubtitle: string;
+  welcomeReadyPrefix: string;
+  styleDecisionFirst: string;
+  styleContextFirst: string;
+  styleMorningDeepWork: string;
+  styleAfternoonDeepWork: string;
+  styleFlexibleWorkRhythm: string;
+  workspaceReady: string;
+  welcomeContinueLastWorkspace: string;
+  actionContinue: string;
+  actionOpenChat: string;
+  actionOpen: string;
+  updatedPrefix: string;
+  viewDocs: string;
+  viewTasks: string;
+  inputPlaceholder: string;
+  inputHint: string;
+  loadingEarlierMessages: string;
+  loading: string;
+  statusPrefix: string;
+  statusOnline: string;
+  statusFallback: string;
+  statusConnecting: string;
+  statusOffline: string;
+  openDocsAria: string;
+  docsLabel: string;
+  openSettingsAria: string;
+  settingsLabel: string;
+  signOutAria: string;
+  signOutLabel: string;
+  responseTitle: string;
+  defaultErrorMessage: string;
+  connectionErrorMessage: string;
+  interruptedMessage: string;
+  starterPlanMyDayLabel: string;
+  starterPlanMyDayPrompt: string;
+  starterResearchTopicLabel: string;
+  starterResearchTopicPrompt: string;
+  starterCreateRoadmapLabel: string;
+  starterCreateRoadmapPrompt: string;
+  starterThinkItThroughLabel: string;
+  starterThinkItThroughPrompt: string;
+}
+
+const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
+  en: {
+    greetingMorning: "Good morning",
+    greetingAfternoon: "Good afternoon",
+    greetingEvening: "Good evening",
+    greetingFallbackName: "there",
+    defaultWelcomeSubtitle: "What do you want to move forward today?",
+    welcomeReadyPrefix: "Ready to work in your style:",
+    styleDecisionFirst: "decision-first",
+    styleContextFirst: "context-first",
+    styleMorningDeepWork: "morning deep work",
+    styleAfternoonDeepWork: "afternoon deep work",
+    styleFlexibleWorkRhythm: "a flexible work rhythm",
+    workspaceReady: "Your workspace is ready.",
+    welcomeContinueLastWorkspace: "Continue your last workspace",
+    actionContinue: "Continue",
+    actionOpenChat: "Open chat",
+    actionOpen: "Open",
+    updatedPrefix: "Updated",
+    viewDocs: "View docs",
+    viewTasks: "View tasks",
+    inputPlaceholder: "Message Hada...",
+    inputHint:
+      "Enter to send, Shift+Enter for a new line. Hada can make mistakes — verify important information.",
+    loadingEarlierMessages: "Loading earlier messages...",
+    loading: "Loading...",
+    statusPrefix: "Status",
+    statusOnline: "Online",
+    statusFallback: "Fallback",
+    statusConnecting: "Connecting",
+    statusOffline: "Offline",
+    openDocsAria: "Open docs",
+    docsLabel: "Docs",
+    openSettingsAria: "Open settings",
+    settingsLabel: "Settings",
+    signOutAria: "Sign out",
+    signOutLabel: "Sign out",
+    responseTitle: "Response",
+    defaultErrorMessage: "Sorry, I encountered an error.",
+    connectionErrorMessage: "Sorry, I'm having trouble connecting. Please try again.",
+    interruptedMessage: "Response interrupted before completion. Please try again.",
+    starterPlanMyDayLabel: "Plan My Day",
+    starterPlanMyDayPrompt:
+      "Review my calendar and tasks for today. Give me a practical day plan with top priorities, conflict warnings, and the best deep-work block to protect before 3 PM.",
+    starterResearchTopicLabel: "Research A Topic",
+    starterResearchTopicPrompt:
+      "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
+    starterCreateRoadmapLabel: "Create Roadmap",
+    starterCreateRoadmapPrompt:
+      "Help me create a project roadmap. First ask what project I want to start, then research the space, create a roadmap document in the workspace, and give me a short execution summary in chat.",
+    starterThinkItThroughLabel: "Think It Through",
+    starterThinkItThroughPrompt:
+      "I have something I need to think through. Ask me what's on my mind, then help me examine it from multiple angles — assumptions, risks, and what a good decision actually looks like — and land on a clear next step.",
+  },
+  ko: {
+    greetingMorning: "좋은 아침입니다",
+    greetingAfternoon: "좋은 오후입니다",
+    greetingEvening: "좋은 저녁입니다",
+    greetingFallbackName: "거기",
+    defaultWelcomeSubtitle: "오늘 무엇을 먼저 진행할까요?",
+    welcomeReadyPrefix: "당신의 스타일에 맞춰 준비됐어요:",
+    styleDecisionFirst: "결론 우선",
+    styleContextFirst: "맥락 우선",
+    styleMorningDeepWork: "오전 집중 근무",
+    styleAfternoonDeepWork: "오후 집중 근무",
+    styleFlexibleWorkRhythm: "유연한 작업 리듬",
+    workspaceReady: "워크스페이스가 준비되었습니다.",
+    welcomeContinueLastWorkspace: "지난 작업 계속하기",
+    actionContinue: "계속",
+    actionOpenChat: "채팅 열기",
+    actionOpen: "열기",
+    updatedPrefix: "업데이트",
+    viewDocs: "문서 보기",
+    viewTasks: "작업 보기",
+    inputPlaceholder: "Hada에게 메시지 보내기...",
+    inputHint:
+      "Enter로 전송하고 Shift+Enter로 줄바꿈하세요. Hada는 실수할 수 있으니 중요한 정보는 확인하세요.",
+    loadingEarlierMessages: "이전 메시지를 불러오는 중...",
+    loading: "불러오는 중...",
+    statusPrefix: "상태",
+    statusOnline: "온라인",
+    statusFallback: "대체 경로",
+    statusConnecting: "연결 중",
+    statusOffline: "오프라인",
+    openDocsAria: "문서 열기",
+    docsLabel: "문서",
+    openSettingsAria: "설정 열기",
+    settingsLabel: "설정",
+    signOutAria: "로그아웃",
+    signOutLabel: "로그아웃",
+    responseTitle: "응답",
+    defaultErrorMessage: "죄송합니다. 오류가 발생했습니다.",
+    connectionErrorMessage: "죄송합니다. 연결에 문제가 있습니다. 다시 시도해 주세요.",
+    interruptedMessage: "응답이 완료되기 전에 중단되었습니다. 다시 시도해 주세요.",
+    starterPlanMyDayLabel: "오늘 일정 계획",
+    starterPlanMyDayPrompt:
+      "오늘의 일정과 작업을 검토해 주세요. 최우선 순위, 충돌 가능성, 그리고 오후 3시 이전에 보호할 최적의 집중 업무 시간을 포함한 실용적인 하루 계획을 만들어 주세요.",
+    starterResearchTopicLabel: "주제 리서치",
+    starterResearchTopicPrompt:
+      "특정 주제를 리서치하고 싶어요. 먼저 어떤 주제를 조사할지 물어보고, 최신 소스를 활용해 핵심만 담긴 간결한 근거 기반 브리프를 만들어 주세요.",
+    starterCreateRoadmapLabel: "로드맵 만들기",
+    starterCreateRoadmapPrompt:
+      "프로젝트 로드맵을 만들고 싶어요. 먼저 어떤 프로젝트를 시작할지 물어본 뒤, 관련 내용을 조사하고 워크스페이스에 로드맵 문서를 생성한 다음, 채팅에 짧은 실행 요약을 남겨 주세요.",
+    starterThinkItThroughLabel: "생각 정리하기",
+    starterThinkItThroughPrompt:
+      "정리하고 싶은 고민이 있어요. 먼저 무엇을 고민 중인지 물어보고, 가정과 리스크, 좋은 결정의 기준 등 여러 관점에서 함께 검토한 뒤 명확한 다음 단계까지 도출해 주세요.",
+  },
+  ja: {
+    greetingMorning: "おはようございます",
+    greetingAfternoon: "こんにちは",
+    greetingEvening: "こんばんは",
+    greetingFallbackName: "そこ",
+    defaultWelcomeSubtitle: "今日は何を前に進めますか？",
+    welcomeReadyPrefix: "あなたのスタイルで進める準備ができています:",
+    styleDecisionFirst: "結論先行",
+    styleContextFirst: "背景先行",
+    styleMorningDeepWork: "午前の集中作業",
+    styleAfternoonDeepWork: "午後の集中作業",
+    styleFlexibleWorkRhythm: "柔軟な作業リズム",
+    workspaceReady: "ワークスペースの準備ができました。",
+    welcomeContinueLastWorkspace: "前回の作業を続ける",
+    actionContinue: "続ける",
+    actionOpenChat: "チャットを開く",
+    actionOpen: "開く",
+    updatedPrefix: "更新",
+    viewDocs: "ドキュメントを見る",
+    viewTasks: "タスクを見る",
+    inputPlaceholder: "Hada にメッセージ...",
+    inputHint:
+      "Enter で送信、Shift+Enter で改行できます。Hada は誤る可能性があるため、重要な情報は確認してください。",
+    loadingEarlierMessages: "以前のメッセージを読み込み中...",
+    loading: "読み込み中...",
+    statusPrefix: "ステータス",
+    statusOnline: "オンライン",
+    statusFallback: "フォールバック",
+    statusConnecting: "接続中",
+    statusOffline: "オフライン",
+    openDocsAria: "ドキュメントを開く",
+    docsLabel: "ドキュメント",
+    openSettingsAria: "設定を開く",
+    settingsLabel: "設定",
+    signOutAria: "サインアウト",
+    signOutLabel: "サインアウト",
+    responseTitle: "応答",
+    defaultErrorMessage: "申し訳ありません。エラーが発生しました。",
+    connectionErrorMessage: "接続に問題があります。もう一度お試しください。",
+    interruptedMessage: "応答が完了前に中断されました。もう一度お試しください。",
+    starterPlanMyDayLabel: "今日の計画",
+    starterPlanMyDayPrompt:
+      "今日のカレンダーとタスクを確認してください。優先順位、競合リスク、15時までに確保すべき最適な集中時間を含む実用的な1日の計画を作ってください。",
+    starterResearchTopicLabel: "トピック調査",
+    starterResearchTopicPrompt:
+      "あるテーマを調査したいです。まず何を調べるか確認し、最新ソースを使って重要点を押さえた簡潔な根拠付きブリーフを作成してください。",
+    starterCreateRoadmapLabel: "ロードマップ作成",
+    starterCreateRoadmapPrompt:
+      "プロジェクトのロードマップを作りたいです。まず開始したいプロジェクトを確認し、関連情報を調査してワークスペースにロードマップ文書を作成し、チャットで短い実行サマリーをください。",
+    starterThinkItThroughLabel: "考えを整理",
+    starterThinkItThroughPrompt:
+      "考えを整理したいテーマがあります。まず何について考えているかを聞き、前提・リスク・良い意思決定の基準など複数の観点で整理して、次の一手を明確にしてください。",
+  },
+};
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -172,6 +390,9 @@ export default function ChatPage() {
   const router = useRouter();
   const supabase = createClient();
   const { status: connectionStatus } = useHealthStatus(30000); // Poll every 30s
+  const locale = useMemo(() => normalizeLocale(userSettings?.locale), [userSettings]);
+  const copy = CHAT_COPY[locale];
+  const localeTag = toLocaleLanguageTag(locale);
 
   const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
@@ -558,12 +779,12 @@ export default function ChatPage() {
     if (event.type === "error") {
       updateMessage(assistantMessageId, (message) => ({
         ...message,
-        content: String(event.message ?? "Sorry, I encountered an error."),
+        content: String(event.message ?? copy.defaultErrorMessage),
         isStreaming: false,
         isError: true,
       }));
     }
-  }, [loadDocumentArtifact, updateMessage, startDrainLoop]);
+  }, [copy.defaultErrorMessage, loadDocumentArtifact, updateMessage, startDrainLoop]);
 
   const pollBackgroundJob = useCallback(async (jobId: string, assistantMessageId: string) => {
     const cursor = backgroundJobCursorRef.current.get(jobId) || 0;
@@ -725,22 +946,37 @@ export default function ChatPage() {
       const settings = ((dbUser as { settings?: UserSettings } | null)?.settings || {}) as UserSettings;
 
       setUser({ email: authUser.email, name: displayName ?? undefined, id: authUser.id });
-      setUserSettings(settings);
+      let nextSettings = settings;
+      let shouldPersistSettings = false;
 
-      // Auto-detect and silently save timezone if not set
-      if (!settings.timezone) {
+      // Auto-detect and save locale for first-time users.
+      const detectedLocale = detectPreferredLocale(
+        typeof navigator !== "undefined" ? navigator.languages : undefined,
+      );
+      if (typeof settings.locale !== "string" && detectedLocale !== "en") {
+        nextSettings = { ...nextSettings, locale: detectedLocale };
+        shouldPersistSettings = true;
+      }
+      setLocaleCookie(normalizeLocale(nextSettings.locale));
+
+      // Auto-detect and silently save timezone if not set.
+      if (!nextSettings.timezone) {
         const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (detectedTimezone) {
-          const nextSettings = { ...settings, timezone: detectedTimezone };
-          await supabase
-            .from("users")
-            .update({ settings: nextSettings })
-            .eq("id", authUser.id);
-          setUserSettings(nextSettings);
+          nextSettings = { ...nextSettings, timezone: detectedTimezone };
+          shouldPersistSettings = true;
         }
       }
 
-      setShowFirstRunSetup(settings.onboarding_completed !== true);
+      if (shouldPersistSettings) {
+        await supabase
+          .from("users")
+          .update({ settings: nextSettings })
+          .eq("id", authUser.id);
+      }
+
+      setUserSettings(nextSettings);
+      setShowFirstRunSetup(nextSettings.onboarding_completed !== true);
 
       // Load message history + home surface data in parallel.
       const [initialMessages] = await Promise.all([
@@ -956,7 +1192,7 @@ export default function ChatPage() {
             msg.id === currentAssistantId
               ? {
                   ...msg,
-                  content: String(event.message ?? "Sorry, I encountered an error."),
+                  content: String(event.message ?? copy.defaultErrorMessage),
                   isStreaming: false,
                   isError: true,
                   streamSegments: undefined,
@@ -1044,8 +1280,8 @@ export default function ChatPage() {
             ? {
                 ...msg,
                 content: msg.content.trim()
-                  ? `${msg.content}\n\nResponse interrupted before completion. Please try again.`
-                  : "Response interrupted before completion. Please try again.",
+                  ? `${msg.content}\n\n${copy.interruptedMessage}`
+                  : copy.interruptedMessage,
                 isStreaming: false,
                 isError: true,
                 streamSegments: undefined,
@@ -1056,7 +1292,7 @@ export default function ChatPage() {
     }
 
     return currentAssistantId;
-  }, [applyAgentEventToMessage, ensureBackgroundJobPolling]);
+  }, [applyAgentEventToMessage, copy.defaultErrorMessage, copy.interruptedMessage, ensureBackgroundJobPolling]);
 
   const handleSaveToDoc = (_messageId: string, content: string) => {
     setSaveModalContent(content);
@@ -1064,7 +1300,7 @@ export default function ChatPage() {
 
   const handleOpenArtifact = (_messageId: string, content: string) => {
     const titleMatch = content.match(/^#{1,3}\s+(.+)/m);
-    const title = titleMatch ? titleMatch[1].trim() : "Response";
+    const title = titleMatch ? titleMatch[1].trim() : copy.responseTitle;
     setArtifactContent({ title, content, type: "response" });
   };
 
@@ -1133,7 +1369,7 @@ export default function ChatPage() {
                 ...msg,
                 content: error instanceof Error
                   ? error.message
-                  : "Sorry, I'm having trouble connecting. Please try again.",
+                  : copy.connectionErrorMessage,
                 isStreaming: false,
                 isError: true,
                 streamSegments: undefined,
@@ -1195,7 +1431,7 @@ export default function ChatPage() {
         ...message,
         content: error instanceof Error
           ? error.message
-          : "Sorry, I'm having trouble connecting. Please try again.",
+          : copy.connectionErrorMessage,
         isStreaming: false,
         isError: true,
         streamSegments: undefined,
@@ -1247,13 +1483,13 @@ export default function ChatPage() {
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) {
-      setGreetingText("Good morning");
+      setGreetingText(copy.greetingMorning);
     } else if (hour < 18) {
-      setGreetingText("Good afternoon");
+      setGreetingText(copy.greetingAfternoon);
     } else {
-      setGreetingText("Good evening");
+      setGreetingText(copy.greetingEvening);
     }
-  }, []);
+  }, [copy.greetingAfternoon, copy.greetingEvening, copy.greetingMorning]);
 
   const shouldShowLanding = !showConversation;
   const hasLastChat = messages.length > 0 || recentRuns.length > 0;
@@ -1277,35 +1513,6 @@ export default function ChatPage() {
 
   const handleStarterAction = (prompt: string) => {
     void sendMessage(prompt);
-  };
-
-  const handleDismissStarterAction = async (starterActionId: string) => {
-    if (!user?.id) {
-      return;
-    }
-
-    const dismissedStarterIds = Array.from(
-      new Set([...(userSettings?.welcome_state?.dismissed_starter_ids || []), starterActionId]),
-    );
-    const nextSettings: UserSettings = {
-      ...(userSettings || {}),
-      welcome_state: {
-        ...(userSettings?.welcome_state || {}),
-        dismissed_starter_ids: dismissedStarterIds,
-      },
-    };
-
-    setUserSettings(nextSettings);
-
-    const { error } = await supabase
-      .from("users")
-      .update({ settings: nextSettings })
-      .eq("id", user.id);
-
-    if (error) {
-      console.error("Failed to save welcome preferences:", error);
-      setUserSettings(userSettings);
-    }
   };
 
   const handleFirstRunComplete = async (values: FirstRunSetupValues) => {
@@ -1370,55 +1577,49 @@ export default function ChatPage() {
     setShowFirstRunSetup(false);
   };
 
-  const welcomeGreeting = `${greetingText}, ${user?.name || "there"}`;
-  const welcomeSubtitle = buildWelcomeSubtitle(userSettings);
+  const welcomeGreeting = `${greetingText}, ${user?.name || copy.greetingFallbackName}`;
+  const welcomeSubtitle = buildWelcomeSubtitle(userSettings, copy);
   const latestDocument = recentDocuments[0];
   const dueTodayCount = upcomingTasks.filter((task) => isTaskDueToday(task.next_run_at)).length;
-  const welcomeStatusText = buildWelcomeStatusText(recentDocuments.length, dueTodayCount);
+  const welcomeStatusText = buildWelcomeStatusText(recentDocuments.length, dueTodayCount, locale, copy);
   const welcomeStarterActions: WelcomeStarterAction[] = [
     {
       id: "plan-my-day",
-      label: "Plan My Day",
+      label: copy.starterPlanMyDayLabel,
       icon: <Calendar className="h-4 w-4" />,
-      onClick: () => handleStarterAction(
-        "Review my calendar and tasks for today. Give me a practical day plan with top priorities, conflict warnings, and the best deep-work block to protect before 3 PM.",
-      ),
+      onClick: () => handleStarterAction(copy.starterPlanMyDayPrompt),
     },
     {
       id: "research-topic",
-      label: "Research A Topic",
+      label: copy.starterResearchTopicLabel,
       icon: <Search className="h-4 w-4" />,
-      onClick: () => handleStarterAction(
-        "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
-      ),
+      onClick: () => handleStarterAction(copy.starterResearchTopicPrompt),
     },
     {
       id: "create-roadmap",
-      label: "Create Roadmap",
+      label: copy.starterCreateRoadmapLabel,
       icon: <FileText className="h-4 w-4" />,
-      onClick: () => handleStarterAction(
-        "Help me create a project roadmap. First ask what project I want to start, then research the space, create a roadmap document in the workspace, and give me a short execution summary in chat.",
-      ),
+      onClick: () => handleStarterAction(copy.starterCreateRoadmapPrompt),
     },
     {
       id: "think-it-through",
-      label: "Think It Through",
+      label: copy.starterThinkItThroughLabel,
       icon: <Lightbulb className="h-4 w-4" />,
-      onClick: () => handleStarterAction(
-        "I have something I need to think through. Ask me what's on my mind, then help me examine it from multiple angles — assumptions, risks, and what a good decision actually looks like — and land on a clear next step.",
-      ),
+      onClick: () => handleStarterAction(copy.starterThinkItThroughPrompt),
     },
   ];
   const welcomeContinueRow = latestDocument && !hasLastChat
     ? {
         label: latestDocument.title,
-        description: `Updated ${formatShortDate(latestDocument.updated_at)}`,
-        actionLabel: "Open",
+        description: `${copy.updatedPrefix} ${formatShortDate(latestDocument.updated_at, localeTag)}`,
+        actionLabel: copy.actionOpen,
         onContinue: () => handleOpenDocumentWorkspace(latestDocument),
       }
     : {
-        label: [...messages].reverse().find(m => m.role === "user")?.content?.slice(0, 80) || "Continue your last workspace",
-        actionLabel: hasLastChat ? "Continue" : "Open chat",
+        label:
+          [...messages].reverse().find((m) => m.role === "user")?.content?.slice(0, 80) ||
+          copy.welcomeContinueLastWorkspace,
+        actionLabel: hasLastChat ? copy.actionContinue : copy.actionOpenChat,
         onContinue: () => {
           if (hasLastChat) {
             void handleContinueLastChat();
@@ -1445,7 +1646,7 @@ export default function ChatPage() {
             e.preventDefault();
             void sendMessage();
           }}
-          placeholder="Message Hada..."
+          placeholder={copy.inputPlaceholder}
           rows={1}
           className="w-full resize-none bg-transparent px-4 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 disabled:opacity-60"
           disabled={isLoading}
@@ -1476,13 +1677,13 @@ export default function ChatPage() {
         </div>
       </div>
       <p className="mt-2 hidden text-center text-xs text-zinc-400 sm:block">
-        Enter to send, Shift+Enter for a new line. Hada can make mistakes — verify important information.
+        {copy.inputHint}
       </p>
     </form>
   );
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+    <div lang={localeTag} className="fixed inset-0 flex flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
 
       <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
@@ -1495,7 +1696,7 @@ export default function ChatPage() {
             <Link
               href="/settings"
               className="flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200/70 px-2 py-1 text-[11px] text-zinc-400 transition-colors hover:text-zinc-600 dark:border-zinc-800/70 dark:hover:text-zinc-300 sm:text-xs"
-              title={`Status: ${connectionStatus}`}
+              title={`${copy.statusPrefix}: ${getConnectionStatusLabel(connectionStatus, copy)}`}
             >
               <span
                 className={`h-2 w-2 rounded-full ${
@@ -1509,10 +1710,10 @@ export default function ChatPage() {
                 }`}
               />
               <span className="hidden sm:inline">
-                {connectionStatus === "connected" && "Online"}
-                {connectionStatus === "degraded" && "Fallback"}
-                {connectionStatus === "connecting" && "Connecting"}
-                {connectionStatus === "disconnected" && "Offline"}
+                {connectionStatus === "connected" && copy.statusOnline}
+                {connectionStatus === "degraded" && copy.statusFallback}
+                {connectionStatus === "connecting" && copy.statusConnecting}
+                {connectionStatus === "disconnected" && copy.statusOffline}
               </span>
             </Link>
           </div>
@@ -1521,7 +1722,7 @@ export default function ChatPage() {
             <ThemeToggle />
 
             <Link href="/docs" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label="Open docs">
+              <Button variant="ghost" size="icon" aria-label={copy.openDocsAria}>
                 <LayoutDashboard className="h-4 w-4" />
               </Button>
             </Link>
@@ -1529,12 +1730,12 @@ export default function ChatPage() {
             <Link href="/docs" className="hidden sm:block">
               <Button variant="ghost" size="sm" className="px-2.5">
                 <LayoutDashboard className="mr-2 h-4 w-4" />
-                Docs
+                {copy.docsLabel}
               </Button>
             </Link>
 
             <Link href="/settings" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label="Open settings">
+              <Button variant="ghost" size="icon" aria-label={copy.openSettingsAria}>
                 <Settings2 className="h-4 w-4" />
               </Button>
             </Link>
@@ -1542,7 +1743,7 @@ export default function ChatPage() {
             <Link href="/settings" className="hidden sm:block">
               <Button variant="ghost" size="sm" className="px-2.5">
                 <Settings2 className="mr-2 h-4 w-4" />
-                Settings
+                {copy.settingsLabel}
               </Button>
             </Link>
 
@@ -1550,7 +1751,7 @@ export default function ChatPage() {
               variant="ghost"
               size="icon"
               className="sm:hidden"
-              aria-label="Sign out"
+              aria-label={copy.signOutAria}
               onClick={handleSignOut}
             >
               <LogOut className="h-4 w-4" />
@@ -1558,7 +1759,7 @@ export default function ChatPage() {
 
             <Button variant="ghost" size="sm" className="hidden px-2.5 sm:inline-flex" onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
-              Sign out
+              {copy.signOutLabel}
             </Button>
           </div>
         </div>
@@ -1584,12 +1785,12 @@ export default function ChatPage() {
               <div className="space-y-6 pb-6 pr-3 sm:pr-4 min-w-0 w-full">
                 {isLoadingMore && (
                   <div className="flex justify-center py-2">
-                    <span className="text-sm text-zinc-400">Loading earlier messages...</span>
+                    <span className="text-sm text-zinc-400">{copy.loadingEarlierMessages}</span>
                   </div>
                 )}
                 {isLoadingHistory ? (
                   <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                    <span className="text-sm text-zinc-400">Loading...</span>
+                    <span className="text-sm text-zinc-400">{copy.loading}</span>
                   </div>
                 ) : shouldShowLanding ? (
                   <motion.div
@@ -1614,7 +1815,12 @@ export default function ChatPage() {
                           continueRow={welcomeContinueRow}
                           statusLine={{
                             text: welcomeStatusText,
-                            actionLabel: recentDocuments.length > 0 ? "View docs" : dueTodayCount > 0 ? "View tasks" : undefined,
+                            actionLabel:
+                              recentDocuments.length > 0
+                                ? copy.viewDocs
+                                : dueTodayCount > 0
+                                ? copy.viewTasks
+                                : undefined,
                             onAction: recentDocuments.length > 0
                               ? () => router.push("/docs")
                               : dueTodayCount > 0
@@ -1762,46 +1968,117 @@ function mapAssistantVoiceToPersona(voice: FirstRunSetupValues["assistantVoice"]
   }
 }
 
-function buildWelcomeSubtitle(settings: UserSettings | null): string {
+function buildWelcomeSubtitle(settings: UserSettings | null, copy: ChatLocaleCopy): string {
   const writingStyle = settings?.working_style?.writing_style;
   const recommendationStyle = settings?.working_style?.recommendation_style;
   const workRhythm = settings?.working_style?.work_rhythm;
 
   if (!writingStyle && !recommendationStyle && !workRhythm) {
-    return "What do you want to move forward today?";
+    return copy.defaultWelcomeSubtitle;
   }
 
   const parts: string[] = [];
   if (writingStyle) {
-    parts.push(writingStyle.replace(/_/g, " "));
+    parts.push(formatWritingStyleLabel(writingStyle, normalizeLocale(settings?.locale)));
   }
   if (recommendationStyle) {
-    parts.push(recommendationStyle === "decision_first" ? "decision-first" : "context-first");
+    parts.push(recommendationStyle === "decision_first" ? copy.styleDecisionFirst : copy.styleContextFirst);
   }
   if (workRhythm) {
     parts.push(
       workRhythm === "morning_deep_work"
-        ? "morning deep work"
+        ? copy.styleMorningDeepWork
         : workRhythm === "afternoon_deep_work"
-        ? "afternoon deep work"
-        : "a flexible work rhythm",
+        ? copy.styleAfternoonDeepWork
+        : copy.styleFlexibleWorkRhythm,
     );
   }
 
-  return `Ready to work in your style: ${parts.join(", ")}.`;
+  return `${copy.welcomeReadyPrefix} ${parts.join(", ")}.`;
 }
 
-function buildWelcomeStatusText(documentCount: number, dueTodayCount: number): string {
+function buildWelcomeStatusText(
+  documentCount: number,
+  dueTodayCount: number,
+  locale: AppLocale,
+  copy: ChatLocaleCopy,
+): string {
+  if (documentCount > 0 && dueTodayCount > 0) {
+    return buildDocAndReviewStatusText(documentCount, dueTodayCount, locale);
+  }
+  if (documentCount > 0) {
+    return buildDocAndReviewStatusText(documentCount, 0, locale);
+  }
+  if (dueTodayCount > 0) {
+    return buildDocAndReviewStatusText(0, dueTodayCount, locale);
+  }
+  return copy.workspaceReady;
+}
+
+function buildDocAndReviewStatusText(documentCount: number, dueTodayCount: number, locale: AppLocale): string {
+  if (locale === "ko") {
+    if (documentCount > 0 && dueTodayCount > 0) {
+      return `진행 중인 문서 ${documentCount}개 • 오늘 검토 ${dueTodayCount}건`;
+    }
+    if (documentCount > 0) {
+      return `진행 중인 문서 ${documentCount}개`;
+    }
+    return `오늘 검토 ${dueTodayCount}건`;
+  }
+
+  if (locale === "ja") {
+    if (documentCount > 0 && dueTodayCount > 0) {
+      return `進行中ドキュメント ${documentCount} 件 • 本日レビュー ${dueTodayCount} 件`;
+    }
+    if (documentCount > 0) {
+      return `進行中ドキュメント ${documentCount} 件`;
+    }
+    return `本日レビュー ${dueTodayCount} 件`;
+  }
+
   if (documentCount > 0 && dueTodayCount > 0) {
     return `${documentCount} docs in progress • ${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
   }
   if (documentCount > 0) {
     return `${documentCount} doc${documentCount === 1 ? "" : "s"} in progress`;
   }
-  if (dueTodayCount > 0) {
-    return `${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
+  return `${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
+}
+
+function formatWritingStyleLabel(
+  value: NonNullable<NonNullable<UserSettings["working_style"]>["writing_style"]>,
+  locale: AppLocale,
+): string {
+  if (locale === "ko") {
+    switch (value) {
+      case "concise":
+        return "간결한 스타일";
+      case "balanced":
+        return "균형 잡힌 스타일";
+      case "detailed":
+        return "상세한 스타일";
+    }
   }
-  return "Your workspace is ready.";
+
+  if (locale === "ja") {
+    switch (value) {
+      case "concise":
+        return "簡潔なスタイル";
+      case "balanced":
+        return "バランス型スタイル";
+      case "detailed":
+        return "詳細なスタイル";
+    }
+  }
+
+  switch (value) {
+    case "concise":
+      return "concise";
+    case "balanced":
+      return "balanced";
+    case "detailed":
+      return "detailed";
+  }
 }
 
 function isTaskDueToday(nextRunAt: string | null): boolean {
@@ -1818,9 +2095,24 @@ function isTaskDueToday(nextRunAt: string | null): boolean {
   );
 }
 
-function formatShortDate(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, {
+function formatShortDate(value: string, localeTag: string): string {
+  return new Date(value).toLocaleDateString(localeTag, {
     month: "short",
     day: "numeric",
   });
+}
+
+function getConnectionStatusLabel(status: string, copy: ChatLocaleCopy): string {
+  switch (status) {
+    case "connected":
+      return copy.statusOnline;
+    case "degraded":
+      return copy.statusFallback;
+    case "connecting":
+      return copy.statusConnecting;
+    case "disconnected":
+      return copy.statusOffline;
+    default:
+      return status;
+  }
 }

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
+import { toLocaleLanguageTag, type AppLocale } from "@/lib/i18n";
 import type { UserMemory } from "@/lib/types/database";
 
 type MemoryResponse = {
@@ -24,6 +26,9 @@ type MemoryDraft = {
 };
 
 export function MemoryTab() {
+  const locale = useResolvedLocale();
+  const copy = MEMORY_COPY[locale];
+  const localeTag = toLocaleLanguageTag(locale);
   const [memories, setMemories] = useState<UserMemory[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -78,7 +83,7 @@ export function MemoryTab() {
     const topic = newMemoryDraft.topic.trim();
     const content = newMemoryDraft.content.trim();
     if (!topic || !content) {
-      setMessage("Topic and content are required.");
+      setMessage(copy.topicAndContentRequired);
       return;
     }
 
@@ -100,9 +105,9 @@ export function MemoryTab() {
       setMemories((prev) => [data.memory!, ...prev]);
       setNewMemoryDraft({ topic: "", content: "" });
       setNewMemoryOpen(false);
-      setMessage("Memory saved.");
+      setMessage(copy.memorySaved);
     } catch (saveError) {
-      setMessage(saveError instanceof Error ? saveError.message : "Failed to create memory.");
+      setMessage(saveError instanceof Error ? saveError.message : copy.failedToCreateMemory);
     } finally {
       setIsSaving(false);
     }
@@ -114,7 +119,7 @@ export function MemoryTab() {
     const topic = memoryDraft.topic.trim();
     const content = memoryDraft.content.trim();
     if (!topic || !content) {
-      setMessage("Topic and content are required.");
+      setMessage(copy.topicAndContentRequired);
       return;
     }
 
@@ -136,9 +141,9 @@ export function MemoryTab() {
       setMemories((prev) => prev.map((memory) => (memory.id === memoryId ? data.memory! : memory)));
       setEditingMemoryId(null);
       setMemoryDraft(null);
-      setMessage("Memory updated.");
+      setMessage(copy.memoryUpdated);
     } catch (saveError) {
-      setMessage(saveError instanceof Error ? saveError.message : "Failed to update memory.");
+      setMessage(saveError instanceof Error ? saveError.message : copy.failedToUpdateMemory);
     } finally {
       setIsSaving(false);
     }
@@ -146,7 +151,7 @@ export function MemoryTab() {
 
   async function handleDeleteMemory(memoryId: string) {
     if (isSaving) return;
-    if (!window.confirm("Delete this memory?")) return;
+    if (!window.confirm(copy.confirmDeleteMemory)) return;
 
     setIsSaving(true);
     setMessage(null);
@@ -166,9 +171,9 @@ export function MemoryTab() {
         setEditingMemoryId(null);
         setMemoryDraft(null);
       }
-      setMessage("Memory deleted.");
+      setMessage(copy.memoryDeleted);
     } catch (deleteError) {
-      setMessage(deleteError instanceof Error ? deleteError.message : "Failed to delete memory.");
+      setMessage(deleteError instanceof Error ? deleteError.message : copy.failedToDeleteMemory);
     } finally {
       setIsSaving(false);
     }
@@ -177,20 +182,20 @@ export function MemoryTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold">Memory</h2>
+        <h2 className="text-2xl font-semibold">{copy.title}</h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Review and manage the facts and preferences Hada keeps across chats.
+          {copy.subtitle}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">How memory works</CardTitle>
-          <CardDescription>Memory is separate from chat history.</CardDescription>
+          <CardTitle className="text-base">{copy.howMemoryWorks}</CardTitle>
+          <CardDescription>{copy.memorySeparateFromChat}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-          <p>Memories are durable facts or preferences Hada can reuse across future conversations.</p>
-          <p>Clearing chat history does not remove saved memories.</p>
+          <p>{copy.memoryExplanationOne}</p>
+          <p>{copy.memoryExplanationTwo}</p>
         </CardContent>
       </Card>
 
@@ -198,11 +203,11 @@ export function MemoryTab() {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="text-base">Saved memories</CardTitle>
-              <CardDescription>Search, edit, add, or delete saved memory items.</CardDescription>
+              <CardTitle className="text-base">{copy.savedMemories}</CardTitle>
+              <CardDescription>{copy.savedMemoriesDescription}</CardDescription>
             </div>
             <Button size="sm" className="w-full sm:w-auto" onClick={() => setNewMemoryOpen((value) => !value)}>
-              {newMemoryOpen ? "Cancel" : "Add memory"}
+              {newMemoryOpen ? copy.cancel : copy.addMemory}
             </Button>
           </div>
         </CardHeader>
@@ -210,7 +215,7 @@ export function MemoryTab() {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search memories"
+            placeholder={copy.searchMemories}
           />
 
           {newMemoryOpen ? (
@@ -220,20 +225,20 @@ export function MemoryTab() {
                 onChange={(event) =>
                   setNewMemoryDraft((prev) => ({ ...prev, topic: event.target.value }))
                 }
-                placeholder="Topic"
+                placeholder={copy.topic}
               />
               <textarea
                 value={newMemoryDraft.content}
                 onChange={(event) =>
                   setNewMemoryDraft((prev) => ({ ...prev, content: event.target.value }))
                 }
-                placeholder="Memory content"
+                placeholder={copy.memoryContent}
                 rows={4}
                 className="min-h-28 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
               />
               <div className="flex justify-stretch sm:justify-end">
                 <Button size="sm" onClick={() => void handleCreateMemory()} disabled={isSaving}>
-                  {isSaving ? "Saving..." : "Save memory"}
+                  {isSaving ? copy.saving : copy.saveMemory}
                 </Button>
               </div>
             </div>
@@ -248,10 +253,10 @@ export function MemoryTab() {
           ) : null}
 
           {loading ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading memories...</p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">{copy.loadingMemories}</p>
           ) : filteredMemories.length === 0 ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              {memories.length === 0 ? "No memories saved yet." : "No memories match your search."}
+              {memories.length === 0 ? copy.noMemoriesYet : copy.noMemoriesMatchSearch}
             </p>
           ) : (
             <div className="space-y-3">
@@ -288,10 +293,10 @@ export function MemoryTab() {
                               setMemoryDraft(null);
                             }}
                           >
-                            Cancel
+                            {copy.cancel}
                           </Button>
                           <Button size="sm" onClick={() => void handleSaveMemory(memory.id)} disabled={isSaving}>
-                            {isSaving ? "Saving..." : "Save"}
+                            {isSaving ? copy.saving : copy.save}
                           </Button>
                         </div>
                       </div>
@@ -305,7 +310,7 @@ export function MemoryTab() {
                             {memory.content}
                           </p>
                           <p className="mt-2 text-xs text-zinc-400">
-                            Updated {formatTimestamp(memory.updated_at)}
+                            {copy.updated} {formatTimestamp(memory.updated_at, localeTag)}
                           </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -321,7 +326,7 @@ export function MemoryTab() {
                               });
                             }}
                           >
-                            Edit
+                            {copy.edit}
                           </Button>
                           <Button
                             size="sm"
@@ -330,7 +335,7 @@ export function MemoryTab() {
                             onClick={() => void handleDeleteMemory(memory.id)}
                             disabled={isSaving}
                           >
-                            Delete
+                            {copy.delete}
                           </Button>
                         </div>
                       </div>
@@ -346,8 +351,8 @@ export function MemoryTab() {
   );
 }
 
-function formatTimestamp(value: string): string {
-  return new Date(value).toLocaleString("en-US", {
+function formatTimestamp(value: string, localeTag: string): string {
+  return new Date(value).toLocaleString(localeTag, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -355,3 +360,136 @@ function formatTimestamp(value: string): string {
     minute: "2-digit",
   });
 }
+
+const MEMORY_COPY: Record<
+  AppLocale,
+  {
+    title: string;
+    subtitle: string;
+    howMemoryWorks: string;
+    memorySeparateFromChat: string;
+    memoryExplanationOne: string;
+    memoryExplanationTwo: string;
+    savedMemories: string;
+    savedMemoriesDescription: string;
+    addMemory: string;
+    cancel: string;
+    searchMemories: string;
+    topic: string;
+    memoryContent: string;
+    saving: string;
+    saveMemory: string;
+    save: string;
+    loadingMemories: string;
+    noMemoriesYet: string;
+    noMemoriesMatchSearch: string;
+    updated: string;
+    edit: string;
+    delete: string;
+    topicAndContentRequired: string;
+    memorySaved: string;
+    memoryUpdated: string;
+    memoryDeleted: string;
+    failedToCreateMemory: string;
+    failedToUpdateMemory: string;
+    failedToDeleteMemory: string;
+    confirmDeleteMemory: string;
+  }
+> = {
+  en: {
+    title: "Memory",
+    subtitle: "Review and manage the facts and preferences Hada keeps across chats.",
+    howMemoryWorks: "How memory works",
+    memorySeparateFromChat: "Memory is separate from chat history.",
+    memoryExplanationOne: "Memories are durable facts or preferences Hada can reuse across future conversations.",
+    memoryExplanationTwo: "Clearing chat history does not remove saved memories.",
+    savedMemories: "Saved memories",
+    savedMemoriesDescription: "Search, edit, add, or delete saved memory items.",
+    addMemory: "Add memory",
+    cancel: "Cancel",
+    searchMemories: "Search memories",
+    topic: "Topic",
+    memoryContent: "Memory content",
+    saving: "Saving...",
+    saveMemory: "Save memory",
+    save: "Save",
+    loadingMemories: "Loading memories...",
+    noMemoriesYet: "No memories saved yet.",
+    noMemoriesMatchSearch: "No memories match your search.",
+    updated: "Updated",
+    edit: "Edit",
+    delete: "Delete",
+    topicAndContentRequired: "Topic and content are required.",
+    memorySaved: "Memory saved.",
+    memoryUpdated: "Memory updated.",
+    memoryDeleted: "Memory deleted.",
+    failedToCreateMemory: "Failed to create memory.",
+    failedToUpdateMemory: "Failed to update memory.",
+    failedToDeleteMemory: "Failed to delete memory.",
+    confirmDeleteMemory: "Delete this memory?",
+  },
+  ko: {
+    title: "메모리",
+    subtitle: "Hada가 대화 전반에서 유지하는 사실과 선호도를 관리하세요.",
+    howMemoryWorks: "메모리 동작 방식",
+    memorySeparateFromChat: "메모리는 채팅 기록과 분리되어 저장됩니다.",
+    memoryExplanationOne: "메모리는 이후 대화에서도 재사용할 수 있는 지속적인 사실/선호도입니다.",
+    memoryExplanationTwo: "채팅 기록을 지워도 저장된 메모리는 삭제되지 않습니다.",
+    savedMemories: "저장된 메모리",
+    savedMemoriesDescription: "검색, 수정, 추가, 삭제를 할 수 있습니다.",
+    addMemory: "메모리 추가",
+    cancel: "취소",
+    searchMemories: "메모리 검색",
+    topic: "주제",
+    memoryContent: "메모리 내용",
+    saving: "저장 중...",
+    saveMemory: "메모리 저장",
+    save: "저장",
+    loadingMemories: "메모리를 불러오는 중...",
+    noMemoriesYet: "아직 저장된 메모리가 없습니다.",
+    noMemoriesMatchSearch: "검색 결과와 일치하는 메모리가 없습니다.",
+    updated: "업데이트",
+    edit: "수정",
+    delete: "삭제",
+    topicAndContentRequired: "주제와 내용은 필수입니다.",
+    memorySaved: "메모리가 저장되었습니다.",
+    memoryUpdated: "메모리가 업데이트되었습니다.",
+    memoryDeleted: "메모리가 삭제되었습니다.",
+    failedToCreateMemory: "메모리 생성에 실패했습니다.",
+    failedToUpdateMemory: "메모리 업데이트에 실패했습니다.",
+    failedToDeleteMemory: "메모리 삭제에 실패했습니다.",
+    confirmDeleteMemory: "이 메모리를 삭제할까요?",
+  },
+  ja: {
+    title: "メモリ",
+    subtitle: "Hada が会話をまたいで保持する事実や設定を管理します。",
+    howMemoryWorks: "メモリの仕組み",
+    memorySeparateFromChat: "メモリはチャット履歴とは別に保存されます。",
+    memoryExplanationOne: "メモリは、今後の会話でも再利用される永続的な事実・設定です。",
+    memoryExplanationTwo: "チャット履歴を削除しても、保存済みメモリは削除されません。",
+    savedMemories: "保存済みメモリ",
+    savedMemoriesDescription: "検索・編集・追加・削除ができます。",
+    addMemory: "メモリ追加",
+    cancel: "キャンセル",
+    searchMemories: "メモリを検索",
+    topic: "トピック",
+    memoryContent: "メモリ内容",
+    saving: "保存中...",
+    saveMemory: "メモリを保存",
+    save: "保存",
+    loadingMemories: "メモリを読み込み中...",
+    noMemoriesYet: "保存済みメモリはまだありません。",
+    noMemoriesMatchSearch: "検索条件に一致するメモリがありません。",
+    updated: "更新",
+    edit: "編集",
+    delete: "削除",
+    topicAndContentRequired: "トピックと内容は必須です。",
+    memorySaved: "メモリを保存しました。",
+    memoryUpdated: "メモリを更新しました。",
+    memoryDeleted: "メモリを削除しました。",
+    failedToCreateMemory: "メモリ作成に失敗しました。",
+    failedToUpdateMemory: "メモリ更新に失敗しました。",
+    failedToDeleteMemory: "メモリ削除に失敗しました。",
+    confirmDeleteMemory: "このメモリを削除しますか？",
+  },
+};

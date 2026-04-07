@@ -4,13 +4,74 @@ export const dynamic = "force-dynamic";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
+import type { AppLocale } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+const SIGNUP_COPY: Record<
+  AppLocale,
+  {
+    title: string;
+    subtitle: string;
+    namePlaceholder: string;
+    emailPlaceholder: string;
+    passwordPlaceholder: string;
+    creatingAccount: string;
+    createAccount: string;
+    orContinueWith: string;
+    continueWithGoogle: string;
+    hasAccount: string;
+    signIn: string;
+  }
+> = {
+  en: {
+    title: "Create your account",
+    subtitle: "Start getting things done with Hada",
+    namePlaceholder: "Name",
+    emailPlaceholder: "Email",
+    passwordPlaceholder: "Password",
+    creatingAccount: "Creating account...",
+    createAccount: "Create account",
+    orContinueWith: "or continue with",
+    continueWithGoogle: "Continue with Google",
+    hasAccount: "Already have an account?",
+    signIn: "Sign in",
+  },
+  ko: {
+    title: "계정 만들기",
+    subtitle: "Hada와 함께 일을 더 빠르게 처리해 보세요",
+    namePlaceholder: "이름",
+    emailPlaceholder: "이메일",
+    passwordPlaceholder: "비밀번호",
+    creatingAccount: "계정 생성 중...",
+    createAccount: "계정 만들기",
+    orContinueWith: "또는 다음으로 계속",
+    continueWithGoogle: "Google로 계속",
+    hasAccount: "이미 계정이 있으신가요?",
+    signIn: "로그인",
+  },
+  ja: {
+    title: "アカウントを作成",
+    subtitle: "Hada で作業をもっと進めましょう",
+    namePlaceholder: "名前",
+    emailPlaceholder: "メールアドレス",
+    passwordPlaceholder: "パスワード",
+    creatingAccount: "アカウント作成中...",
+    createAccount: "アカウント作成",
+    orContinueWith: "または次で続行",
+    continueWithGoogle: "Google で続行",
+    hasAccount: "すでにアカウントをお持ちですか？",
+    signIn: "サインイン",
+  },
+};
+
 export default function SignUpPage() {
+  const locale = useResolvedLocale();
+  const copy = SIGNUP_COPY[locale];
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -77,9 +138,9 @@ export default function SignUpPage() {
               </div>
             </div>
           </Link>
-          <h1 className="mt-6 text-2xl font-bold">Create your account</h1>
+          <h1 className="mt-6 text-2xl font-bold">{copy.title}</h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Start getting things done with Hada
+            {copy.subtitle}
           </p>
         </div>
 
@@ -87,7 +148,7 @@ export default function SignUpPage() {
           <div>
             <Input
               type="text"
-              placeholder="Name"
+              placeholder={copy.namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -96,7 +157,7 @@ export default function SignUpPage() {
           <div>
             <Input
               type="email"
-              placeholder="Email"
+              placeholder={copy.emailPlaceholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -105,7 +166,7 @@ export default function SignUpPage() {
           <div>
             <Input
               type="password"
-              placeholder="Password"
+              placeholder={copy.passwordPlaceholder}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -118,7 +179,7 @@ export default function SignUpPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
+            {loading ? copy.creatingAccount : copy.createAccount}
           </Button>
         </form>
 
@@ -128,7 +189,7 @@ export default function SignUpPage() {
           </div>
           <div className="relative flex justify-center text-sm">
             <span className="bg-zinc-50 px-3 text-zinc-400 dark:bg-zinc-950">
-              or continue with
+              {copy.orContinueWith}
             </span>
           </div>
         </div>
@@ -156,13 +217,13 @@ export default function SignUpPage() {
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
             />
           </svg>
-          Continue with Google
+          {copy.continueWithGoogle}
         </Button>
 
         <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
-          Already have an account?{" "}
+          {copy.hasAccount}{" "}
           <Link href="/auth/login" className="font-medium text-zinc-900 dark:text-white">
-            Sign in
+            {copy.signIn}
           </Link>
         </p>
       </div>

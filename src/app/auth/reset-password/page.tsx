@@ -4,12 +4,73 @@ export const dynamic = "force-dynamic";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
+import type { AppLocale } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+const RESET_COPY: Record<
+  AppLocale,
+  {
+    passwordsMismatch: string;
+    passwordTooShort: string;
+    title: string;
+    subtitle: string;
+    updatedTitle: string;
+    redirecting: string;
+    newPasswordPlaceholder: string;
+    confirmPasswordPlaceholder: string;
+    updating: string;
+    updatePassword: string;
+    backToSignIn: string;
+  }
+> = {
+  en: {
+    passwordsMismatch: "Passwords don't match.",
+    passwordTooShort: "Password must be at least 6 characters.",
+    title: "Set new password",
+    subtitle: "Choose a new password for your account.",
+    updatedTitle: "Password updated!",
+    redirecting: "Taking you to the app…",
+    newPasswordPlaceholder: "New password",
+    confirmPasswordPlaceholder: "Confirm new password",
+    updating: "Updating…",
+    updatePassword: "Update password",
+    backToSignIn: "Back to sign in",
+  },
+  ko: {
+    passwordsMismatch: "비밀번호가 일치하지 않습니다.",
+    passwordTooShort: "비밀번호는 최소 6자 이상이어야 합니다.",
+    title: "새 비밀번호 설정",
+    subtitle: "계정에 사용할 새 비밀번호를 입력하세요.",
+    updatedTitle: "비밀번호가 변경되었습니다!",
+    redirecting: "앱으로 이동 중입니다…",
+    newPasswordPlaceholder: "새 비밀번호",
+    confirmPasswordPlaceholder: "새 비밀번호 확인",
+    updating: "업데이트 중…",
+    updatePassword: "비밀번호 변경",
+    backToSignIn: "로그인으로 돌아가기",
+  },
+  ja: {
+    passwordsMismatch: "パスワードが一致しません。",
+    passwordTooShort: "パスワードは6文字以上で入力してください。",
+    title: "新しいパスワードを設定",
+    subtitle: "アカウントの新しいパスワードを入力してください。",
+    updatedTitle: "パスワードを更新しました！",
+    redirecting: "アプリへ移動しています…",
+    newPasswordPlaceholder: "新しいパスワード",
+    confirmPasswordPlaceholder: "新しいパスワード（確認）",
+    updating: "更新中…",
+    updatePassword: "パスワードを更新",
+    backToSignIn: "サインインに戻る",
+  },
+};
+
 export default function ResetPasswordPage() {
+  const locale = useResolvedLocale();
+  const copy = RESET_COPY[locale];
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,11 +82,11 @@ export default function ResetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirm) {
-      setError("Passwords don't match.");
+      setError(copy.passwordsMismatch);
       return;
     }
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      setError(copy.passwordTooShort);
       return;
     }
 
@@ -52,22 +113,22 @@ export default function ResetPasswordPage() {
               <span className="text-lg font-bold">H</span>
             </div>
           </Link>
-          <h1 className="mt-6 text-2xl font-bold">Set new password</h1>
+          <h1 className="mt-6 text-2xl font-bold">{copy.title}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Choose a new password for your account.
+            {copy.subtitle}
           </p>
         </div>
 
         {done ? (
           <div className="rounded-lg border border-border/80 bg-card/70 p-4 text-center text-sm backdrop-blur-sm">
-            <p className="font-medium text-foreground">Password updated!</p>
-            <p className="mt-1 text-muted-foreground">Taking you to the app…</p>
+            <p className="font-medium text-foreground">{copy.updatedTitle}</p>
+            <p className="mt-1 text-muted-foreground">{copy.redirecting}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               type="password"
-              placeholder="New password"
+              placeholder={copy.newPasswordPlaceholder}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -75,7 +136,7 @@ export default function ResetPasswordPage() {
             />
             <Input
               type="password"
-              placeholder="Confirm new password"
+              placeholder={copy.confirmPasswordPlaceholder}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
@@ -83,14 +144,14 @@ export default function ResetPasswordPage() {
             />
             {error && <p className="text-sm text-red-500">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Updating…" : "Update password"}
+              {loading ? copy.updating : copy.updatePassword}
             </Button>
           </form>
         )}
 
         <p className="text-center text-sm text-muted-foreground">
           <Link href="/auth/login" className="font-medium text-foreground hover:underline">
-            Back to sign in
+            {copy.backToSignIn}
           </Link>
         </p>
       </div>

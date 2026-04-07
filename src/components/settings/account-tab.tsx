@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { PERSONAS } from "@/lib/chat/personas";
+import { APP_LOCALE_OPTIONS, normalizeLocale, setLocaleCookie, type AppLocale } from "@/lib/i18n";
 import type {
   AssistantVoice,
   LLMProviderName,
@@ -57,6 +58,7 @@ export function AccountTab() {
   const [fallbackModel, setFallbackModel] = useState("");
   const [fallbackQuery, setFallbackQuery] = useState("");
   const [fallbackPickerOpen, setFallbackPickerOpen] = useState(false);
+  const [locale, setLocale] = useState<AppLocale>("en");
   const [timezone, setTimezone] = useState("");
   const [persona, setPersona] = useState<string>("default");
   const [customInstructions, setCustomInstructions] = useState<string>("");
@@ -120,6 +122,9 @@ export function AccountTab() {
       const loadedFallback = typeof loaded.settings.llm_fallback_model === "string" ? loaded.settings.llm_fallback_model : "";
       setFallbackModel(loadedFallback);
       setFallbackQuery(loadedFallback);
+      const loadedLocale = normalizeLocale(loaded.settings.locale);
+      setLocale(loadedLocale);
+      setLocaleCookie(loadedLocale);
       setTimezone(typeof loaded.settings.timezone === "string" ? loaded.settings.timezone : "");
       setPersona(
         typeof loaded.settings.persona === "string"
@@ -227,6 +232,7 @@ export function AccountTab() {
 
     const nextSettings: UserSettings = {
       ...(profile.settings || {}),
+      locale,
       timezone: timezone.trim() || null,
       persona,
       custom_instructions: customInstructions.trim() || null,
@@ -288,6 +294,7 @@ export function AccountTab() {
     }
 
     setProfile({ ...profile, settings: nextSettings });
+    setLocaleCookie(locale);
     setSaveMessage("Settings saved.");
     setSaving(false);
   }
@@ -596,6 +603,24 @@ export function AccountTab() {
               </p>
             </div>
           )}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Language</label>
+            <select
+              className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+              value={locale}
+              onChange={(event) => setLocale(event.target.value as AppLocale)}
+            >
+              {APP_LOCALE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Controls chat UI copy and default assistant response language.
+            </p>
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium">Timezone (optional)</label>
             <Input

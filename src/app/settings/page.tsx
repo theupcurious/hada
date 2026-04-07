@@ -8,6 +8,8 @@ import { IntegrationsTab } from "@/components/settings/integrations-tab";
 import { AccountTab } from "@/components/settings/account-tab";
 import { MemoryTab } from "@/components/settings/memory-tab";
 import { TasksTab } from "@/components/settings/tasks-tab";
+import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
+import type { AppLocale } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -15,43 +17,42 @@ import { Suspense, useEffect, useState, type ComponentType } from "react";
 
 type SettingsTabId = "integrations" | "account" | "memory" | "tasks" | "status";
 
-const SETTINGS_TABS: Array<{
+type SettingsTabDescriptor = {
   id: SettingsTabId;
   label: string;
   description: string;
   icon: ComponentType<{ className?: string }>;
-}> = [
-  {
-    id: "integrations",
-    label: "Integrations",
-    description: "Google, Telegram, and linked tools",
-    icon: IntegrationsIcon,
-  },
-  {
-    id: "account",
-    label: "Account",
-    description: "Profile, timezone, and defaults",
-    icon: AccountIcon,
-  },
-  {
-    id: "memory",
-    label: "Memory",
-    description: "Saved preferences across chats",
-    icon: MemoryIcon,
-  },
-  {
-    id: "tasks",
-    label: "Tasks",
-    description: "Scheduled tasks and automations",
-    icon: TasksIcon,
-  },
-  {
-    id: "status",
-    label: "Status",
-    description: "Runtime health and provider checks",
-    icon: StatusIcon,
-  },
-];
+};
+
+const SETTINGS_TABS_BY_LOCALE: Record<AppLocale, SettingsTabDescriptor[]> = {
+  en: [
+    { id: "integrations", label: "Integrations", description: "Google, Telegram, and linked tools", icon: IntegrationsIcon },
+    { id: "account", label: "Account", description: "Profile, timezone, and defaults", icon: AccountIcon },
+    { id: "memory", label: "Memory", description: "Saved preferences across chats", icon: MemoryIcon },
+    { id: "tasks", label: "Tasks", description: "Scheduled tasks and automations", icon: TasksIcon },
+    { id: "status", label: "Status", description: "Runtime health and provider checks", icon: StatusIcon },
+  ],
+  ko: [
+    { id: "integrations", label: "연동", description: "Google, Telegram 및 연결 도구", icon: IntegrationsIcon },
+    { id: "account", label: "계정", description: "프로필, 시간대, 기본값", icon: AccountIcon },
+    { id: "memory", label: "메모리", description: "대화 전반의 저장된 선호도", icon: MemoryIcon },
+    { id: "tasks", label: "작업", description: "예약 작업 및 자동화", icon: TasksIcon },
+    { id: "status", label: "상태", description: "런타임 상태 및 제공자 점검", icon: StatusIcon },
+  ],
+  ja: [
+    { id: "integrations", label: "連携", description: "Google、Telegram、接続済みツール", icon: IntegrationsIcon },
+    { id: "account", label: "アカウント", description: "プロフィール、タイムゾーン、既定値", icon: AccountIcon },
+    { id: "memory", label: "メモリ", description: "会話をまたいで保持される設定", icon: MemoryIcon },
+    { id: "tasks", label: "タスク", description: "スケジュールされたタスクと自動化", icon: TasksIcon },
+    { id: "status", label: "ステータス", description: "ランタイム状態とプロバイダー確認", icon: StatusIcon },
+  ],
+};
+
+const SETTINGS_PAGE_COPY: Record<AppLocale, { loading: string; title: string }> = {
+  en: { loading: "Loading...", title: "Settings" },
+  ko: { loading: "불러오는 중...", title: "설정" },
+  ja: { loading: "読み込み中...", title: "設定" },
+};
 
 export default function SettingsPage() {
   return (
@@ -62,6 +63,9 @@ export default function SettingsPage() {
 }
 
 function SettingsContent() {
+  const locale = useResolvedLocale();
+  const copy = SETTINGS_PAGE_COPY[locale];
+  const tabs = SETTINGS_TABS_BY_LOCALE[locale];
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -69,7 +73,7 @@ function SettingsContent() {
 
   const initialTab = (() => {
     const tab = searchParams.get("tab");
-    return tab && SETTINGS_TABS.some((t) => t.id === tab) ? (tab as SettingsTabId) : "integrations";
+    return tab && tabs.some((t) => t.id === tab) ? (tab as SettingsTabId) : "integrations";
   })();
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
@@ -91,7 +95,7 @@ function SettingsContent() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <span className="text-sm text-zinc-400">Loading...</span>
+        <span className="text-sm text-zinc-400">{copy.loading}</span>
       </div>
     );
   }
@@ -102,7 +106,7 @@ function SettingsContent() {
         <div className="border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur-sm">
           <div className="-mx-3 overflow-x-auto px-3 pb-1">
             <div className="flex min-w-max gap-2">
-              {SETTINGS_TABS.map((tab) => {
+              {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
 
@@ -130,12 +134,12 @@ function SettingsContent() {
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-3">
           <div className="mx-auto max-w-3xl">
             <div className="mb-4">
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">Settings</p>
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">{copy.title}</p>
               <h1 className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-                {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label}
+                {tabs.find((tab) => tab.id === activeTab)?.label}
               </h1>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.description}
+                {tabs.find((tab) => tab.id === activeTab)?.description}
               </p>
             </div>
             {activeTab === "integrations" ? <IntegrationsTab /> : null}
@@ -155,7 +159,7 @@ function SettingsContent() {
       >
         <div className="hidden w-56 shrink-0 flex-col border-r border-border/60 bg-card/50 p-4 backdrop-blur-sm md:flex">
           <TabsList className="flex h-auto flex-col gap-1 bg-transparent">
-            {SETTINGS_TABS.map((tab) => {
+            {tabs.map((tab) => {
               const Icon = tab.icon;
 
               return (

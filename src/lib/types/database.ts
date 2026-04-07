@@ -1,3 +1,5 @@
+import type { AppLocale } from "@/lib/i18n";
+
 export type UserTier = "free" | "paid" | "pro";
 export type PermissionMode = "direct" | "confirm";
 export type MessageRole = "user" | "assistant" | "system";
@@ -51,6 +53,7 @@ export interface UserSettings {
   llm_provider?: LLMProviderName;
   llm_model?: string | null;
   llm_fallback_model?: string | null;
+  locale?: AppLocale;
   timezone?: string | null;
   persona?: string;
   custom_instructions?: string | null;

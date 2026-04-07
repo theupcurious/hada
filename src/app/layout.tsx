@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { cookies } from "next/headers";
 import { ThemeBootstrap } from "@/components/theme/theme-bootstrap";
+import { LOCALE_COOKIE_NAME, normalizeLocale } from "@/lib/i18n";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -20,13 +22,16 @@ export const metadata: Metadata = {
   description: "An intelligent assistant that helps you get things done",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value);
+
   return (
-    <html lang="en" className="dark">
+    <html lang={locale} className="dark">
       <body
         className={`${dmSans.variable} ${plusJakarta.variable} font-sans antialiased`}
       >

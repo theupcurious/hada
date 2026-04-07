@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import { summarizeToolList } from "@/lib/chat/tools";
 import { getPersonaById } from "@/lib/chat/personas";
+import { normalizeLocale, type AppLocale } from "@/lib/i18n";
 import type { MessageSource, UserSettings } from "@/lib/types/database";
 
 const MEMORY_TOKEN_BUDGET = 2000;
@@ -61,6 +62,8 @@ export async function buildSystemPrompt(options: {
     ? userSettings.custom_instructions.trim()
     : "";
   const onboardingPreferences = formatOnboardingPreferences(userSettings);
+  const preferredLocale = normalizeLocale(userSettings.locale);
+  const languageGuidance = buildLanguageGuidance(preferredLocale);
   const connectedIntegrations = options.connectedIntegrations ?? (
     (integrationResult as { data: Array<{ provider: string }> | null } | null)
       ?.data?.map((row) => row.provider) ?? []
@@ -112,6 +115,8 @@ export async function buildSystemPrompt(options: {
     ...(onboardingPreferences
       ? ["## User Preferences", onboardingPreferences]
       : []),
+    "## Response Language",
+    languageGuidance,
     "## Available Tools",
     summarizeToolList(options.tools),
   ];
@@ -310,4 +315,13 @@ function formatAssistantVoice(value: NonNullable<NonNullable<UserSettings["assis
     case "academic":
       return "Academic";
   }
+}
+
+function buildLanguageGuidance(locale: AppLocale): string {
+  const languageName = locale === "ko" ? "Korean" : locale === "ja" ? "Japanese" : "English";
+  return [
+    `Preferred response language: ${languageName}.`,
+    "Default to this language for all user-visible output, including summaries, cards, and follow-up suggestions.",
+    "If the user explicitly asks for another language in a specific message, follow that request.",
+  ].join("\n");
 }
