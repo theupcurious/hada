@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 CLAUDE.md
+.obsidian/
 .worktrees/
 docs/plans/
 docs/PRODUCT_DESIGN_AND_DEVELOPMENT_PROCESS.md
