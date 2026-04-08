@@ -14,9 +14,24 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const docIds = (data ?? []).map((doc) => doc.id);
+  let sharedIds = new Set<string>();
+
+  if (docIds.length > 0) {
+    const { data: shares, error: shareError } = await supabase
+      .from("document_shares")
+      .select("document_id")
+      .eq("user_id", user.id)
+      .in("document_id", docIds);
+
+    if (shareError) return NextResponse.json({ error: shareError.message }, { status: 500 });
+    sharedIds = new Set((shares ?? []).map((share) => share.document_id));
+  }
+
   const documents = (data ?? []).map((doc) => ({
     ...doc,
     preview: String(doc.content ?? "").slice(0, 120).replace(/\s+/g, " ").trim(),
+    shared: sharedIds.has(doc.id),
   }));
 
   return NextResponse.json({ documents });

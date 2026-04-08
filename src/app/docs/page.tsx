@@ -38,7 +38,10 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Document } from "@/lib/types/database";
 
-type DocListItem = Pick<Document, "id" | "title" | "folder" | "updated_at"> & { preview?: string };
+type DocListItem = Pick<Document, "id" | "title" | "folder" | "updated_at"> & {
+  preview?: string;
+  shared?: boolean;
+};
 
 type DocShareInfo = {
   shareId: string;
@@ -128,6 +131,13 @@ function DashboardPageContent() {
     return list;
   }, []);
 
+  const loadFullDoc = useCallback(async (id: string) => {
+    const response = await fetch(`/api/documents/${id}`);
+    if (!response.ok) return;
+    const data = (await response.json()) as { document?: Document };
+    if (data.document) setActiveDoc(data.document);
+  }, []);
+
   useEffect(() => {
     let active = true;
     async function initialize() {
@@ -170,13 +180,6 @@ function DashboardPageContent() {
     void initialize();
     return () => { active = false; };
   }, [router, supabase, loadDocs, loadFullDoc, searchParams]);
-
-  const loadFullDoc = useCallback(async (id: string) => {
-    const response = await fetch(`/api/documents/${id}`);
-    if (!response.ok) return;
-    const data = (await response.json()) as { document?: Document };
-    if (data.document) setActiveDoc(data.document);
-  }, []);
 
   const selectDoc = useCallback(async (id: string) => {
     setActiveDocId(id);
@@ -409,6 +412,7 @@ function DashboardPageContent() {
                 }
               }}
               onDelete={() => void deleteDoc(activeDoc.id)}
+              onRefreshDocs={loadDocs}
               folders={folders}
             />
           ) : (
@@ -425,12 +429,14 @@ function WysiwygPane({
   isSaving,
   onSave,
   onDelete,
+  onRefreshDocs,
   folders,
 }: {
   doc: Document;
   isSaving: boolean;
   onSave: (title: string, content: string, folder: string) => Promise<boolean>;
   onDelete: () => void;
+  onRefreshDocs: () => Promise<DocListItem[]>;
   folders: string[];
 }) {
   const [title, setTitle] = useState(doc.title);
@@ -506,6 +512,7 @@ function WysiwygPane({
       }
 
       setShareInfo(data.share);
+      await onRefreshDocs();
     } catch (error) {
       setShareError(error instanceof Error ? error.message : "Failed to create share link.");
     } finally {
@@ -543,6 +550,7 @@ function WysiwygPane({
 
       setShareInfo(null);
       setCopiedShareLink(false);
+      await onRefreshDocs();
     } catch (error) {
       setShareError(error instanceof Error ? error.message : "Failed to disable sharing.");
     } finally {
@@ -789,6 +797,11 @@ function DocItem({
       <button onClick={() => onSelect(doc.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
         <FileText className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-teal-500" : "text-zinc-400")} />
         <span className="truncate">{doc.title}</span>
+        {doc.shared ? (
+          <span className="shrink-0 rounded-full bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-teal-600 dark:text-teal-400">
+            Shared
+          </span>
+        ) : null}
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); onRenameStart(doc); }}
