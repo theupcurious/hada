@@ -509,6 +509,7 @@ export default function ChatPage() {
         title: fallbackTitle || "Document",
         content: fallbackContent,
         loading: true,
+        statusText: "Opening document",
       });
 
       try {
@@ -556,6 +557,24 @@ export default function ChatPage() {
       const callId = typeof event.callId === "string" ? event.callId : `call_${Date.now()}`;
       const name = typeof event.name === "string" ? event.name : "unknown";
       const args = (event.args && typeof event.args === "object") ? event.args as Record<string, unknown> : {};
+
+      if (name === "create_document" || name === "update_document") {
+        const pendingDocumentId = typeof args.id === "string" ? args.id : undefined;
+        const pendingTitle = typeof args.title === "string" && args.title.trim()
+          ? args.title.trim()
+          : "Document";
+
+        setArtifactContent({
+          id: pendingDocumentId,
+          type: "document",
+          title: pendingTitle,
+          loading: true,
+          statusText: name === "create_document"
+            ? "Writing document"
+            : "Updating document",
+        });
+      }
+
       updateMessage(assistantMessageId, (message) => ({
         ...message,
         traceEvents: (() => {

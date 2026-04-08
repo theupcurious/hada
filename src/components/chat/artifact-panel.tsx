@@ -16,6 +16,7 @@ export interface ArtifactData {
   title: string;
   content?: string;
   loading?: boolean;
+  statusText?: string;
   visuals?: Array<{ type: "mermaid" | "chart"; code: string }>;
 }
 
@@ -31,6 +32,9 @@ export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
   const saveContent = artifact.content ?? "";
   const isDoc = artifact.type === "document";
   const showLoadingState = isDoc && artifact.loading && !artifact.content;
+
+  const loadingTitle = artifact.statusText || "Preparing document";
+  const loadingHint = "This can take a little while for longer analyses. Hada is still working.";
 
   return (
     <AnimatePresence>
@@ -96,8 +100,24 @@ export function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="px-5 py-5 sm:px-6 sm:py-6">
             {showLoadingState ? (
-              <div className="rounded-2xl border border-dashed border-zinc-200/80 px-4 py-8 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                Loading document...
+              <div className="rounded-2xl border border-dashed border-zinc-200/80 px-4 py-8 dark:border-zinc-800">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500/10">
+                    <div className="bounce-dots text-teal-500">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                      {loadingTitle}
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                      {loadingHint}
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : null}
             {artifact.content && (

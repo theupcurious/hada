@@ -210,6 +210,32 @@ function DashboardPageContent() {
     if (activeDocId === id) { setActiveDocId(null); setActiveDoc(null); }
   }, [activeDocId, loadDocs]);
 
+  const deleteFolder = useCallback(async (folder: string, docIds: string[]) => {
+    const count = docIds.length;
+    if (!count) return;
+    const confirmed = window.confirm(
+      `Delete folder "${folder}" and all ${count} document${count === 1 ? "" : "s"} inside it?`,
+    );
+    if (!confirmed) return;
+
+    const response = await fetch(`/api/documents?folder=${encodeURIComponent(folder)}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) return;
+
+    await loadDocs();
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      next.delete(folder);
+      return next;
+    });
+
+    if (activeDocId && docIds.includes(activeDocId)) {
+      setActiveDocId(null);
+      setActiveDoc(null);
+    }
+  }, [activeDocId, loadDocs]);
+
   const startRename = useCallback((doc: DocListItem) => {
     setRenamingDocId(doc.id);
     setRenameValue(doc.title);
@@ -292,13 +318,25 @@ function DashboardPageContent() {
           const folderDocs = docs.filter((d) => d.folder === folder);
           const isExpanded = expandedFolders.has(folder);
           return (
-            <div key={folder}>
-              <button onClick={() => toggleFolder(folder)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
-                {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />}
-                <Folder className="h-3.5 w-3.5 shrink-0 text-teal-500" />
-                <span className="truncate font-medium">{folder}</span>
-                <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{folderDocs.length}</span>
-              </button>
+            <div key={folder} className="group">
+              <div className="flex items-center gap-1">
+                <button onClick={() => toggleFolder(folder)} className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+                  {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />}
+                  <Folder className="h-3.5 w-3.5 shrink-0 text-teal-500" />
+                  <span className="truncate font-medium">{folder}</span>
+                  <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{folderDocs.length}</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void deleteFolder(folder, folderDocs.map((doc) => doc.id));
+                  }}
+                  className="shrink-0 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-950/40"
+                  title={`Delete folder ${folder}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-zinc-400 hover:text-red-500 dark:hover:text-red-400" />
+                </button>
+              </div>
               <AnimatePresence initial={false}>
                 {isExpanded && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">

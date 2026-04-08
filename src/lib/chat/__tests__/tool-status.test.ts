@@ -50,4 +50,32 @@ describe("buildToolStatusPills", () => {
 
     expect(pills.map((pill) => pill.label)).toEqual(["Analyzing findings"]);
   });
+
+  it("shows document writing status while create_document is running", () => {
+    const pills = buildToolStatusPills({
+      isStreaming: true,
+      traces: [
+        { callId: "1", name: "create_document", args: { title: "Report" }, status: "running" },
+      ],
+      thinkingCount: 0,
+      hasVisibleContent: false,
+      backgroundJobPending: false,
+    });
+
+    expect(pills.map((pill) => pill.label)).toEqual(["Writing document"]);
+  });
+
+  it("shows document update status while update_document is running", () => {
+    const pills = buildToolStatusPills({
+      isStreaming: true,
+      traces: [
+        { callId: "1", name: "update_document", args: { id: "doc-1" }, status: "running" },
+      ],
+      thinkingCount: 0,
+      hasVisibleContent: false,
+      backgroundJobPending: false,
+    });
+
+    expect(pills.map((pill) => pill.label)).toEqual(["Updating document"]);
+  });
 });

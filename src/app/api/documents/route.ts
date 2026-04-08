@@ -56,3 +56,33 @@ export async function POST(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ document: data }, { status: 201 });
 }
+
+export async function DELETE(request: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const folder = request.nextUrl.searchParams.get("folder")?.trim();
+  if (!folder) {
+    return NextResponse.json({ error: "Folder is required" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase
+    .from("documents")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("folder", folder)
+    .select("id");
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({
+    success: true,
+    deletedCount: data?.length ?? 0,
+  });
+}
