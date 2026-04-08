@@ -7,10 +7,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { PERSONAS } from "@/lib/chat/personas";
+import {
+  OPENROUTER_DEFAULT_REASONING_MODEL,
+  getOpenRouterReasoningCapabilities,
+  normalizeOpenRouterReasoningEffort,
+} from "@/lib/openrouter/reasoning";
 import { APP_LOCALE_OPTIONS, normalizeLocale, setLocaleCookie, type AppLocale } from "@/lib/i18n";
 import type {
   AssistantVoice,
   LLMProviderName,
+  OpenRouterReasoningEffort,
   PlanningStyle,
   RecommendationStyle,
   UserSettings,
@@ -58,6 +64,8 @@ export function AccountTab() {
   const [fallbackModel, setFallbackModel] = useState("");
   const [fallbackQuery, setFallbackQuery] = useState("");
   const [fallbackPickerOpen, setFallbackPickerOpen] = useState(false);
+  const [reasoningEnabled, setReasoningEnabled] = useState(false);
+  const [reasoningEffort, setReasoningEffort] = useState<OpenRouterReasoningEffort | "">("");
   const [locale, setLocale] = useState<AppLocale>("en");
   const [timezone, setTimezone] = useState("");
   const [persona, setPersona] = useState<string>("default");
@@ -119,6 +127,8 @@ export function AccountTab() {
       const loadedFallback = typeof loaded.settings.llm_fallback_model === "string" ? loaded.settings.llm_fallback_model : "";
       setFallbackModel(loadedFallback);
       setFallbackQuery(loadedFallback);
+      setReasoningEnabled(Boolean(loaded.settings.llm_reasoning_enabled));
+      setReasoningEffort(normalizeOpenRouterReasoningEffort(loaded.settings.llm_reasoning_effort));
       const loadedLocale = normalizeLocale(loaded.settings.locale);
       setLocale(loadedLocale);
       setLocaleCookie(loadedLocale);
@@ -200,6 +210,8 @@ export function AccountTab() {
     setFallbackPickerOpen(false);
     setFallbackQuery("");
     setFallbackModel("");
+    setReasoningEnabled(false);
+    setReasoningEffort("");
   }
 
   const normalizedFallbackQuery = fallbackQuery.trim().toLowerCase();
@@ -223,6 +235,12 @@ export function AccountTab() {
     .slice(0, 60);
 
   const isSavingPreferences = savingRegionalPreferences || savingAssistantPreferences;
+  const selectedOpenRouterModelId =
+    provider === "openrouter" ? (model.trim() || OPENROUTER_DEFAULT_REASONING_MODEL) : "";
+  const openRouterReasoningCapability =
+    provider === "openrouter"
+      ? getOpenRouterReasoningCapabilities(selectedOpenRouterModelId)
+      : null;
 
   async function persistSettings(nextSettings: UserSettings) {
     if (!profile) {
@@ -247,6 +265,10 @@ export function AccountTab() {
     setSavingRegionalPreferences(true);
     setRegionalSaveMessage(null);
 
+    const openRouterCapabilities =
+      provider === "openrouter"
+        ? getOpenRouterReasoningCapabilities(selectedOpenRouterModelId)
+        : null;
     const nextSettings: UserSettings = {
       ...(profile.settings || {}),
       locale,
@@ -257,10 +279,28 @@ export function AccountTab() {
       nextSettings.llm_provider = provider;
       nextSettings.llm_model = model.trim() || null;
       nextSettings.llm_fallback_model = fallbackModel.trim() || null;
+      if (openRouterCapabilities?.supportsReasoningToggle) {
+        if (reasoningEnabled) {
+          nextSettings.llm_reasoning_enabled = true;
+          if (openRouterCapabilities.supportsEffort && reasoningEffort) {
+            nextSettings.llm_reasoning_effort = reasoningEffort;
+          } else {
+            delete nextSettings.llm_reasoning_effort;
+          }
+        } else {
+          delete nextSettings.llm_reasoning_enabled;
+          delete nextSettings.llm_reasoning_effort;
+        }
+      } else {
+        delete nextSettings.llm_reasoning_enabled;
+        delete nextSettings.llm_reasoning_effort;
+      }
     } else {
       delete nextSettings.llm_provider;
       delete nextSettings.llm_model;
       delete nextSettings.llm_fallback_model;
+      delete nextSettings.llm_reasoning_enabled;
+      delete nextSettings.llm_reasoning_effort;
     }
 
     const saved = await persistSettings(nextSettings);
@@ -271,7 +311,11 @@ export function AccountTab() {
     }
 
     setLocaleCookie(locale);
-    setRegionalSaveMessage("Saved providers, language, and timezone.");
+    setRegionalSaveMessage(
+      provider === "openrouter" && openRouterCapabilities?.supportsReasoningToggle && reasoningEnabled
+        ? "Saved providers, language, timezone, and thinking settings."
+        : "Saved providers, language, and timezone.",
+    );
     setSavingRegionalPreferences(false);
   }
 
@@ -628,6 +672,65 @@ export function AccountTab() {
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 Used automatically if the primary model fails. Leave blank for no fallback.
               </p>
+            </div>
+          )}
+          {isAdmin && provider === "openrouter" && openRouterReasoningCapability && (
+            <div className="space-y-3 rounded-xl border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-zinc-950/40">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Thinking</h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Reasoning controls for the selected OpenRouter model.
+                  </p>
+                </div>
+                <Badge variant={openRouterReasoningCapability.tier === "full" ? "default" : "outline"}>
+                  {openRouterReasoningCapability.label}
+                </Badge>
+              </div>
+
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {openRouterReasoningCapability.description}
+              </p>
+
+              {openRouterReasoningCapability.supportsReasoningToggle ? (
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 text-sm text-zinc-700 dark:text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={reasoningEnabled}
+                      onChange={(event) => setReasoningEnabled(event.target.checked)}
+                      className="h-4 w-4 rounded border-zinc-300 text-teal-600 focus:ring-teal-500 dark:border-zinc-700"
+                    />
+                    Enable thinking for this model
+                  </label>
+
+                  {openRouterReasoningCapability.supportsEffort && reasoningEnabled && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Thinking level</label>
+                      <select
+                        className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+                        value={reasoningEffort}
+                        onChange={(event) =>
+                          setReasoningEffort(normalizeOpenRouterReasoningEffort(event.target.value))
+                        }
+                      >
+                        <option value="">Use model default</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="xhigh">Extra high</option>
+                      </select>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        Higher effort can improve answers but may use more tokens and latency.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Select a supported OpenRouter model to enable thinking settings.
+                </p>
+              )}
             </div>
           )}
           <div className="space-y-2">

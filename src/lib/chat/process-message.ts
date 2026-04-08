@@ -5,13 +5,17 @@ import { buildSystemPrompt } from "@/lib/chat/build-system-prompt";
 import { assembleConversationContext, maybeCompactConversation } from "@/lib/chat/context-manager";
 import { generateFollowUpSuggestions } from "@/lib/chat/follow-up-suggestions";
 import { extractMemoriesFromTurn } from "@/lib/chat/memory-extraction";
-import { resolveProviderSelection } from "@/lib/chat/providers";
+import { resolveProviderSelection, type OpenRouterReasoningConfig } from "@/lib/chat/providers";
 import { resolveRunBudget } from "@/lib/chat/runtime-budgets";
 import { DEFAULT_POLICY } from "@/lib/chat/tool-permissions";
 import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getOrCreateConversation, saveMessage, updateMessageById } from "@/lib/db/conversations";
+import {
+  getOpenRouterReasoningCapabilities,
+  normalizeOpenRouterReasoningEffort,
+} from "@/lib/openrouter/reasoning";
 import { createAdminClient } from "@/lib/supabase/server";
 import type {
   AgentEvent,
@@ -19,6 +23,7 @@ import type {
   AgentRunToolCall,
   MessageMetadata,
   MessageSource,
+  UserSettings,
 } from "@/lib/types/database";
 
 export interface ProcessMessageOptions {
@@ -117,6 +122,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   const provider = resolveProviderSelection(
     allowModelOverrides ? builtPrompt.userSettings : undefined,
   );
+  const reasoning = resolveOpenRouterReasoningConfig(provider, builtPrompt.userSettings);
   const runtimeSection = buildRuntimeIdentitySection(provider);
   const systemPrompt = builtPrompt.prompt + "\n\n" + runtimeSection;
 
@@ -134,6 +140,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       },
       tools,
       provider,
+      reasoning,
       timeout: runBudget.timeoutMs,
       idleTimeout: runBudget.idleTimeoutMs,
       permissionPolicy: DEFAULT_POLICY,
@@ -400,4 +407,29 @@ function buildRuntimeIdentitySection(
     "- When asked about your model/provider/runtime, answer using these values.",
     "- Do not mention internal or legacy platform names unless they are explicitly provided in this section.",
   ].join("\n");
+}
+
+function resolveOpenRouterReasoningConfig(
+  provider: ReturnType<typeof resolveProviderSelection>,
+  settings: UserSettings,
+): OpenRouterReasoningConfig | undefined {
+  if (provider.provider !== "openrouter" || settings.llm_reasoning_enabled !== true) {
+    return undefined;
+  }
+
+  const capabilities = getOpenRouterReasoningCapabilities(provider.model);
+  if (!capabilities.supportsReasoningToggle) {
+    return undefined;
+  }
+
+  const effort = capabilities.supportsEffort
+    ? normalizeOpenRouterReasoningEffort(
+        typeof settings.llm_reasoning_effort === "string" ? settings.llm_reasoning_effort : undefined,
+      ) || undefined
+    : undefined;
+
+  return {
+    enabled: true,
+    ...(effort ? { effort } : {}),
+  };
 }

@@ -1,4 +1,5 @@
-import type { LLMProviderName, UserSettings } from "@/lib/types/database";
+import { getOpenRouterReasoningCapabilities } from "@/lib/openrouter/reasoning";
+import type { LLMProviderName, OpenRouterReasoningEffort, UserSettings } from "@/lib/types/database";
 
 export const DEFAULT_PROVIDER: LLMProviderName = "openrouter";
 
@@ -10,6 +11,11 @@ export interface ProviderConfig {
   extraHeaders?: Record<string, string>;
   contextWindow?: number;  // tokens
   apiKeyHeader?: string;  // if set, use this header name instead of "Authorization: Bearer"
+}
+
+export interface OpenRouterReasoningConfig {
+  enabled: boolean;
+  effort?: OpenRouterReasoningEffort;
 }
 
 export interface LLMToolDefinition {
@@ -34,6 +40,8 @@ export interface LLMMessage {
   content: string;
   tool_call_id?: string;
   name?: string;
+  reasoning?: string;
+  reasoning_details?: unknown[];
   tool_calls?: Array<{
     id: string;
     type: "function";
@@ -52,11 +60,13 @@ export interface LLMMessage {
 export interface LLMResult {
   content: string;
   toolCalls: LLMToolCall[];
+  reasoning?: string;
+  reasoning_details?: unknown[];
 }
 
 export type LLMStreamEvent =
   | { type: "text"; chunk: string }
-  | { type: "done"; content: string; toolCalls: LLMToolCall[] };
+  | { type: "done"; content: string; toolCalls: LLMToolCall[]; reasoning?: string; reasoning_details?: unknown[] };
 
 export const PROVIDERS: Record<LLMProviderName, ProviderConfig> = {
   minimax: {
@@ -161,6 +171,7 @@ export async function callLLM(options: {
   messages: LLMMessage[];
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
+  reasoning?: OpenRouterReasoningConfig;
 }): Promise<LLMResult> {
   const { selection } = options;
   if (selection.config.native) {
@@ -188,12 +199,19 @@ export async function* callLLMStream(options: {
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
   systemPromptParts?: { stable: string; dynamic: string };
+  reasoning?: OpenRouterReasoningConfig;
 }): AsyncGenerator<LLMStreamEvent> {
   if (options.selection.config.native) {
     // Anthropic: no streaming yet — emit full response as single chunk
     const result = await callAnthropic(options);
     if (result.content) yield { type: "text", chunk: result.content };
-    yield { type: "done", content: result.content, toolCalls: result.toolCalls };
+    yield {
+      type: "done",
+      content: result.content,
+      toolCalls: result.toolCalls,
+      reasoning: result.reasoning,
+      reasoning_details: result.reasoning_details,
+    };
     return;
   }
 
@@ -217,7 +235,13 @@ export async function* callLLMStream(options: {
               selection: { ...options.selection, model: fallback },
             });
             if (result.content) yield { type: "text", chunk: result.content };
-            yield { type: "done", content: result.content, toolCalls: result.toolCalls };
+            yield {
+              type: "done",
+              content: result.content,
+              toolCalls: result.toolCalls,
+              reasoning: result.reasoning,
+              reasoning_details: result.reasoning_details,
+            };
             return;
           } catch {
             // fallback also failed — fall through and throw original
@@ -237,6 +261,7 @@ async function* streamOpenAICompatibleBody(options: {
   messages: LLMMessage[];
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
+  reasoning?: OpenRouterReasoningConfig;
 }): AsyncGenerator<LLMStreamEvent> {
   const { selection, messages, tools = [], signal } = options;
   const url = `${selection.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -256,19 +281,14 @@ async function* streamOpenAICompatibleBody(options: {
         : { Authorization: `Bearer ${selection.apiKey}` }),
       ...selection.config.extraHeaders,
     },
-    body: JSON.stringify({
+    body: JSON.stringify(buildOpenAICompatibleRequestBody({
       model: selection.model,
       messages,
-      tools: tools.length
-        ? tools.map((t) => ({
-          type: "function",
-          function: { name: t.name, description: t.description, parameters: t.parameters },
-        }))
-        : undefined,
-      tool_choice: tools.length ? "auto" : undefined,
-      temperature: 0.4,
+      tools,
       stream: true,
-    }),
+      reasoning: options.reasoning,
+      selection,
+    })),
   });
 
   if (!response.ok) {
@@ -297,6 +317,8 @@ async function* streamOpenAICompatibleBody(options: {
       };
     }
   >();
+  let reasoningText = "";
+  let reasoningDetails: unknown[] = [];
 
   try {
     outer: while (true) {
@@ -322,6 +344,9 @@ async function* streamOpenAICompatibleBody(options: {
           choices?: Array<{
             delta?: {
               content?: string | null;
+              reasoning?: string | null;
+              reasoning_content?: string | null;
+              reasoning_details?: unknown[] | null;
               tool_calls?: Array<{
                 index: number;
                 id?: string;
@@ -342,6 +367,16 @@ async function* streamOpenAICompatibleBody(options: {
         if (delta.content) {
           fullContent += delta.content;
           yield { type: "text", chunk: delta.content };
+        }
+
+        const deltaReasoning = normalizeReasoningText(delta.reasoning) || normalizeReasoningText(delta.reasoning_content);
+        if (deltaReasoning) {
+          reasoningText += deltaReasoning;
+        }
+
+        const deltaReasoningDetails = normalizeReasoningDetails(delta.reasoning_details);
+        if (deltaReasoningDetails?.length) {
+          reasoningDetails = reasoningDetails.concat(deltaReasoningDetails);
         }
 
         if (delta.tool_calls) {
@@ -384,7 +419,13 @@ async function* streamOpenAICompatibleBody(options: {
     });
   }
 
-  yield { type: "done", content: fullContent, toolCalls };
+  yield {
+    type: "done",
+    content: fullContent,
+    toolCalls,
+    reasoning: reasoningText || undefined,
+    reasoning_details: reasoningDetails.length ? reasoningDetails : undefined,
+  };
 }
 
 function isRateLimitError(error: unknown): boolean {
@@ -425,6 +466,7 @@ async function callOpenAICompatible(options: {
   messages: LLMMessage[];
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
+  reasoning?: OpenRouterReasoningConfig;
 }): Promise<LLMResult> {
   const { selection, messages, tools = [], signal } = options;
   const url = `${selection.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -439,22 +481,14 @@ async function callOpenAICompatible(options: {
         : { Authorization: `Bearer ${selection.apiKey}` }),
       ...selection.config.extraHeaders,
     },
-    body: JSON.stringify({
+    body: JSON.stringify(buildOpenAICompatibleRequestBody({
+      selection,
       model: selection.model,
       messages,
-      tools: tools.length
-        ? tools.map((tool) => ({
-          type: "function",
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-          },
-        }))
-        : undefined,
-      tool_choice: tools.length ? "auto" : undefined,
+      tools,
       temperature: 0.4,
-    }),
+      reasoning: options.reasoning,
+    })),
   });
 
   if (!response.ok) {
@@ -471,8 +505,15 @@ async function callOpenAICompatible(options: {
       .map(parseOpenAIToolCall)
       .filter((tool: LLMToolCall | null): tool is LLMToolCall => Boolean(tool))
     : [];
+  const reasoning = normalizeReasoningText(message?.reasoning) || normalizeReasoningText(message?.reasoning_content);
+  const reasoningDetails = normalizeReasoningDetails(message?.reasoning_details);
 
-  return { content, toolCalls };
+  return {
+    content,
+    toolCalls,
+    reasoning,
+    reasoning_details: reasoningDetails?.length ? reasoningDetails : undefined,
+  };
 }
 
 async function callAnthropic(options: {
@@ -580,6 +621,66 @@ function parseOpenAIToolCall(toolCall: {
     arguments: toObject(parsed),
     extraContent: normalizeToolCallExtraContent(toolCall.extra_content),
   };
+}
+
+function buildOpenAICompatibleRequestBody(options: {
+  selection: ProviderSelection;
+  model: string;
+  messages: LLMMessage[];
+  tools?: LLMToolDefinition[];
+  temperature?: number;
+  stream?: boolean;
+  reasoning?: OpenRouterReasoningConfig;
+}): Record<string, unknown> {
+  const { selection, model, messages, tools = [], temperature, stream, reasoning } = options;
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    tools: tools.length
+      ? tools.map((tool) => ({
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        },
+      }))
+      : undefined,
+    tool_choice: tools.length ? "auto" : undefined,
+    temperature,
+    ...(stream ? { stream: true } : {}),
+  };
+
+  if (selection.provider === "openrouter" && reasoning?.enabled) {
+    const capabilities = getOpenRouterReasoningCapabilities(model);
+    if (!capabilities.supportsReasoningToggle) {
+      return body;
+    }
+
+    body.reasoning = {
+      enabled: true,
+      ...(capabilities.supportsEffort && reasoning.effort ? { effort: reasoning.effort } : {}),
+    };
+  }
+
+  return body;
+}
+
+function normalizeReasoningText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? value : undefined;
+}
+
+function normalizeReasoningDetails(value: unknown): unknown[] | undefined {
+  if (!Array.isArray(value) || !value.length) {
+    return undefined;
+  }
+
+  return value;
 }
 
 function normalizeToolCallExtraContent(value: unknown): LLMToolCall["extraContent"] {

@@ -22,6 +22,7 @@ export type RecommendationStyle = "decision_first" | "context_first";
 export type PlanningStyle = "daily" | "weekly" | "both";
 export type WorkRhythm = "morning_deep_work" | "afternoon_deep_work" | "flexible";
 export type AssistantVoice = "pragmatic" | "friendly" | "professional" | "academic";
+export type OpenRouterReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
 export interface WorkingStyleSettings {
   writing_style?: WritingStyle;
@@ -53,6 +54,8 @@ export interface UserSettings {
   llm_provider?: LLMProviderName;
   llm_model?: string | null;
   llm_fallback_model?: string | null;
+  llm_reasoning_enabled?: boolean;
+  llm_reasoning_effort?: OpenRouterReasoningEffort;
   locale?: AppLocale;
   timezone?: string | null;
   persona?: string;

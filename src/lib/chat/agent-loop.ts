@@ -1,6 +1,7 @@
 import type { AgentEvent, TaskPlan, TaskStep } from "@/lib/types/database";
 import {
   callLLMStream,
+  type OpenRouterReasoningConfig,
   type LLMMessage,
   type LLMToolCall,
   type LLMToolDefinition,
@@ -36,6 +37,7 @@ export interface AgentLoopOptions {
   maxRunContextTokens?: number;
   systemPromptParts?: { stable: string; dynamic: string };
   permissionPolicy?: PermissionPolicy;
+  reasoning?: OpenRouterReasoningConfig;
 }
 
 const DEFAULT_TIMEOUT_MS = 240_000;
@@ -139,6 +141,8 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         // only moved into finalText if this turns out to be the terminal iteration.
         let rawContent = "";
         let apiToolCalls: LLMToolCall[] = [];
+        let apiReasoning: string | undefined;
+        let apiReasoningDetails: unknown[] | undefined;
         let iterationText = "";
         const thinkFilter = createThinkFilter();
         let thinkingEventYielded = false;
@@ -149,6 +153,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           tools: llmTools,
           signal: timeoutController.signal,
           systemPromptParts: options.systemPromptParts,
+          reasoning: options.reasoning,
         })) {
           markProgress();
           if (streamEvent.type === "text") {
@@ -167,6 +172,8 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
             }
           } else if (streamEvent.type === "done") {
             apiToolCalls = streamEvent.toolCalls;
+            apiReasoning = streamEvent.reasoning;
+            apiReasoningDetails = streamEvent.reasoning_details;
           }
         }
 
@@ -248,6 +255,8 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         llmMessages.push({
           role: "assistant",
           content: visibleContent,
+          reasoning: apiReasoning,
+          reasoning_details: apiReasoningDetails,
           tool_calls: effectiveToolCalls.map((call) => ({
             id: call.id,
             type: "function",
