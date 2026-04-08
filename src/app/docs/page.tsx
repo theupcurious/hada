@@ -9,13 +9,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
+  Check,
   ChevronDown,
   ChevronRight,
+  Copy,
+  Download,
   FileText,
   Folder,
+  Link2,
   MessageSquare,
   Plus,
   Settings2,
+  Share2,
   Trash2,
   Upload,
   X,
@@ -34,6 +39,27 @@ import { cn } from "@/lib/utils";
 import type { Document } from "@/lib/types/database";
 
 type DocListItem = Pick<Document, "id" | "title" | "folder" | "updated_at"> & { preview?: string };
+
+type DocShareInfo = {
+  shareId: string;
+  shareUrl: string;
+  createdAt: string;
+};
+
+type DocShareResponse = {
+  share?: DocShareInfo | null;
+  error?: string;
+};
+
+function toMarkdownFilename(title: string) {
+  const sanitized = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return `${sanitized || "hada-document"}.md`;
+}
 
 
 const WELCOME_DOC_CONTENT = `# Welcome to Hada
@@ -143,7 +169,7 @@ function DashboardPageContent() {
     }
     void initialize();
     return () => { active = false; };
-  }, [router, supabase, loadDocs]);
+  }, [router, supabase, loadDocs, loadFullDoc, searchParams]);
 
   const loadFullDoc = useCallback(async (id: string) => {
     const response = await fetch(`/api/documents/${id}`);
@@ -275,7 +301,7 @@ function DashboardPageContent() {
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
                     <div className="ml-3 border-l border-zinc-200/70 pl-2 dark:border-zinc-800">
                       {folderDocs.map((doc) => (
-                        <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
+                        <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} onDelete={deleteDoc} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
                       ))}
                       <button onClick={() => void createDoc(folder)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300">
                         <Plus className="h-3 w-3" />New in {folder}
@@ -289,7 +315,7 @@ function DashboardPageContent() {
         })}
 
         {rootDocs.map((doc) => (
-          <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
+          <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} onDelete={deleteDoc} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
         ))}
 
         {newFolderInput ? (
@@ -366,17 +392,21 @@ function DashboardPageContent() {
               isSaving={isSaving}
               onSave={async (title, content, folder) => {
                 setIsSaving(true);
-                const response = await fetch(`/api/documents/${activeDoc.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ title, content, folder: folder || null }),
-                });
-                if (response.ok) {
+                try {
+                  const response = await fetch(`/api/documents/${activeDoc.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title, content, folder: folder || null }),
+                  });
+                  if (!response.ok) return false;
+
                   const data = (await response.json()) as { document?: Document };
                   if (data.document) setActiveDoc(data.document);
                   await loadDocs();
+                  return true;
+                } finally {
+                  setIsSaving(false);
                 }
-                setIsSaving(false);
               }}
               onDelete={() => void deleteDoc(activeDoc.id)}
               folders={folders}
@@ -399,13 +429,19 @@ function WysiwygPane({
 }: {
   doc: Document;
   isSaving: boolean;
-  onSave: (title: string, content: string, folder: string) => Promise<void>;
+  onSave: (title: string, content: string, folder: string) => Promise<boolean>;
   onDelete: () => void;
   folders: string[];
 }) {
   const [title, setTitle] = useState(doc.title);
   const [folder, setFolder] = useState(doc.folder ?? "");
   const [isDirty, setIsDirty] = useState(false);
+  const [shareInfo, setShareInfo] = useState<DocShareInfo | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [isPreparingShare, setIsPreparingShare] = useState(false);
+  const [isRevokingShare, setIsRevokingShare] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -425,12 +461,93 @@ function WysiwygPane({
     onUpdate: () => setIsDirty(true),
   });
 
-  const handleSave = async () => {
-    if (!editor) return;
+  const getMarkdownContent = () => {
+    if (!editor) return doc.content;
     const storage = editor.storage as unknown as Record<string, { getMarkdown?: () => string }>;
-    const md = storage.markdown?.getMarkdown?.() ?? editor.getText();
-    await onSave(title, md, folder);
-    setIsDirty(false);
+    return storage.markdown?.getMarkdown?.() ?? editor.getText();
+  };
+
+  const handleSave = async () => {
+    const md = getMarkdownContent();
+    const saved = await onSave(title, md, folder);
+    if (saved) setIsDirty(false);
+    return saved;
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([getMarkdownContent()], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = toMarkdownFilename(title);
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const prepareShare = async () => {
+    setShareError(null);
+    setIsPreparingShare(true);
+    setCopiedShareLink(false);
+
+    try {
+      if (isDirty) {
+        const saved = await handleSave();
+        if (!saved) {
+          setShareError("Could not save the latest changes before sharing.");
+          return;
+        }
+      }
+
+      const response = await fetch(`/api/documents/${doc.id}/share`, { method: "POST" });
+      const data = (await response.json().catch(() => ({}))) as DocShareResponse;
+      if (!response.ok || !data.share) {
+        setShareError(data.error ?? "Failed to create share link.");
+        return;
+      }
+
+      setShareInfo(data.share);
+    } catch (error) {
+      setShareError(error instanceof Error ? error.message : "Failed to create share link.");
+    } finally {
+      setIsPreparingShare(false);
+    }
+  };
+
+  const handleOpenShareModal = async () => {
+    setShowShareModal(true);
+    await prepareShare();
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!shareInfo) return;
+    try {
+      await navigator.clipboard.writeText(shareInfo.shareUrl);
+      setCopiedShareLink(true);
+      setTimeout(() => setCopiedShareLink(false), 1600);
+    } catch {
+      setShareError("Could not copy the share link.");
+    }
+  };
+
+  const handleStopSharing = async () => {
+    setIsRevokingShare(true);
+    setShareError(null);
+
+    try {
+      const response = await fetch(`/api/documents/${doc.id}/share`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        setShareError(data.error ?? "Failed to disable sharing.");
+        return;
+      }
+
+      setShareInfo(null);
+      setCopiedShareLink(false);
+    } catch (error) {
+      setShareError(error instanceof Error ? error.message : "Failed to disable sharing.");
+    } finally {
+      setIsRevokingShare(false);
+    }
   };
 
   return (
@@ -455,10 +572,16 @@ function WysiwygPane({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {isDirty && (
-            <Button size="sm" onClick={handleSave} disabled={isSaving} className="gradient-brand text-white border-0">
-              {isSaving ? "Saving…" : "Save"}
+            <Button size="sm" onClick={() => void handleSave()} disabled={isSaving} className="gradient-brand text-white border-0">
+              {isSaving ? "Saving..." : "Save"}
             </Button>
           )}
+          <Button size="sm" variant="ghost" onClick={handleDownload} title="Download markdown">
+            <Download className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => void handleOpenShareModal()} disabled={isPreparingShare || isSaving} title="Share document">
+            <Share2 className="h-4 w-4" />
+          </Button>
           <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 dark:text-red-400" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -490,17 +613,140 @@ function WysiwygPane({
         `}</style>
         <EditorContent editor={editor} />
       </div>
+
+      {showShareModal ? (
+        <DocShareModal
+          isLoading={isPreparingShare}
+          shareInfo={shareInfo}
+          error={shareError}
+          isRevoking={isRevokingShare}
+          copied={copiedShareLink}
+          onClose={() => {
+            setShowShareModal(false);
+            setShareError(null);
+            setCopiedShareLink(false);
+          }}
+          onCopy={() => void handleCopyShareLink()}
+          onRefresh={() => void prepareShare()}
+          onStopSharing={() => void handleStopSharing()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DocShareModal({
+  isLoading,
+  shareInfo,
+  error,
+  isRevoking,
+  copied,
+  onClose,
+  onCopy,
+  onRefresh,
+  onStopSharing,
+}: {
+  isLoading: boolean;
+  shareInfo: DocShareInfo | null;
+  error: string | null;
+  isRevoking: boolean;
+  copied: boolean;
+  onClose: () => void;
+  onCopy: () => void;
+  onRefresh: () => void;
+  onStopSharing: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              Share document
+            </h2>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Anyone with the link can view this document.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {isLoading ? (
+            <div className="rounded-2xl border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+              Preparing share link...
+            </div>
+          ) : shareInfo ? (
+            <>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/60">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-teal-500/10 p-2 text-teal-600 dark:text-teal-400">
+                    <Link2 className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
+                      Public link
+                    </p>
+                    <p className="mt-1 break-all text-sm text-zinc-700 dark:text-zinc-300">
+                      {shareInfo.shareUrl}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Signed-in Hada users can save this shared document to their own docs.
+              </p>
+            </>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+              Sharing is currently disabled for this document.
+            </div>
+          )}
+
+          {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-200 px-5 py-4 dark:border-zinc-800">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          {shareInfo ? (
+            <>
+              <Button variant="outline" size="sm" onClick={onCopy}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? "Copied" : "Copy link"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={onStopSharing} disabled={isRevoking}>
+                {isRevoking ? "Stopping..." : "Stop sharing"}
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={onRefresh} disabled={isLoading}>
+              <Share2 className="h-4 w-4" />
+              Create link
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 function DocItem({
   doc, isActive, onSelect,
+  onDelete,
   isRenaming, renameValue, onRenameStart, onRenameChange, onRenameCommit, onRenameCancel,
 }: {
   doc: DocListItem;
   isActive: boolean;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
   isRenaming: boolean;
   renameValue: string;
   onRenameStart: (doc: DocListItem) => void;
@@ -553,6 +799,13 @@ function DocItem({
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); void onDelete(doc.id); }}
+        className="shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-950/40"
+        title="Delete"
+      >
+        <Trash2 className="h-3 w-3 text-zinc-400 hover:text-red-500 dark:hover:text-red-400" />
       </button>
     </div>
   );

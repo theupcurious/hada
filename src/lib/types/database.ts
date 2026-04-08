@@ -229,6 +229,13 @@ export interface Document {
   updated_at: string;
 }
 
+export interface DocumentShare {
+  document_id: string;
+  user_id: string;
+  share_id: string;
+  created_at: string;
+}
+
 // Chat runtime types
 export interface ChatMessage {
   role: MessageRole;
