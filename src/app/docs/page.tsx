@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useCallback, useEffect, useRef, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
@@ -34,7 +34,6 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Document } from "@/lib/types/database";
 
@@ -118,9 +117,7 @@ function DashboardPageContent() {
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
 
   const loadDocs = useCallback(async () => {
     const response = await fetch("/api/documents");
@@ -141,10 +138,8 @@ function DashboardPageContent() {
   useEffect(() => {
     let active = true;
     async function initialize() {
-      const { data, error } = await supabase.auth.getUser();
-      if (!active) return;
-      if (error || !data.user) { router.push("/auth/login"); return; }
       const list = await loadDocs();
+      if (!active) return;
       
       // Handle deep-linking via ?id= query param
       const initialId = searchParams.get("id");
@@ -179,7 +174,7 @@ function DashboardPageContent() {
     }
     void initialize();
     return () => { active = false; };
-  }, [router, supabase, loadDocs, loadFullDoc, searchParams]);
+  }, [loadDocs, loadFullDoc, searchParams]);
 
   const selectDoc = useCallback(async (id: string) => {
     setActiveDocId(id);

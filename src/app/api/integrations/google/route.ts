@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { deleteGoogleIntegration } from "@/lib/google/tokens";
 import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/supabase/auth";
 
 /**
  * GET - Check if user has Google integration connected
@@ -8,10 +9,7 @@ import { NextResponse } from "next/server";
 export async function GET() {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { user, error: authError } = await getAuthenticatedUser(supabase);
 
     if (authError || !user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -49,10 +47,7 @@ export async function GET() {
 export async function DELETE() {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { user, error: authError } = await getAuthenticatedUser(supabase);
 
     if (authError || !user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });

@@ -4,6 +4,7 @@ import { resolveRegenerationPair } from "@/lib/chat/regenerate-message";
 import { isLongJobMessage } from "@/lib/chat/runtime-budgets";
 import { processMessage } from "@/lib/chat/process-message";
 import { getOrCreateConversation, getConversationMessagesForRegeneration } from "@/lib/db/conversations";
+import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentEvent } from "@/lib/types/database";
 
@@ -11,10 +12,7 @@ export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  const { user, error: authError } = await getAuthenticatedUser(supabase);
 
   if (authError || !user) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {

@@ -48,14 +48,23 @@ export function SharedDocView({
 
   useEffect(() => {
     let active = true;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) {
+        return;
+      }
+      setIsSignedIn(Boolean(session));
+    });
 
-    void supabase.auth.getUser().then(({ data, error }) => {
+    void supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
-      setIsSignedIn(Boolean(data.user) && !error);
+      setIsSignedIn(Boolean(data.session));
     });
 
     return () => {
       active = false;
+      subscription.unsubscribe();
     };
   }, [supabase]);
 

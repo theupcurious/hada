@@ -3,6 +3,7 @@ import { GOOGLE_OAUTH_CONFIG, validateGoogleConfig } from "@/lib/google/config";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
+import { getAuthenticatedUser } from "@/lib/supabase/auth";
 
 /**
  * Initiate Google OAuth flow
@@ -24,10 +25,7 @@ export async function GET() {
 
     // Verify user is authenticated
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { user, error: authError } = await getAuthenticatedUser(supabase);
 
     if (authError || !user) {
       return NextResponse.redirect(new URL("/auth/login", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"));

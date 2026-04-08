@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { PROVIDERS, DEFAULT_PROVIDER, resolveProviderSelection } from "@/lib/chat/providers";
 import { isAdminEmail } from "@/lib/auth/admin";
+import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { LLMProviderName } from "@/lib/types/database";
 
@@ -34,10 +35,7 @@ export async function GET(): Promise<NextResponse<HealthStatus>> {
 
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+    const { user, error } = await getAuthenticatedUser(supabase);
 
     if (!error && user && isAdminEmail(user.email)) {
       visibleProvider = selected;

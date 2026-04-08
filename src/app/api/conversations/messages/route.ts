@@ -1,3 +1,4 @@
+import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import { getConversationId, getRecentMessages } from '@/lib/db/conversations';
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     // Authenticate user
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { user, error: authError } = await getAuthenticatedUser(supabase);
 
     if (authError || !user) {
       return NextResponse.json(

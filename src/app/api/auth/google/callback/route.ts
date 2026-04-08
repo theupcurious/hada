@@ -3,6 +3,7 @@ import { GOOGLE_OAUTH_CONFIG } from "@/lib/google/config";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
+import { getAuthenticatedUser } from "@/lib/supabase/auth";
 
 /**
  * Handle Google OAuth callback
@@ -44,10 +45,7 @@ export async function GET(request: NextRequest) {
 
     // Verify user is authenticated
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { user, error: authError } = await getAuthenticatedUser(supabase);
 
     if (authError || !user) {
       settingsUrl.searchParams.set("error", "not_authenticated");

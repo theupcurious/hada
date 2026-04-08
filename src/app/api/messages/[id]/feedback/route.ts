@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { patchMessageMetadata } from "@/lib/db/conversations";
+import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(
@@ -7,9 +8,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getAuthenticatedUser(supabase);
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

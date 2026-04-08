@@ -947,24 +947,20 @@ export default function ChatPage() {
 
   useEffect(() => {
     const initialize = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
+      const { data: dbUser } = await supabase
+        .from("users")
+        .select("id, name, email, settings")
+        .single();
+
+      if (!dbUser) {
         router.push("/auth/login");
         return;
       }
 
-      // Load full user profile from DB
-      const { data: dbUser } = await supabase
-        .from("users")
-        .select("id, name, email, settings")
-        .eq("id", authUser.id)
-        .single();
+      const dbName = (dbUser as { name?: string | null }).name;
+      const settings = ((dbUser as { settings?: UserSettings }).settings || {}) as UserSettings;
 
-      const dbName = (dbUser as { name?: string | null } | null)?.name;
-      const displayName = dbName || authUser.user_metadata?.name || null;
-      const settings = ((dbUser as { settings?: UserSettings } | null)?.settings || {}) as UserSettings;
-
-      setUser({ email: authUser.email, name: displayName ?? undefined, id: authUser.id });
+      setUser({ email: dbUser.email, name: dbName ?? undefined, id: dbUser.id });
       let nextSettings = settings;
       let shouldPersistSettings = false;
 
@@ -991,7 +987,7 @@ export default function ChatPage() {
         await supabase
           .from("users")
           .update({ settings: nextSettings })
-          .eq("id", authUser.id);
+          .eq("id", dbUser.id);
       }
 
       setUserSettings(nextSettings);

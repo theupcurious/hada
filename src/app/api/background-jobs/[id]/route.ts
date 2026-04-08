@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadBackgroundJobForUser } from "@/lib/background-jobs";
+import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(
@@ -9,10 +10,7 @@ export async function GET(
   try {
     const params = await context.params;
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { user, error: authError } = await getAuthenticatedUser(supabase);
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -10,10 +10,9 @@ import { MemoryTab } from "@/components/settings/memory-tab";
 import { TasksTab } from "@/components/settings/tasks-tab";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import type { AppLocale } from "@/lib/i18n";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type ComponentType } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState, type ComponentType } from "react";
 
 type SettingsTabId = "integrations" | "account" | "memory" | "tasks" | "status";
 
@@ -48,10 +47,10 @@ const SETTINGS_TABS_BY_LOCALE: Record<AppLocale, SettingsTabDescriptor[]> = {
   ],
 };
 
-const SETTINGS_PAGE_COPY: Record<AppLocale, { loading: string; title: string }> = {
-  en: { loading: "Loading...", title: "Settings" },
-  ko: { loading: "불러오는 중...", title: "설정" },
-  ja: { loading: "読み込み中...", title: "設定" },
+const SETTINGS_PAGE_COPY: Record<AppLocale, { title: string }> = {
+  en: { title: "Settings" },
+  ko: { title: "설정" },
+  ja: { title: "設定" },
 };
 
 export default function SettingsPage() {
@@ -66,10 +65,7 @@ function SettingsContent() {
   const locale = useResolvedLocale();
   const copy = SETTINGS_PAGE_COPY[locale];
   const tabs = SETTINGS_TABS_BY_LOCALE[locale];
-  const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
 
   const initialTab = (() => {
     const tab = searchParams.get("tab");
@@ -77,28 +73,6 @@ function SettingsContent() {
   })();
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/auth/login");
-        return;
-      }
-      setIsLoading(false);
-    };
-    void checkAuth();
-  }, [router, supabase]);
-
-  if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <span className="text-sm text-zinc-400">{copy.loading}</span>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full">
