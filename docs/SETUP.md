@@ -1,238 +1,184 @@
 # Setup Guide
 
-Complete guide to setting up Hada for local development and production deployment.
+This guide matches the current codebase and `.env.local.example`.
 
 ## Prerequisites
 
-- **Node.js 18+** - [Download](https://nodejs.org/)
-- **npm** (comes with Node.js)
-- **Git** - [Download](https://git-scm.com/)
-- **Supabase account** - [Sign up](https://supabase.com) (free tier available)
-- **Railway account** - [Sign up](https://railway.app) (for deployment)
+- Node.js `>=20.9.0`
+- npm
+- Supabase project
+- At least one supported LLM API key
 
-## Local Development Setup
-
-### 1. Clone and Install
+## 1. Install
 
 ```bash
-git clone <your-repo-url>
-cd hada
 npm install
 ```
 
-### 2. Set Up Supabase
-
-#### Create a Project
-
-1. Go to [supabase.com](https://supabase.com) and sign in
-2. Click "New Project"
-3. Choose your organization
-4. Enter project details:
-   - **Name:** hada (or your preference)
-   - **Database Password:** Generate a strong password (save this!)
-   - **Region:** Choose closest to your users
-5. Click "Create new project" and wait for setup (~2 minutes)
-
-#### Get Your API Keys
-
-1. Go to **Project Settings** (gear icon) → **API**
-2. Copy these values:
-   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
-   - **anon/public key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - **service_role key** → `SUPABASE_SERVICE_ROLE_KEY`
-
-#### Run Database Migrations
-
-1. Go to **SQL Editor** in Supabase dashboard
-2. Click "New query"
-3. Copy the contents of each migration file in `supabase/migrations/` in order
-4. Paste and click "Run" for each
-5. You should see "Success. No rows returned"
-
-#### Enable Google OAuth (Optional)
-
-1. Go to **Authentication** → **Providers**
-2. Find **Google** and enable it
-3. Set up a Google Cloud project with OAuth 2.0 credentials
-4. Add authorized redirect URI: `https://<your-supabase-url>/auth/v1/callback`
-5. Enter your Google Client ID and Secret in Supabase
-
-### 3. Set Up Google Calendar & Gmail Integration (Optional)
-
-#### Create Google Cloud Project
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project or select existing one
-3. Enable required APIs:
-   - Go to **APIs & Services** → **Library**
-   - Search and enable **Google Calendar API**
-   - Search and enable **Gmail API**
-
-#### Create OAuth 2.0 Credentials
-
-1. Go to **APIs & Services** → **Credentials**
-2. Click **Create Credentials** → **OAuth 2.0 Client ID**
-3. Configure OAuth consent screen:
-   - User Type: **External**
-   - App name: **Hada**
-   - Scopes: Add `calendar` and `gmail.modify`
-   - Test users: Add your email
-4. Create OAuth Client ID:
-   - Application type: **Web application**
-   - Authorized redirect URIs:
-     - Development: `http://localhost:3000/api/auth/google/callback`
-     - Production: `https://your-domain.com/api/auth/google/callback`
-5. Copy **Client ID** and **Client Secret**
-
-### 4. Set Up Telegram Bot (Optional)
-
-1. Open Telegram and message [@BotFather](https://t.me/BotFather)
-2. Send `/newbot` and follow the prompts
-3. Copy the **bot token** → `TELEGRAM_BOT_TOKEN`
-4. Generate a random secret for webhook verification → `TELEGRAM_WEBHOOK_SECRET`
-
-### 5. Configure Environment
+## 2. Configure Environment
 
 ```bash
 cp .env.local.example .env.local
 ```
 
-Edit `.env.local`:
+### Required variables
+
+- `NEXT_PUBLIC_APP_URL` (local: `http://localhost:3000`)
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `LLM_PROVIDER`
+- `LLM_API_KEY` (or provider-specific `<PROVIDER>_API_KEY`)
+
+### Provider options
+
+`LLM_PROVIDER` supports:
+
+- `openrouter`
+- `minimax`
+- `openai`
+- `anthropic`
+- `gemini`
+- `kimi`
+- `deepseek`
+- `groq`
+- `mimo`
+
+Notes:
+
+- `LLM_MODEL` and `LLM_BASE_URL` are optional overrides.
+- Runtime will prefer `<PROVIDER>_API_KEY` when set (for example `OPENROUTER_API_KEY`) and fallback to `LLM_API_KEY`.
+- Per-user provider/model settings in UI are only applied for admin users (`ADMIN_USER_EMAILS`/`ADMIN_EMAILS`).
+
+### Optional variables
+
+- Embeddings: `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`
+- Search: `SEARCH_PROVIDER`, `SEARCH_API_KEY` (or `TAVILY_API_KEY`, `BRAVE_API_KEY`, `SERPAPI_API_KEY`)
+- Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`
+- Cron auth: `CRON_SECRET`
+
+## 3. Supabase Setup
+
+### Create project + copy keys
+
+From Supabase project settings/API:
+
+- Project URL -> `NEXT_PUBLIC_SUPABASE_URL`
+- anon key -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- service role key -> `SUPABASE_SERVICE_ROLE_KEY`
+
+### Run migrations (in order)
+
+Apply SQL files from `supabase/migrations` in this order:
+
+1. `001_initial_schema.sql`
+2. `002_add_user_permissions.sql`
+3. `004_agent_and_telegram.sql`
+4. `005_agent_runs.sql`
+5. `006_background_jobs.sql`
+6. `007_memory_embeddings.sql`
+7. `008_messages_update_policy.sql`
+8. `009_default_openrouter_provider.sql`
+9. `010_documents.sql`
+10. `011_agent_runs_delete_policy.sql`
+
+## 4. Optional Integrations
+
+### Google OAuth (Calendar tools)
+
+Google auth routes used by the app:
+
+- `/api/auth/google/authorize`
+- `/api/auth/google/callback`
+
+Set OAuth redirect URI to:
+
+- `http://localhost:3000/api/auth/google/callback` (local)
+- `https://<your-domain>/api/auth/google/callback` (prod)
+
+Current requested scopes in code:
+
+- `https://www.googleapis.com/auth/calendar`
+- `https://www.googleapis.com/auth/gmail.modify`
+- `https://www.googleapis.com/auth/userinfo.email`
+
+### Telegram
+
+1. Create bot with BotFather.
+2. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME`.
+3. Set `TELEGRAM_WEBHOOK_SECRET`.
+4. Register webhook:
 
 ```bash
-# App Configuration
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-# LLM Provider (at least one required)
-LLM_PROVIDER=minimax
-MINIMAX_API_KEY=your-minimax-api-key
-# Optional: allow per-user provider/model overrides for listed admin emails
-# ADMIN_USER_EMAILS=admin@example.com,ops@example.com
-
-# Optional: Additional LLM providers
-# ANTHROPIC_API_KEY=
-# OPENAI_API_KEY=
-# GEMINI_API_KEY=
-# MOONSHOT_API_KEY=
-# DEEPSEEK_API_KEY=
-# GROQ_API_KEY=
-
-# Google OAuth (optional - for Calendar & Gmail)
-# GOOGLE_CLIENT_ID=
-# GOOGLE_CLIENT_SECRET=
-
-# Telegram (optional)
-# TELEGRAM_BOT_TOKEN=
-# TELEGRAM_WEBHOOK_SECRET=
-
-# Web Search (optional)
-# SEARCH_PROVIDER=tavily
-# SEARCH_API_KEY=
-# Optional provider-specific keys (if SEARCH_API_KEY is not set)
-# BRAVE_API_KEY=
-# BRAVE_SEARCH_API_KEY=
-# SERPAPI_API_KEY=
-# TAVILY_API_KEY=
+curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://<your-domain>/api/webhooks/telegram","secret_token":"<YOUR_WEBHOOK_SECRET>","allowed_updates":["message"]}'
 ```
 
-### 6. Start Development Server
+Users then link Telegram from Settings via `/api/integrations/telegram/link`.
+
+## 5. Run Locally
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Main routes:
 
-## Production Deployment (Railway)
+- `http://localhost:3000/`
+- `http://localhost:3000/chat`
+- `http://localhost:3000/docs`
+- `http://localhost:3000/settings`
 
-### 1. Push to GitHub
+## 6. Scheduled/Cron Runs
 
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin <your-github-repo>
-git push -u origin main
-```
+Scheduled tasks and queued background jobs are processed by `/api/cron`.
 
-### 2. Deploy to Railway
+If `CRON_SECRET` is set, include header:
 
-1. Go to [railway.app](https://railway.app) and sign in
-2. Click "New Project"
-3. Select "Deploy from GitHub repo"
-4. Choose your repository
-5. Railway will auto-detect Next.js
+- `x-cron-secret: <CRON_SECRET>`
 
-### 3. Configure Environment Variables
-
-In Railway dashboard:
-
-1. Click on your service
-2. Go to **Variables** tab
-3. Add all required environment variables from `.env.local`
-
-### 4. Configure Domain
-
-1. Go to **Settings** tab
-2. Under **Domains**, click "Generate Domain" or add a custom domain
-
-### 5. Set Up Telegram Webhook (if using Telegram)
-
-After deployment, register your webhook URL with Telegram:
+Example:
 
 ```bash
-curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://your-domain.com/api/webhooks/telegram", "secret_token": "<YOUR_WEBHOOK_SECRET>"}'
+curl -X POST "https://<your-domain>/api/cron" \
+  -H "x-cron-secret: <CRON_SECRET>"
 ```
 
-### 6. Update Supabase Redirect URLs
+Recommended: configure a platform cron job to hit this endpoint every minute.
 
-If using OAuth:
+## 7. Verification
 
-1. Go to Supabase → **Authentication** → **URL Configuration**
-2. Add your Railway domain to:
-   - **Site URL:** `https://your-app.railway.app`
-   - **Redirect URLs:** `https://your-app.railway.app/auth/callback`
+```bash
+npm run lint
+npm run test
+npm run build
+```
 
 ## Troubleshooting
 
-### "Missing Supabase environment variables"
+### Unauthorized / auth loops
 
-- Ensure `.env.local` exists and has correct values
-- Restart the dev server after changing env vars
+- Confirm Supabase URL + anon key are correct.
+- Confirm `NEXT_PUBLIC_APP_URL` matches the active origin.
 
-### OAuth redirect not working
+### Chat fails with provider key errors
 
-- Check redirect URLs in Supabase match your app URL exactly
-- For local dev, ensure `http://localhost:3000/auth/callback` is in redirect URLs
+- Confirm `LLM_PROVIDER` is valid.
+- Set `LLM_API_KEY` or matching provider key (for example `OPENROUTER_API_KEY`).
 
-### Database migration errors
+### Google connect fails
 
-- Ensure you're running the migration in the SQL Editor, not CLI
-- Check for any existing tables that might conflict
-- Run migrations in order (001, 002, 003, 004...)
+- Verify redirect URI exactly matches `/api/auth/google/callback`.
+- Ensure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in runtime env.
 
-### Telegram bot not responding
+### Telegram webhook not receiving updates
 
-- Verify webhook is registered: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
-- Check webhook URL is publicly accessible
-- Verify `TELEGRAM_WEBHOOK_SECRET` matches what was set in `setWebhook`
+- Verify webhook URL is public HTTPS.
+- Verify `TELEGRAM_WEBHOOK_SECRET` matches the webhook `secret_token`.
 
-### Build fails on Railway
+### No background processing
 
-- Check that all environment variables are set in Railway
-- View build logs for specific errors
-
-## Next Steps
-
-After setup, you can:
-
-1. Create an account at `/auth/signup`
-2. Access the chat interface at `/chat`
-3. Connect integrations at `/settings`
+- Ensure `background_jobs` and `background_job_events` tables exist (migration `006`).
+- Ensure your deployment actually triggers `/api/cron`.

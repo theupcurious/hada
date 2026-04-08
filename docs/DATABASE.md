@@ -2,395 +2,284 @@
 
 ## Overview
 
-Hada uses PostgreSQL via Supabase. Application data is stored in `public.*` tables, while authentication is handled by Supabase in `auth.users`. Row Level Security (RLS) is enabled on user-owned tables so users only access their own data.
+Hada uses Supabase Postgres (`public` schema) plus Supabase Auth (`auth.users`).
+
+- App data is stored in `public.*` tables.
+- Most app tables are protected with RLS.
+- User ownership is typically enforced with `auth.uid() = user_id` (or conversation ownership for messages).
 
 Current migration chain:
-- `001_initial_schema.sql`
-- `002_add_user_permissions.sql`
-- `004_agent_and_telegram.sql`
-- `005_agent_runs.sql`
-- `006_background_jobs.sql`
-- `007_memory_embeddings.sql`
-- `008_messages_update_policy.sql` — adds UPDATE RLS policy for messages (required for feedback/metadata updates)
-- `009_default_openrouter_provider.sql` — sets OpenRouter as the default `llm_provider` in `users.settings`
-- `010_documents.sql` — adds the `documents` table with RLS and indexes
-- `011_agent_runs_delete_policy.sql` — allows users to delete their own run history rows
 
-## Entity Relationship Diagram
+1. `001_initial_schema.sql`
+2. `002_add_user_permissions.sql`
+3. `004_agent_and_telegram.sql`
+4. `005_agent_runs.sql`
+5. `006_background_jobs.sql`
+6. `007_memory_embeddings.sql`
+7. `008_messages_update_policy.sql`
+8. `009_default_openrouter_provider.sql`
+9. `010_documents.sql`
+10. `011_agent_runs_delete_policy.sql`
+
+## High-Level Relationships
 
 ```text
 auth.users
-    │ 1:1
-    ▼
-users ────────────────┬───────────────┬───────────────┬──────────────────┬──────────────┐
-                      │               │               │                  │              │
-                      ▼               ▼               ▼                  ▼              ▼
-                conversations    user_memories   scheduled_tasks    integrations    documents
+   │ 1:1
+   ▼
+users ────────────────┬───────────────┬───────────────┬───────────────┬──────────────┬─────────────┐
+                      │               │               │               │              │             │
+                      ▼               ▼               ▼               ▼              ▼             ▼
+                conversations    user_memories   scheduled_tasks  integrations   documents  telegram_link_tokens
                       │
                       ▼
-                   messages ────────────────┬─────────────────────────▶ agent_runs
-                      ▲                     │
-                      │                     ▼
-                      └──────────── background_jobs ───────────────▶ background_job_events
-
-users ───────────────────────────────────────────────▶ telegram_link_tokens
+                   messages ────────────────────────▶ agent_runs
+                      │
+                      └─────────────────────────────▶ background_jobs ─────────────▶ background_job_events
 ```
 
 ## Tables
 
-### users
+### `users`
 
-Extends `auth.users` with application-specific profile, permission, and model settings.
+Extends `auth.users` with profile + runtime config.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key, references `auth.users.id` |
-| email | text | User email |
-| name | text | Display name, nullable |
-| avatar_url | text | Avatar URL, nullable |
-| tier | text | `free`, `paid`, or `pro` |
-| permissions | jsonb | Tool/action permission modes |
-| settings | jsonb | User runtime preferences |
-| created_at | timestamptz | Creation time |
-| updated_at | timestamptz | Last profile update |
+Key columns:
 
-Example `settings` payload:
+- `id uuid primary key references auth.users(id)`
+- `email text not null`
+- `name text`
+- `avatar_url text`
+- `tier text check (free|paid|pro)`
+- `permissions jsonb`
+- `settings jsonb`
+- `created_at`, `updated_at`
 
-```json
-{
-  "llm_provider": "openrouter",
-  "llm_model": "minimax/minimax-m2.7",
-  "timezone": "America/New_York",
-  "persona": "concise",
-  "custom_instructions": "Always respond in Korean when I write in Korean."
-}
-```
+`settings` currently stores runtime preferences such as:
 
-Notes:
-- `llm_provider` / `llm_model` are runtime preferences; model override behavior is gated by application logic, not by the schema itself.
-- `timezone` is used to personalize scheduling and time-aware responses.
-- `persona` selects a pre-built communication style (`balanced`, `concise`, `friendly`, `professional`, `academic`). Omitting it or setting it to `balanced` uses the default prompt with no modifier.
-- `custom_instructions` is injected verbatim into the system prompt as a `## Custom Instructions` section; `null` or omitted means no custom instructions are applied.
+- `llm_provider`, `llm_model`, `llm_fallback_model`
+- `locale`, `timezone`
+- `persona`, `custom_instructions`
+- `onboarding_completed`
+- `working_style` / `assistant_preferences` / `welcome_state`
 
-Example `permissions` payload:
+`permissions` stores action modes (`direct`/`confirm`) for integration-sensitive actions.
 
-```json
-{
-  "google_calendar_read": "direct",
-  "google_calendar_write": "confirm"
-}
-```
+### `conversations`
 
-### conversations
+Conversation thread container.
 
-Unified chat threads. Each user currently uses one active conversation across web, Telegram, and scheduled runs.
+- `id`
+- `user_id`
+- `title`
+- `compacted_through` (timestamp marker for conversation compaction)
+- `created_at`, `updated_at`
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| title | text | Optional title |
-| compacted_through | timestamptz | Messages before this point have been compacted |
-| created_at | timestamptz | Creation time |
-| updated_at | timestamptz | Last update time |
+### `messages`
 
-### messages
+Conversation messages.
 
-Persisted user/assistant/system messages within a conversation.
+- `id`
+- `conversation_id`
+- `role` (`user`, `assistant`, `system`)
+- `content`
+- `metadata jsonb`
+- `created_at`
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| conversation_id | uuid | Parent conversation |
-| role | text | `user`, `assistant`, or `system` |
-| content | text | Message body |
-| metadata | jsonb | Message metadata |
-| created_at | timestamptz | Creation time |
+Common `metadata` fields used in runtime/UI:
 
-Common `metadata` fields:
+- `source` (`web`, `telegram`, `scheduled`)
+- `runId`
+- `type: "compaction"`
+- `cards`
+- `backgroundJob`
+- `followUpSuggestions`
+- `feedback`
+- `gatewayError`
+- `confirmation`
 
-```json
-{
-  "source": "web",
-  "runId": "uuid",
-  "backgroundJob": {
-    "id": "uuid",
-    "status": "queued",
-    "pending": true
-  },
-  "cards": [
-    {
-      "type": "search_results",
-      "data": {
-        "query": "latest AI agents news",
-        "results": []
-      }
-    }
-  ],
-  "confirmation": {
-    "pending": true
-  },
-  "gatewayError": {
-    "code": "AGENT_ERROR",
-    "message": "..."
-  },
-  "type": "compaction"
-}
-```
+### `integrations`
+
+Connected provider credentials/state.
+
+- `id`
+- `user_id`
+- `provider` (`google`, `microsoft`, `telegram`)
+- `access_token`
+- `refresh_token` (nullable)
+- `expires_at` (nullable)
+- `scopes text[]`
+- `created_at`, `updated_at`
+- unique: `(user_id, provider)`
 
 Notes:
-- assistant messages may persist `gatewayError` when the run completes with a surfaced agent/runtime failure
-- assistant messages for queued long-form jobs persist `backgroundJob` state so the chat UI can resume polling after reload
-- assistant messages may persist rich card payloads in `metadata.cards`; these currently back inline search, schedule, table, and smart-card renderers in the chat UI
-- plan/delegation progress is streamed live to the UI but not stored as first-class relational rows
-- high-level thinking status is streamed as live events; raw chain-of-thought text is not persisted as canonical assistant content
-- Gemini `thought_signature` values used for tool-call replay are runtime transport fields and are not stored in relational columns
 
-Current card payload families stored in `metadata.cards`:
-- `search_results`
-- `schedule_view`
-- `data_table`
-- `link_preview`
-- `comparison`
-- `steps`
-- `checklist`
+- `google`: OAuth tokens/scopes
+- `telegram`: linked chat ID is stored in `access_token` (no refresh/expiry)
 
-### integrations
+### `user_memories`
 
-OAuth/channel credentials for external providers.
+Durable long-term memory entries.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| provider | text | `google`, `microsoft`, or `telegram` |
-| access_token | text | Provider credential |
-| refresh_token | text | Refresh token, nullable |
-| expires_at | timestamptz | Expiration time, nullable |
-| scopes | text[] | Granted scopes |
-| created_at | timestamptz | Creation time |
-| updated_at | timestamptz | Last refresh/update |
+- `id`
+- `user_id`
+- `topic`
+- `content`
+- `embedding vector(1536)` (nullable)
+- `created_at`, `updated_at`
+- unique: `(user_id, topic)`
 
-### user_memories
+### `scheduled_tasks`
 
-Long-term memory entries keyed by topic, with optional semantic embeddings.
+Scheduled assistant runs.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| topic | text | Stable memory key |
-| content | text | Stored memory content |
-| embedding | vector(1536) | Optional pgvector embedding for semantic recall |
-| created_at | timestamptz | Creation time |
-| updated_at | timestamptz | Last update time |
+- `id`
+- `user_id`
+- `type` (`once` | `recurring`)
+- `cron_expression` (required for `recurring`)
+- `run_at` (required for `once`)
+- `description`
+- `enabled`
+- `last_run_at`
+- `created_at`
 
-Constraint:
-- unique index on `(user_id, topic)`
+### `documents`
 
-Usage notes:
-- this is the single durable memory store used by the agent loop, the Settings memory tab, and the Dashboard memory manager
-- chat history deletion does not delete `user_memories`
-- application-level validation keeps this table focused on durable user facts/preferences rather than long research summaries
-- current application-level save/extraction paths cap `topic` at 60 chars and `content` at 500 chars
-- rows can be written explicitly by `save_memory`, automatically before conversation compaction, or automatically after a completed turn
-- semantic recall uses `embedding` when present; keyword fallback does not depend on embeddings
+User docs for `/docs` workspace and chat context attachment.
 
-Indexes:
-- btree index on `(user_id, updated_at desc)` from `004_agent_and_telegram.sql`
-- ivfflat cosine index on `embedding` from `007_memory_embeddings.sql`
+- `id`
+- `user_id`
+- `title`
+- `content` (default `''`)
+- `folder` (nullable)
+- `created_at`, `updated_at`
 
-### scheduled_tasks
+### `telegram_link_tokens`
 
-Assistant-created once or recurring tasks.
+Short-lived tokens for Telegram account linking.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| type | text | `once` or `recurring` |
-| cron_expression | text | Cron string for recurring tasks, nullable |
-| run_at | timestamptz | One-time execution timestamp, nullable |
-| description | text | Task description |
-| enabled | boolean | Whether the task is active |
-| last_run_at | timestamptz | Last execution timestamp, nullable |
-| created_at | timestamptz | Creation time |
+- `id`
+- `user_id`
+- `token` (unique)
+- `expires_at`
+- `used_at`
+- `created_at`
 
-### documents
+### `agent_runs`
 
-User-managed documents for the `/docs` workspace. Documents act as RAG context when referenced in chat and as co-authored artifacts via Hada Canvas.
+Per-run telemetry used by dashboard/activity.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| title | text | Document title |
-| content | text | Markdown content, defaults to empty string |
-| folder | text | Optional single-level folder name, null = root |
-| created_at | timestamptz | Creation time |
-| updated_at | timestamptz | Last update time (auto-maintained by trigger) |
+- `id`
+- `user_id`
+- `conversation_id` (nullable)
+- `source` (`web`, `telegram`, `scheduled`)
+- `status` (`running`, `completed`, `failed`, `timeout`)
+- `started_at`, `finished_at`
+- `duration_ms`
+- `input_preview`, `output_preview`
+- `tool_calls jsonb`
+- `error`
+- `metadata`
+- `created_at`
 
-Usage notes:
-- `folder` supports one level of nesting only (e.g., `"Work"`, not `"Work/Projects"`)
-- RLS grants full CRUD to the owning user; no service-role bypass is needed for document writes
-- Agent tools `list_documents`, `read_document`, `create_document`, and `update_document` all operate on this table
+### `background_jobs`
 
-Indexes:
-- `documents_user_id_idx` on `(user_id)`
-- `documents_user_folder_idx` on `(user_id, folder)`
+Queue records for long-form requests.
 
-### telegram_link_tokens
+- `id`
+- `user_id`
+- `conversation_id`
+- `user_message_id`
+- `assistant_message_id`
+- `source`
+- `request_text`
+- `status` (`queued`, `running`, `completed`, `failed`, `timeout`)
+- `processing_token`
+- `attempts`
+- `started_at`, `finished_at`
+- `last_error`
+- `created_at`, `updated_at`
 
-Short-lived tokens used to link Telegram accounts.
+### `background_job_events`
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| token | text | Link token |
-| expires_at | timestamptz | Expiration timestamp |
-| used_at | timestamptz | Consumption timestamp, nullable |
-| created_at | timestamptz | Creation time |
+Replayable event log for queued runs.
 
-### agent_runs
-
-Run-level telemetry for each agent execution. This powers the dashboard activity feed and analytics.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| conversation_id | uuid | Related conversation, nullable |
-| source | text | `web`, `telegram`, or `scheduled` |
-| status | text | `running`, `completed`, `failed`, or `timeout` |
-| started_at | timestamptz | Run start time |
-| finished_at | timestamptz | Run end time, nullable while running |
-| duration_ms | integer | Wall-clock duration |
-| input_preview | text | First ~200 chars of input |
-| output_preview | text | First ~200 chars of output |
-| tool_calls | jsonb | Array of `{ name, callId, durationMs, status }` |
-| error | text | Final error text, nullable |
-| metadata | jsonb | Extra metadata such as `runId` |
-| created_at | timestamptz | Row creation time |
-
-Notes:
-- `status = 'timeout'` is used when the run exceeds configured runtime/idle budgets
-- `tool_calls` is a compact per-run summary, not a full event log
-- full streaming trace state remains ephemeral in the live chat UI
-
-### background_jobs
-
-Queue rows for long-form requests that should not complete inside the original `/api/chat` request.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | Owner |
-| conversation_id | uuid | Related conversation |
-| user_message_id | uuid | Existing user message row |
-| assistant_message_id | uuid | Placeholder/final assistant message row |
-| source | text | `web`, `telegram`, or `scheduled` |
-| request_text | text | Original request text |
-| status | text | `queued`, `running`, `completed`, `failed`, or `timeout` |
-| processing_token | text | Optional claim token for post-response kickoff |
-| attempts | integer | Processing attempt count |
-| started_at | timestamptz | Processing start time, nullable |
-| finished_at | timestamptz | Processing end time, nullable |
-| last_error | text | Final error text, nullable |
-| created_at | timestamptz | Creation time |
-| updated_at | timestamptz | Last update time |
-
-Usage notes:
-- created by `/api/chat` when `isLongJobMessage()` classifies a request as long-form
-- linked directly to the existing conversation/message rows so the final response appears in the same chat thread
-- picked up either by the immediate `/api/background-jobs/[id]/run` trigger or by `/api/cron`
-
-### background_job_events
-
-Persisted event stream for queued background jobs.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| job_id | uuid | Parent background job |
-| user_id | uuid | Owner |
-| seq | integer | Monotonic per-job event sequence |
-| event | jsonb | Serialized `AgentEvent` payload |
-| created_at | timestamptz | Creation time |
-
-Usage notes:
-- stores the pollable event stream for long-form jobs
-- powers `/api/background-jobs/[id]` so the chat UI can replay tool/progress updates after the original request finishes
-- complements `agent_runs`; it does not replace run-level telemetry
+- `id`
+- `job_id`
+- `user_id`
+- `seq` (unique per `job_id`)
+- `event jsonb`
+- `created_at`
 
 ## Database Functions
 
-### match_user_memories(query_embedding, match_user_id, match_threshold, match_count)
+### `match_user_memories(...)`
 
-Semantic search helper introduced in `007_memory_embeddings.sql`.
+Added in `007_memory_embeddings.sql`.
 
 Arguments:
-- `query_embedding vector(1536)`: embedding generated from the recall query text
-- `match_user_id uuid`: restricts search to a single user
-- `match_threshold float`: minimum cosine similarity threshold, default `0.3`
-- `match_count int`: max rows returned, default `20`
 
-Returns:
-- `id uuid`
-- `topic text`
-- `content text`
-- `updated_at timestamptz`
-- `similarity float`
+- `query_embedding vector(1536)`
+- `match_user_id uuid`
+- `match_threshold float default 0.3`
+- `match_count int default 20`
 
-Usage notes:
-- the application calls this function from `recall_memory` before falling back to `ILIKE` search
-- rows with `embedding IS NULL` are skipped automatically
-- if pgvector search returns no matches or embedding generation is unavailable, the application falls back to text search across `topic` and `content`
+Returns nearest matches from `user_memories` with cosine similarity.
 
-## RLS Model
+Used by the `recall_memory` tool before text fallback.
 
-User-owned tables enforce `auth.uid() = user_id` semantics:
+## RLS Coverage
+
+RLS is enabled on:
+
 - `users`
 - `conversations`
-- `messages` via conversation ownership
+- `messages`
 - `integrations`
 - `user_memories`
-- `scheduled_tasks`
-- `documents`
 - `telegram_link_tokens`
+- `scheduled_tasks`
 - `agent_runs`
 - `background_jobs`
 - `background_job_events`
+- `documents`
 
-Webhook/cron flows use the service-role client where necessary.
+Service-role server paths (cron/webhooks/background processing) bypass user RLS where appropriate.
 
-## Indexes
-
-Important indexes currently documented by schema/migrations:
+## Indexes (from migrations)
 
 ```sql
-CREATE INDEX idx_conversations_user_id ON conversations(user_id);
-CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
-CREATE INDEX idx_messages_created_at ON messages(created_at);
-CREATE INDEX idx_integrations_user_id ON integrations(user_id);
-CREATE UNIQUE INDEX idx_user_memories_user_topic ON user_memories(user_id, topic);
-CREATE INDEX idx_user_memories_user_updated ON user_memories(user_id, updated_at DESC);
-CREATE INDEX idx_user_memories_embedding ON user_memories USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
-CREATE INDEX idx_scheduled_tasks_user_id ON scheduled_tasks(user_id);
-CREATE INDEX idx_scheduled_tasks_run_at ON scheduled_tasks(run_at) WHERE enabled = true;
-CREATE UNIQUE INDEX idx_telegram_link_tokens_token ON telegram_link_tokens(token);
-CREATE INDEX idx_agent_runs_user ON agent_runs(user_id, started_at DESC);
-CREATE INDEX idx_agent_runs_status ON agent_runs(user_id, status) WHERE status = 'running';
-CREATE INDEX idx_background_jobs_user_created ON background_jobs(user_id, created_at DESC);
-CREATE INDEX idx_background_jobs_queue ON background_jobs(status, created_at ASC) WHERE status in ('queued', 'running');
-CREATE INDEX idx_background_job_events_job_seq ON background_job_events(job_id, seq ASC);
-CREATE INDEX documents_user_id_idx ON documents(user_id);
-CREATE INDEX documents_user_folder_idx ON documents(user_id, folder);
+create index idx_conversations_user_id on public.conversations(user_id);
+create index idx_messages_conversation_id on public.messages(conversation_id);
+create index idx_messages_created_at on public.messages(created_at);
+create index idx_integrations_user_id on public.integrations(user_id);
+
+create index idx_user_memories_user_updated on public.user_memories(user_id, updated_at desc);
+create index idx_user_memories_embedding
+  on public.user_memories using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+
+create index idx_telegram_link_tokens_token on public.telegram_link_tokens(token);
+create index idx_telegram_link_tokens_expires_at on public.telegram_link_tokens(expires_at);
+
+create index idx_scheduled_tasks_due_once
+  on public.scheduled_tasks(enabled, run_at) where type = 'once';
+create index idx_scheduled_tasks_due_recurring
+  on public.scheduled_tasks(enabled, cron_expression, last_run_at) where type = 'recurring';
+
+create index idx_agent_runs_user on public.agent_runs(user_id, started_at desc);
+create index idx_agent_runs_status on public.agent_runs(user_id, status) where status = 'running';
+
+create index idx_background_jobs_user_created on public.background_jobs(user_id, created_at desc);
+create index idx_background_jobs_queue
+  on public.background_jobs(status, created_at asc) where status in ('queued', 'running');
+create index idx_background_job_events_job_seq on public.background_job_events(job_id, seq asc);
+
+create index documents_user_id_idx on documents(user_id);
+create index documents_user_folder_idx on documents(user_id, folder);
 ```
 
 ## Notes
 
-- Planning state and delegation trace state are still ephemeral runtime constructs; they are not stored as first-class relational tables.
-- Long-form background-job progress is persisted, but only as a replay/event log in `background_job_events`, not as normalized tool/plan tables.
-- Settings memory and Dashboard memory are both CRUD surfaces over `user_memories`; there is not a second agent-only memory table.
-- The TypeScript source of truth for runtime/database shapes is [src/lib/types/database.ts](/Users/james/Projects/Coding/hada/src/lib/types/database.ts).
+- Planning/delegation progression is streamed as events; there are no dedicated relational plan/delegation tables.
+- Background job progress is event-log style (`background_job_events`), separate from run-level telemetry (`agent_runs`).
+- The TypeScript runtime shape reference is `src/lib/types/database.ts`.
