@@ -73,11 +73,15 @@ export function buildToolStatusPills(input: ToolStatusInput): ToolStatusPill[] {
     pills.push({ id: "background", label: "Working in background", tone: "neutral" });
   }
 
+  if (input.thinkingCount > 0) {
+    pills.push({ id: "thinking", label: "Thinking...", tone: "working" });
+  }
+
   if (!hasRunningTool && hasToolHistory && !input.hasVisibleContent && input.thinkingCount === 0) {
     pills.push({ id: "analyzing", label: "Analyzing findings", tone: "working" });
   }
 
-  if (!hasRunningTool && (input.hasVisibleContent || input.thinkingCount > 0)) {
+  if (!hasRunningTool && input.hasVisibleContent) {
     pills.push({ id: "drafting", label: "Drafting response", tone: "working" });
   }
 
