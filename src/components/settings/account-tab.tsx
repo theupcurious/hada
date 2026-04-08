@@ -70,47 +70,44 @@ export function AccountTab() {
   const [calendarHabits, setCalendarHabits] = useState("");
   const [currentProjects, setCurrentProjects] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [savingRegionalPreferences, setSavingRegionalPreferences] = useState(false);
+  const [regionalSaveMessage, setRegionalSaveMessage] = useState<string | null>(null);
+  const [savingAssistantPreferences, setSavingAssistantPreferences] = useState(false);
+  const [assistantSaveMessage, setAssistantSaveMessage] = useState<string | null>(null);
   const [resettingOnboarding, setResettingOnboarding] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
   const [clearChatMessage, setClearChatMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const [{ data }, roleData] = await Promise.all([
+        supabase
+        .from("users")
+        .select("id, email, name, tier, created_at, settings")
+        .single(),
+        fetch("/api/auth/me", { cache: "no-store" })
+          .then(async (response) => {
+            if (!response.ok) {
+              return { isAdmin: false };
+            }
+            return (await response.json()) as { isAdmin?: boolean };
+          })
+          .catch(() => ({ isAdmin: false })),
+      ]);
 
-      if (!user) {
+      if (!data) {
         return;
       }
 
-      try {
-        const roleResponse = await fetch("/api/auth/me", { cache: "no-store" });
-        if (roleResponse.ok) {
-          const roleData = (await roleResponse.json()) as { isAdmin?: boolean };
-          setIsAdmin(Boolean(roleData.isAdmin));
-        } else {
-          setIsAdmin(false);
-        }
-      } catch {
-        setIsAdmin(false);
-      }
-
-      const { data } = await supabase
-        .from("users")
-        .select("id, email, name, tier, created_at, settings")
-        .eq("id", user.id)
-        .single();
+      setIsAdmin(Boolean(roleData.isAdmin));
 
       const loaded = {
-        id: user.id,
-        email: user.email || "",
-        name: user.user_metadata?.name || data?.name || null,
-        tier: data?.tier || "free",
-        created_at: user.created_at,
-        settings: (data?.settings || {}) as UserSettings,
+        id: data.id,
+        email: data.email || "",
+        name: data.name || null,
+        tier: data.tier || "free",
+        created_at: data.created_at,
+        settings: (data.settings || {}) as UserSettings,
       };
 
       setProfile(loaded);
@@ -225,15 +222,66 @@ export function AccountTab() {
     })
     .slice(0, 60);
 
-  async function saveSettings() {
-    if (!profile) return;
-    setSaving(true);
-    setSaveMessage(null);
+  const isSavingPreferences = savingRegionalPreferences || savingAssistantPreferences;
+
+  async function persistSettings(nextSettings: UserSettings) {
+    if (!profile) {
+      return false;
+    }
+
+    const { error } = await supabase
+      .from("users")
+      .update({ settings: nextSettings })
+      .eq("id", profile.id);
+
+    if (error) {
+      return false;
+    }
+
+    setProfile((current) => (current ? { ...current, settings: nextSettings } : current));
+    return true;
+  }
+
+  async function saveRegionalPreferences() {
+    if (!profile || isSavingPreferences) return;
+    setSavingRegionalPreferences(true);
+    setRegionalSaveMessage(null);
 
     const nextSettings: UserSettings = {
       ...(profile.settings || {}),
       locale,
       timezone: timezone.trim() || null,
+    };
+
+    if (isAdmin) {
+      nextSettings.llm_provider = provider;
+      nextSettings.llm_model = model.trim() || null;
+      nextSettings.llm_fallback_model = fallbackModel.trim() || null;
+    } else {
+      delete nextSettings.llm_provider;
+      delete nextSettings.llm_model;
+      delete nextSettings.llm_fallback_model;
+    }
+
+    const saved = await persistSettings(nextSettings);
+    if (!saved) {
+      setRegionalSaveMessage("Failed to save providers, language, and timezone.");
+      setSavingRegionalPreferences(false);
+      return;
+    }
+
+    setLocaleCookie(locale);
+    setRegionalSaveMessage("Saved providers, language, and timezone.");
+    setSavingRegionalPreferences(false);
+  }
+
+  async function saveAssistantPreferences() {
+    if (!profile || isSavingPreferences) return;
+    setSavingAssistantPreferences(true);
+    setAssistantSaveMessage(null);
+
+    const nextSettings: UserSettings = {
+      ...(profile.settings || {}),
       persona,
       custom_instructions: customInstructions.trim() || null,
     };
@@ -272,31 +320,15 @@ export function AccountTab() {
       delete nextSettings.assistant_preferences;
     }
 
-    if (isAdmin) {
-      nextSettings.llm_provider = provider;
-      nextSettings.llm_model = model.trim() || null;
-      nextSettings.llm_fallback_model = fallbackModel.trim() || null;
-    } else {
-      delete nextSettings.llm_provider;
-      delete nextSettings.llm_model;
-      delete nextSettings.llm_fallback_model;
-    }
-
-    const { error } = await supabase
-      .from("users")
-      .update({ settings: nextSettings })
-      .eq("id", profile.id);
-
-    if (error) {
-      setSaveMessage("Failed to save settings.");
-      setSaving(false);
+    const saved = await persistSettings(nextSettings);
+    if (!saved) {
+      setAssistantSaveMessage("Failed to save working style and assistant preferences.");
+      setSavingAssistantPreferences(false);
       return;
     }
 
-    setProfile({ ...profile, settings: nextSettings });
-    setLocaleCookie(locale);
-    setSaveMessage("Settings saved.");
-    setSaving(false);
+    setAssistantSaveMessage("Saved working style and assistant preferences.");
+    setSavingAssistantPreferences(false);
   }
 
   async function clearChat() {
@@ -334,7 +366,7 @@ export function AccountTab() {
   }
 
   async function resetOnboarding() {
-    if (!profile || resettingOnboarding) {
+    if (!profile || resettingOnboarding || isSavingPreferences) {
       return;
     }
 
@@ -343,7 +375,7 @@ export function AccountTab() {
     }
 
     setResettingOnboarding(true);
-    setSaveMessage(null);
+    setAssistantSaveMessage(null);
 
     const nextSettings: UserSettings = {
       ...(profile.settings || {}),
@@ -354,18 +386,13 @@ export function AccountTab() {
     delete nextSettings.assistant_preferences;
     delete nextSettings.welcome_state;
 
-    const { error } = await supabase
-      .from("users")
-      .update({ settings: nextSettings })
-      .eq("id", profile.id);
-
-    if (error) {
-      setSaveMessage("Failed to reset onboarding.");
+    const saved = await persistSettings(nextSettings);
+    if (!saved) {
+      setAssistantSaveMessage("Failed to reset onboarding.");
       setResettingOnboarding(false);
       return;
     }
 
-    setProfile({ ...profile, settings: nextSettings });
     setPersona("default");
     setWritingStyle("");
     setRecommendationStyle("");
@@ -374,7 +401,7 @@ export function AccountTab() {
     setPrimaryGoals("");
     setCalendarHabits("");
     setCurrentProjects("");
-    setSaveMessage("Onboarding reset. You will see setup again in chat.");
+    setAssistantSaveMessage("Onboarding reset. You will see setup again in chat.");
     setResettingOnboarding(false);
   }
 
@@ -439,11 +466,11 @@ export function AccountTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Preferences</CardTitle>
+          <CardTitle className="text-base">Providers, language & timezone</CardTitle>
           <CardDescription>
             {isAdmin
-              ? "Configure timezone and default provider/model used by your agent loop."
-              : "Configure your timezone preference."}
+              ? "Configure provider defaults, response language, and timezone."
+              : "Configure your response language and timezone."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -630,6 +657,23 @@ export function AccountTab() {
             />
           </div>
 
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-xs text-zinc-500">{regionalSaveMessage || ""}</span>
+            <Button size="sm" onClick={saveRegionalPreferences} disabled={isSavingPreferences}>
+              {savingRegionalPreferences ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Working style & assistant</CardTitle>
+          <CardDescription>
+            Configure planning defaults, saved context, and how Hada communicates with you.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
           <div className="rounded-xl border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-zinc-950/40">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -735,103 +779,93 @@ export function AccountTab() {
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 Separate items with commas or new lines.
               </p>
-
-              <div className="flex flex-col gap-3 rounded-lg border border-dashed border-zinc-200/80 bg-background/70 px-3 py-3 dark:border-zinc-800/70 dark:bg-zinc-950/40 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Reset onboarding</p>
-                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    Clear saved working-style and welcome preferences, then show first-run setup again in chat.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void resetOnboarding()}
-                  disabled={resettingOnboarding}
-                  className="shrink-0"
-                >
-                  {resettingOnboarding ? "Resetting..." : "Reset onboarding"}
-                </Button>
-              </div>
             </div>
           </div>
 
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Persona</h3>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Choose how Hada communicates with you. This is the same tone control used in first-run onboarding.
+            </p>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {PERSONAS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPersona(p.id)}
+                  className={`rounded-lg border p-3 text-left transition-all ${
+                    persona === p.id
+                      ? "border-teal-500 bg-teal-50 shadow-sm dark:border-teal-400 dark:bg-teal-950/30"
+                      : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
+                  }`}
+                >
+                  <p className={`text-sm font-medium ${
+                    persona === p.id
+                      ? "text-teal-700 dark:text-teal-300"
+                      : "text-zinc-900 dark:text-zinc-100"
+                  }`}>
+                    {p.name}
+                  </p>
+                  <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                    {p.description}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="custom-instructions"
+              className="block text-xs font-medium text-zinc-700 dark:text-zinc-300"
+            >
+              Custom instructions (optional)
+            </label>
+            <p className="mt-0.5 text-xs text-zinc-400">
+              Tell Hada anything specific about how you want it to behave.
+            </p>
+            <textarea
+              id="custom-instructions"
+              value={customInstructions}
+              onChange={(event) => setCustomInstructions(event.target.value)}
+              placeholder="e.g., Always respond in Korean when I write in Korean. Prefer metric units."
+              rows={3}
+              maxLength={1000}
+              className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-teal-400"
+            />
+            <p className="mt-1 text-right text-xs text-zinc-400">
+              {customInstructions.length}/1000
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-lg border border-dashed border-zinc-200/80 bg-background/70 px-3 py-3 dark:border-zinc-800/70 dark:bg-zinc-950/40 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Reset onboarding</p>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                Clear saved working-style and welcome preferences, then show first-run setup again in chat.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void resetOnboarding()}
+              disabled={resettingOnboarding || isSavingPreferences}
+              className="shrink-0"
+            >
+              {resettingOnboarding ? "Resetting..." : "Reset onboarding"}
+            </Button>
+          </div>
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span className="text-xs text-zinc-500">{saveMessage || ""}</span>
-            <Button size="sm" onClick={saveSettings} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+            <span className="text-xs text-zinc-500">{assistantSaveMessage || ""}</span>
+            <Button size="sm" onClick={saveAssistantPreferences} disabled={isSavingPreferences}>
+              {savingAssistantPreferences ? "Saving..." : "Save"}
             </Button>
           </div>
         </CardContent>
       </Card>
-
-      {/* Persona Section */}
-      <div className="rounded-xl border border-zinc-200/70 bg-white/70 p-6 shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/50">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          Persona
-        </h3>
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Choose how Hada communicates with you. This is the same tone control used in first-run onboarding.
-        </p>
-
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          {PERSONAS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPersona(p.id)}
-              className={`rounded-lg border p-3 text-left transition-all ${
-                persona === p.id
-                  ? "border-teal-500 bg-teal-50 shadow-sm dark:border-teal-400 dark:bg-teal-950/30"
-                  : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
-              }`}
-            >
-              <p className={`text-sm font-medium ${
-                persona === p.id
-                  ? "text-teal-700 dark:text-teal-300"
-                  : "text-zinc-900 dark:text-zinc-100"
-              }`}>
-                {p.name}
-              </p>
-              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                {p.description}
-              </p>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-4">
-          <label
-            htmlFor="custom-instructions"
-            className="block text-xs font-medium text-zinc-700 dark:text-zinc-300"
-          >
-            Custom instructions (optional)
-          </label>
-          <p className="mt-0.5 text-xs text-zinc-400">
-            Tell Hada anything specific about how you want it to behave.
-          </p>
-          <textarea
-            id="custom-instructions"
-            value={customInstructions}
-            onChange={(e) => setCustomInstructions(e.target.value)}
-            placeholder="e.g., Always respond in Korean when I write in Korean. Prefer metric units."
-            rows={3}
-            maxLength={1000}
-            className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-teal-400"
-          />
-          <p className="mt-1 text-right text-xs text-zinc-400">
-            {customInstructions.length}/1000
-          </p>
-        </div>
-
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-xs text-zinc-500">{saveMessage || ""}</span>
-          <Button size="sm" onClick={saveSettings} disabled={saving}>
-            {saving ? "Saving..." : "Save"}
-          </Button>
-        </div>
-      </div>
 
       <Card className="border-red-200/70 dark:border-red-900/40">
         <CardHeader>
