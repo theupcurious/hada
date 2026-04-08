@@ -26,6 +26,7 @@
 CLAUDE.md
 .worktrees/
 docs/plans/
+docs/PRODUCT_DESIGN_AND_DEVELOPMENT_PROCESS.md
 
 # debug
 npm-debug.log*
