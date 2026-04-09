@@ -68,9 +68,17 @@ From Supabase project settings/API:
 - anon key -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - service role key -> `SUPABASE_SERVICE_ROLE_KEY`
 
-### Run migrations (in order)
+### Fresh install: run one SQL file
 
-Apply SQL files from `supabase/migrations` in this order:
+For a brand-new Supabase project, run:
+
+- [schema.sql](/Users/james/Projects/Coding/hada/supabase/schema.sql)
+
+This file is generated from the migration chain and is the simplest way to bootstrap a new database.
+
+### Existing database: run migrations (in order)
+
+If you are upgrading an existing database, apply SQL files from `supabase/migrations` in this order:
 
 1. `001_initial_schema.sql`
 2. `002_add_user_permissions.sql`
@@ -82,6 +90,18 @@ Apply SQL files from `supabase/migrations` in this order:
 8. `009_default_openrouter_provider.sql`
 9. `010_documents.sql`
 10. `011_agent_runs_delete_policy.sql`
+11. `011_document_shares.sql`
+12. `012_conversation_segments.sql`
+13. `013_memory_classes.sql`
+14. `014_segment_artifacts.sql`
+
+Notes:
+
+- `supabase/schema.sql` is for fresh installs only.
+- `supabase/migrations/*.sql` is the upgrade path for existing databases and should remain in the repo.
+- Do not delete the older migration files just because `schema.sql` exists. They serve different purposes.
+- Regenerate it with `npm run db:schema` after changing any migration file.
+- `014_segment_artifacts.sql` requires `012_conversation_segments.sql` to already exist.
 
 ## 4. Optional Integrations
 

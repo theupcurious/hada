@@ -9,7 +9,8 @@ Design priorities in the current implementation:
 1. Single runtime path for all channels (`web`, `telegram`, `scheduled`)
 2. Supabase-backed persistence with RLS isolation
 3. Real-time UX via SSE for chat and poll/replay for long background runs
-4. Registry-based tool extension with explicit per-tool risk policy
+4. One visible user thread with internal topic segmentation and bounded context retrieval
+5. Registry-based tool extension with explicit per-tool risk policy
 
 ## System Topology
 
@@ -38,13 +39,16 @@ Next.js App
       ├─ processMessage()
       ├─ agentLoop()
       ├─ buildSystemPrompt()
+      ├─ segment router + context hinting
+      ├─ ranked context retrieval + legacy recency fallback
+      ├─ segment summaries + segment artifacts
       ├─ context manager + compaction
       ├─ memory extraction / embeddings
       └─ tool registry + tool implementations
 
 Supabase
   ├─ Auth
-  └─ Postgres (users, conversations, messages, memories, tasks, docs, runs, background jobs)
+  └─ Postgres (users, conversations, messages, conversation_segments, user_memories, segment_artifacts, tasks, docs, runs, background jobs)
 
 External services
   ├─ LLM providers
@@ -103,7 +107,9 @@ Long-job trigger (current code):
 - Resolve/create conversation
 - Persist user message
 - Build tool context + available tools
-- Build system prompt (persona, locale, memory, integrations, preferences)
+- Build system prompt (persona, locale, per-turn language override, memory, integrations, preferences)
+- Compute a segment context hint for the current turn
+- Retrieve ranked conversation context when enabled
 - Resolve provider/model selection
 - Select run budgets
 - Execute `agentLoop()`
@@ -111,6 +117,9 @@ Long-job trigger (current code):
 - Persist `agent_runs` telemetry
 - Fire-and-forget follow-up suggestion generation
 - Fire-and-forget post-turn memory extraction
+- Fire-and-forget segment decision persistence
+- Fire-and-forget segment summary refreshes
+- Fire-and-forget segment artifact persistence
 - Fire-and-forget conversation compaction checks
 
 ### 2. `agentLoop()`
@@ -128,6 +137,7 @@ Key behaviors:
 - Performs mid-run compaction when messages exceed ~75% of provider context window
 - Performs intra-run context trimming (`MAX_RUN_CONTEXT_TOKENS = 80_000`)
 - Sanitizes internal reasoning tags from user-visible output
+- Extracts and strips hidden internal segment metadata markers from the final response path
 
 ### 3. Tool Registry + Policy
 
@@ -158,15 +168,36 @@ Current registered tools:
 - Base prompt (`src/lib/chat/prompts/system.md`)
 - Persona + custom instructions
 - Onboarding-derived working style/preferences
-- Locale/language guidance
+- Locale/language guidance from saved settings
+- Per-turn language override based on the latest user message (`en`, `ko`, `ja`, `zh`)
 - Available tool list
 - User context (name/email/tier/integrations/timezone/local time)
-- Long-term memory summary
+- Long-term memory summary with class-aware gating
 - Channel context (`web` / `telegram` / `scheduled`)
+- Internal topic-segment instructions for the model
 
 For Anthropic, stable/dynamic prompt parts are passed separately to enable prompt-caching behavior.
 
-### 5. Memory Pipeline
+### 5. Topic Segments and Context Retrieval
+
+Hada still keeps a single visible conversation thread per user, but the runtime no longer treats that thread as one flat prompt transcript.
+
+Current flow:
+
+1. `computeContextHint()` inspects the active segment plus recent closed segments.
+2. `agentLoop()` emits a hidden segment signal (`continue`, `new`, `revive`) in the model output.
+3. `persistSegmentDecision()` attaches both the user and assistant messages to a `segment_id`, creating or reviving a segment as needed.
+4. `retrieveRankedConversationContext()` assembles bounded prompt context from:
+   - active-segment recent messages
+   - active-segment summary
+   - relevant older segment summaries
+   - class-aware long-term memories
+   - durable segment artifacts
+5. If ranked retrieval fails or is disabled, Hada falls back to `assembleConversationContext()` recency-based assembly.
+
+Ranked retrieval is enabled by default and can be disabled with `HADA_ENABLE_RANKED_CONTEXT_RETRIEVAL=0`.
+
+### 6. Memory Pipeline
 
 Long-term memory table: `user_memories`.
 
@@ -179,10 +210,18 @@ Write paths:
 Read path:
 
 - `recall_memory` first tries semantic search (`match_user_memories` via pgvector), then text fallback.
+- Prompt assembly globally injects pinned/profile/preference memories that fit the memory budget.
+- Ranked retrieval can additionally pull project/archive memories when they are relevant to the current segment set.
 
 Embeddings are optional:
 
 - If embedding generation fails or keys are missing, text memories still persist.
+
+### 7. Segment Summaries and Artifacts
+
+- Segment summaries are refreshed asynchronously by `queueSegmentSummaryRefresh()` when a segment is closed, revived, or has grown enough since the previous summary.
+- `maybeCompactConversation()` is segment-aware: it prefers compacting runs of messages within the same `segment_id` boundary instead of mixing unrelated topics.
+- Long-form outputs can be persisted to `segment_artifacts` so future turns can recall the artifact summary instead of replaying the full research transcript.
 
 ## UI Architecture
 
@@ -198,6 +237,7 @@ Primary assistant UI with:
 - Follow-up suggestion chips
 - Document attach picker
 - Artifact side panel for document tool output
+- Language-aware responses based on saved locale plus latest-message override
 
 ### `/docs`
 
@@ -207,6 +247,7 @@ Document workspace with:
 - Folder grouping (`folder` column)
 - Tiptap markdown editing
 - `.md` upload
+- Share link creation and public shared-doc view
 - Deep-linking to specific doc IDs
 
 ### `/settings`
@@ -228,8 +269,10 @@ Marketing/entry page; auth flows route users to chat/settings/docs surfaces.
 Persisted telemetry and state:
 
 - `messages` holds conversation content + metadata
+- `conversation_segments` tracks internal topic boundaries, summaries, and activity
 - `agent_runs` stores per-run status/duration/tool call summaries
 - `background_jobs` + `background_job_events` store long-run state and replayable events
+- `segment_artifacts` stores durable outputs tied to topic segments
 
 Live-only state (not relationally normalized):
 
@@ -249,3 +292,4 @@ Live-only state (not relationally normalized):
 - `POST /api/dashboard/tasks/[id]/run` intentionally returns `501` (manual immediate task run is not wired yet).
 - Schedule/table cards only render when card payloads are present in `messages.metadata.cards`; `web_search` does not auto-emit those payloads today.
 - User-level provider/model overrides are admin-only by design.
+- The memory schema supports classes (`profile`, `project`, `preference`, `archive`), but not every write path classifies memories automatically yet.

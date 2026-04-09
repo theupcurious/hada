@@ -1,6 +1,6 @@
 # Hada
 
-Hada is a multi-channel assistant app built around an in-app agent loop. It supports web chat, Telegram, scheduled runs, long-term memory, a docs workspace, and a dashboard/settings control surface.
+Hada is a multi-channel assistant app built around an in-app agent loop. It supports web chat, Telegram, scheduled runs, long-term memory, an internal topic-segmentation layer for long threads, a docs workspace, and a dashboard/settings control surface.
 
 ## Stack
 
@@ -16,14 +16,18 @@ Hada is a multi-channel assistant app built around an in-app agent loop. It supp
 - Regeneration of assistant messages (via `/api/chat` + `regenerateAssistantMessageId`)
 - Background job queue for long requests (`background_jobs`, `background_job_events`)
 - Tool call traces, step/plan traces, and delegation traces in chat UI
+- Single visible conversation per user with internal topic segments (`conversation_segments`)
+- Ranked context retrieval across active-segment recency, segment summaries, long-term memories, and durable segment artifacts
 - Long-term memory (`user_memories`) with semantic recall + text fallback
-- Documents workspace (`/docs`) with markdown editor, foldering, and upload
+- Documents workspace (`/docs`) with markdown editor, foldering, upload, and share links
+- Durable long-form outputs stored as segment artifacts (`segment_artifacts`)
 - Smart card rendering (`comparison`, `steps`, `checklist`)
 - Follow-up suggestions after web chat responses
 - Google Calendar integration (OAuth + list/create/update/delete event tools)
 - Telegram account linking and webhook-based chat
 - Scheduled tasks (`once`, `recurring`) processed by `/api/cron`
 - Dashboard APIs for activity, analytics, tasks, and memories
+- App locale support for `en`, `ko`, `ja`, and `zh`, with per-turn language override based on the latest user message
 
 ## Tooling
 
@@ -84,7 +88,13 @@ Optional:
 
 ### 4. Run migrations
 
-Apply in order from `supabase/migrations`:
+Fresh install:
+
+- Run [schema.sql](/Users/james/Projects/Coding/hada/supabase/schema.sql) once in Supabase SQL Editor.
+
+Existing database upgrades:
+
+- Apply all files in `supabase/migrations` in filename order. Current chain:
 
 1. `001_initial_schema.sql`
 2. `002_add_user_permissions.sql`
@@ -96,6 +106,17 @@ Apply in order from `supabase/migrations`:
 8. `009_default_openrouter_provider.sql`
 9. `010_documents.sql`
 10. `011_agent_runs_delete_policy.sql`
+11. `011_document_shares.sql`
+12. `012_conversation_segments.sql`
+13. `013_memory_classes.sql`
+14. `014_segment_artifacts.sql`
+
+Important:
+
+- `supabase/schema.sql` is for brand-new databases only.
+- Existing databases should keep using incremental migrations.
+- `014_segment_artifacts.sql` depends on `012_conversation_segments.sql` and is not a standalone migration.
+- If you apply migrations manually in Supabase SQL editor, preserve the repo order above.
 
 ### 5. Run app
 
@@ -127,6 +148,8 @@ npm run build
 - `DELETE /api/conversations` - clear current chat conversation + web run activity
 - `POST /api/messages/[id]/feedback` - thumbs up/down metadata
 - `GET|POST /api/documents`, `GET|PATCH|DELETE /api/documents/[id]`
+- `POST|DELETE /api/documents/[id]/share`
+- `GET /api/shared/documents/[shareId]`
 - `GET /api/tools` - tool manifests + integration connection status
 - `GET /api/dashboard/activity`
 - `GET /api/dashboard/analytics`
@@ -135,6 +158,7 @@ npm run build
 - `GET|DELETE /api/integrations/google`
 - `GET|POST /api/integrations/telegram/link`
 - `GET /api/openrouter/models`
+- `GET /api/debug/context` - admin-only context/memory/segment inspection
 - `GET /api/health`
 - `POST|GET /api/cron`
 - `POST /api/webhooks/telegram`
@@ -142,6 +166,8 @@ npm run build
 ## Notes
 
 - Long requests are classified in `src/lib/chat/runtime-budgets.ts` and may be queued into `background_jobs`.
+- Ranked context retrieval is enabled by default and can be disabled with `HADA_ENABLE_RANKED_CONTEXT_RETRIEVAL=0`.
+- Hada still uses one visible conversation per user, but prompt assembly is no longer purely flat-recency based.
 - Tool permissions are enforced by `DEFAULT_POLICY` in `src/lib/chat/tool-permissions.ts`.
 - Provider/model user overrides are only applied for admin emails (`ADMIN_USER_EMAILS` / `ADMIN_EMAILS`).
 - `render_card` currently supports only `comparison`, `steps`, and `checklist`.
