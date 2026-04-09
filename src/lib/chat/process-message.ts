@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { agentLoop } from "@/lib/chat/agent-loop";
+import { agentLoop, extractSegmentSignal } from "@/lib/chat/agent-loop";
 import { extractCardsFromToolResults } from "@/lib/chat/card-extraction";
+import { computeContextHint, persistSegmentDecision, type ContextHint } from "@/lib/chat/segment-router";
 import { buildSystemPrompt } from "@/lib/chat/build-system-prompt";
 import { assembleConversationContext, maybeCompactConversation } from "@/lib/chat/context-manager";
 import { generateFollowUpSuggestions } from "@/lib/chat/follow-up-suggestions";
@@ -109,7 +110,18 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   ]);
 
   // Round 3: assemble context after user message is committed to DB.
-  const context = await assembleConversationContext({ supabase, conversationId: conversation.id });
+  // computeContextHint runs in parallel since it queries a different table.
+  const [context, contextHint] = await Promise.all([
+    assembleConversationContext({ supabase, conversationId: conversation.id }),
+    computeContextHint({
+      supabase,
+      conversationId: conversation.id,
+      userMessage: options.message,
+    }).catch((e: unknown) => {
+      console.error("Context hint failed", e);
+      return null as ContextHint | null;
+    }),
+  ]);
 
   toolContext.timezone =
     typeof builtPrompt.userSettings.timezone === "string"
@@ -128,6 +140,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
 
   let assembled = "";
   let fatalError: string | null = null;
+  let extractedSegmentSignal: ReturnType<typeof extractSegmentSignal>["signal"] = null;
   const runBudget = resolveRunBudget(options.message);
 
   try {
@@ -172,12 +185,16 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
 
       await emitEvent(options.onEvent, event);
     }
-    responseText = assembled.trim() || fatalError || "I ran into an issue while processing that.";
+    const rawText = assembled.trim() || fatalError || "I ran into an issue while processing that.";
+    const { cleanedText: strippedText, signal: segmentSignalResult } = extractSegmentSignal(rawText);
+    extractedSegmentSignal = segmentSignalResult;
+    responseText = strippedText;
     const cards = extractCardsFromToolResults(toolResultsForCards);
     const initialMetadata: MessageMetadata = {
       source: options.source,
       runId,
       ...(cards.length ? { cards } : {}),
+      ...(extractedSegmentSignal ? { segmentSignal: extractedSegmentSignal } : {}),
       ...(options.backgroundJobId
         ? {
             backgroundJob: {
@@ -244,6 +261,18 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     }).catch((error) => {
       console.error("Memory extraction failed", error);
     });
+
+    if (contextHint !== null) {
+      void persistSegmentDecision({
+        supabase,
+        conversationId: conversation.id,
+        userId: options.userId,
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantMessage.id,
+        signal: extractedSegmentSignal ?? null,
+        contextHint,
+      }).catch((e: unknown) => console.error("Segment persistence failed", e));
+    }
 
     agentRunStatus = fatalError ? deriveAgentRunStatus(fatalError) : "completed";
     result = {

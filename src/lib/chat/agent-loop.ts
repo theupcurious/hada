@@ -1096,6 +1096,37 @@ function toObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+// ─── Segment signal extraction ────────────────────────────────────────────────
+
+export interface SegmentSignalData {
+  signal: 'continue' | 'new' | 'revive';
+  topicKey?: string;
+  title?: string;
+}
+
+export function extractSegmentSignal(text: string): {
+  cleanedText: string;
+  signal: SegmentSignalData | null;
+} {
+  const segmentRegex = /<!--\s*segment:(continue|new|revive)(?::([^:\s>-][^:>-]*))?(?::([^-][^>]*))?-->/i;
+  const match = text.match(segmentRegex);
+
+  if (!match) {
+    return { cleanedText: text, signal: null };
+  }
+
+  const [fullMatch, signalType, topicKey, title] = match;
+  const cleanedText = text.replace(fullMatch, "").replace(/\n{3,}/g, "\n\n").trim();
+
+  const signal: SegmentSignalData = {
+    signal: signalType as 'continue' | 'new' | 'revive',
+    ...(topicKey?.trim() ? { topicKey: topicKey.trim() } : {}),
+    ...(title?.trim() ? { title: title.trim() } : {}),
+  };
+
+  return { cleanedText, signal };
+}
+
 async function executeToolCall(
   call: LLMToolCall,
   toolMap: Map<string, AgentTool>,
