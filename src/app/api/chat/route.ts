@@ -5,13 +5,14 @@ import { isLongJobMessage } from "@/lib/chat/runtime-budgets";
 import { processMessage } from "@/lib/chat/process-message";
 import { getOrCreateConversation, getConversationMessagesForRegeneration } from "@/lib/db/conversations";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import type { AgentEvent } from "@/lib/types/database";
 
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
+  const admin = createAdminClient();
   const { user, error: authError } = await getAuthenticatedUser(supabase);
 
   if (authError || !user) {
@@ -51,9 +52,9 @@ export async function POST(request: NextRequest) {
       if (regenerateAssistantMessageId) {
         void (async () => {
           try {
-            const conversation = await getOrCreateConversation(supabase, user.id);
+            const conversation = await getOrCreateConversation(admin, user.id);
             const messages = await getConversationMessagesForRegeneration(
-              supabase,
+              admin,
               conversation.id,
             );
             const pair = resolveRegenerationPair(messages, regenerateAssistantMessageId);
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
               userId: user.id,
               message: pair.message,
               source: "web",
-              supabase,
+              supabase: admin,
               conversationId: conversation.id,
               userMessageId: pair.userMessageId,
               assistantMessageId: pair.assistantMessageId,
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           message,
           source: "web",
-          supabase,
+          supabase: admin,
           onEvent: (event: AgentEvent) => {
             emit(event);
           },
