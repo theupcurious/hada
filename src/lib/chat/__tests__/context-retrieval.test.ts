@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assembleRankedContext,
   estimateTokens,
+  mergeRecentConversationWindow,
   memorySourceForKind,
   type ContextRetrievalCandidate,
 } from "@/lib/chat/context-retrieval";
@@ -174,6 +175,54 @@ describe("context-retrieval", () => {
     expect(result.selections.find((selection) => selection.id === "semantic-match")?.reasons).toEqual(
       expect.arrayContaining(["semantic-similarity:1.000"]),
     );
+  });
+
+  it("appends the latest live exchange from legacy context when ranked retrieval misses it", () => {
+    const merged = mergeRecentConversationWindow({
+      rankedMessages: [
+        {
+          role: "system",
+          content: "Active segment summary: macro discussion",
+        },
+        {
+          role: "user",
+          content: "can we ensure the data is as of today",
+        },
+      ],
+      legacyMessages: [
+        {
+          role: "user",
+          content: "how should one position for the market",
+        },
+        {
+          role: "assistant",
+          content: "Wait for CPI before adding size.",
+        },
+        {
+          role: "user",
+          content: "can we ensure the data is as of today",
+        },
+      ],
+    });
+
+    expect(merged).toEqual([
+      {
+        role: "system",
+        content: "Active segment summary: macro discussion",
+      },
+      {
+        role: "user",
+        content: "how should one position for the market",
+      },
+      {
+        role: "assistant",
+        content: "Wait for CPI before adding size.",
+      },
+      {
+        role: "user",
+        content: "can we ensure the data is as of today",
+      },
+    ]);
   });
 
   it("maps pinned memories to the profile bucket", () => {

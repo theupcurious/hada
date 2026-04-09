@@ -75,6 +75,12 @@ export interface RetrieveRankedConversationContextOptions {
   maxArtifactRows?: number;
 }
 
+export interface MergeRecentConversationWindowOptions {
+  rankedMessages: LLMMessage[];
+  legacyMessages: LLMMessage[];
+  maxRecentMessages?: number;
+}
+
 const DEFAULT_TOKEN_BUDGET = 16_000;
 const DEFAULT_HALF_LIFE_DAYS = 7;
 
@@ -295,6 +301,48 @@ export function assembleRankedContext(options: AssembleRankedContextOptions): Co
     sourceBreakdown,
     strategy: "ranked",
   };
+}
+
+export function mergeRecentConversationWindow(
+  options: MergeRecentConversationWindowOptions,
+): LLMMessage[] {
+  const maxRecentMessages = Math.max(0, options.maxRecentMessages ?? 4);
+  if (maxRecentMessages === 0) {
+    return options.rankedMessages;
+  }
+
+  const liveWindow = options.legacyMessages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .slice(-maxRecentMessages);
+
+  if (!liveWindow.length) {
+    return options.rankedMessages;
+  }
+
+  const liveWindowCounts = new Map<string, number>();
+  for (const message of liveWindow) {
+    const key = messageKey(message);
+    liveWindowCounts.set(key, (liveWindowCounts.get(key) ?? 0) + 1);
+  }
+
+  const preservedPrefix: LLMMessage[] = [];
+  for (const message of options.rankedMessages) {
+    if (message.role !== "user" && message.role !== "assistant") {
+      preservedPrefix.push(message);
+      continue;
+    }
+
+    const key = messageKey(message);
+    const overlapCount = liveWindowCounts.get(key) ?? 0;
+    if (overlapCount > 0) {
+      liveWindowCounts.set(key, overlapCount - 1);
+      continue;
+    }
+
+    preservedPrefix.push(message);
+  }
+
+  return [...preservedPrefix, ...liveWindow];
 }
 
 export async function retrieveRankedConversationContext(
@@ -568,6 +616,10 @@ function normalizeCandidate(candidate: ContextRetrievalCandidate): ContextRetrie
     title: candidate.title ? normalizeText(candidate.title) : candidate.title,
     topicKey: candidate.topicKey ? normalizeText(candidate.topicKey) : candidate.topicKey,
   };
+}
+
+function messageKey(message: LLMMessage): string {
+  return `${message.role}\u0000${message.content}`;
 }
 
 function candidateToMessage(candidate: ContextRetrievalCandidate): LLMMessage {

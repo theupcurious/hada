@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentLoop, extractSegmentSignal } from "@/lib/chat/agent-loop";
 import { extractCardsFromToolResults } from "@/lib/chat/card-extraction";
-import { retrieveRankedConversationContext } from "@/lib/chat/context-retrieval";
+import { mergeRecentConversationWindow, retrieveRankedConversationContext } from "@/lib/chat/context-retrieval";
 import type { LLMMessage } from "@/lib/chat/providers";
 import { computeContextHint, persistSegmentDecision, type ContextHint } from "@/lib/chat/segment-router";
 import { persistSegmentArtifact } from "@/lib/chat/segment-artifacts";
@@ -277,18 +277,18 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     });
 
     if (contextHint !== null) {
-      void (async () => {
-        try {
-          const segmentDecision = await persistSegmentDecision({
-            supabase,
-            conversationId: conversation.id,
-            userId: options.userId,
-            userMessageId: userMessage.id,
-            assistantMessageId: assistantMessage.id,
-            signal: extractedSegmentSignal ?? null,
-            contextHint,
-          });
+      try {
+        const segmentDecision = await persistSegmentDecision({
+          supabase,
+          conversationId: conversation.id,
+          userId: options.userId,
+          userMessageId: userMessage.id,
+          assistantMessageId: assistantMessage.id,
+          signal: extractedSegmentSignal ?? null,
+          contextHint,
+        });
 
+        void (async () => {
           const postResponseTasks: Array<Promise<unknown>> = [];
 
           if (segmentDecision.closedSegmentId) {
@@ -340,10 +340,12 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
           }
 
           await Promise.allSettled(postResponseTasks);
-        } catch (e: unknown) {
-          console.error("Segment persistence failed", e);
-        }
-      })();
+        })().catch((error) => {
+          console.error("Segment post-response tasks failed", error);
+        });
+      } catch (e: unknown) {
+        console.error("Segment persistence failed", e);
+      }
     }
 
     agentRunStatus = fatalError ? deriveAgentRunStatus(fatalError) : "completed";
@@ -405,11 +407,12 @@ async function resolveConversationContext(options: {
       contextHint: options.contextHint,
     });
 
-    const messages = ensureCurrentUserTurnIncluded(rankedContext.messages, options.userMessage);
-    const estimatedTokens =
-      messages === rankedContext.messages
-        ? rankedContext.estimatedTokens
-        : rankedContext.estimatedTokens + Math.ceil(options.userMessage.length / 4);
+    const mergedMessages = mergeRecentConversationWindow({
+      rankedMessages: rankedContext.messages,
+      legacyMessages: options.legacyContext.messages,
+    });
+    const messages = ensureCurrentUserTurnIncluded(mergedMessages, options.userMessage);
+    const estimatedTokens = estimateMessageTokens(messages);
 
     return {
       ...rankedContext,
@@ -435,6 +438,10 @@ function ensureCurrentUserTurnIncluded(messages: LLMMessage[], userMessage: stri
       content: userMessage,
     },
   ];
+}
+
+function estimateMessageTokens(messages: LLMMessage[]): number {
+  return messages.reduce((total, message) => total + Math.ceil(message.content.length / 4), 0);
 }
 
 function buildRetrievalMetadata(

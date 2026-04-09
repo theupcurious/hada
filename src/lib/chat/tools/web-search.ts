@@ -6,10 +6,17 @@ interface SearchResult {
   title: string;
   url: string;
   snippet: string;
+  publishedAt?: string | null;
 }
 
 const MAX_TITLE_CHARS = 120;
 const MAX_SNIPPET_CHARS = 240;
+const CURRENT_INFO_PATTERN =
+  /\b(today|current|currently|latest|recent|recently|new|news|updated|update|as of|verify|verified|tomorrow|yesterday|this week|this month|this year)\b/i;
+const FINANCE_PATTERN =
+  /\b(market|markets|stock|stocks|equity|equities|bond|bonds|yield|yields|treasury|treasuries|fed|fomc|cpi|ppi|pce|inflation|jobs|payrolls|unemployment|earnings|oil|gold|bitcoin|btc|ethereum|eth|fx|forex|usd|eur|jpy|nasdaq|dow|s&p|spx|rates?)\b/i;
+const EXPLICIT_DATE_PATTERN =
+  /\b(20\d{2}|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|q[1-4])\b/i;
 
 export const webSearchManifest: ToolManifest = {
   name: "web_search",
@@ -49,6 +56,7 @@ export function createWebSearchTool(): AgentTool {
         return JSON.stringify({ success: false, error: "query is required" });
       }
 
+      const searchContext = buildSearchContext(query, new Date());
       const provider = (process.env.SEARCH_PROVIDER || "tavily").toLowerCase();
       const apiKey = resolveSearchApiKey(provider);
 
@@ -62,22 +70,25 @@ export function createWebSearchTool(): AgentTool {
       try {
         let results: SearchResult[] = [];
         if (provider === "serpapi") {
-          results = await searchSerpAPI(query, maxResults, apiKey, options?.signal);
+          results = await searchSerpAPI(searchContext, maxResults, apiKey, options?.signal);
         } else if (provider === "brave") {
-          results = await searchBrave(query, maxResults, apiKey, options?.signal);
+          results = await searchBrave(searchContext, maxResults, apiKey, options?.signal);
         } else {
-          results = await searchTavily(query, maxResults, apiKey, options?.signal);
+          results = await searchTavily(searchContext, maxResults, apiKey, options?.signal);
         }
 
         return JSON.stringify({
           success: true,
           provider,
           query,
+          effective_query: searchContext.effectiveQuery,
+          freshness_sensitive: searchContext.freshnessSensitive,
           results: results.map((result, index) => ({
             rank: index + 1,
             title: clampText(result.title, MAX_TITLE_CHARS),
             url: result.url,
             snippet: clampText(result.snippet, MAX_SNIPPET_CHARS),
+            ...(result.publishedAt ? { published_at: result.publishedAt } : {}),
           })),
         });
       } catch (error) {
@@ -111,7 +122,7 @@ function resolveSearchApiKey(provider: string): string {
 }
 
 async function searchTavily(
-  query: string,
+  context: SearchContext,
   maxResults: number,
   apiKey: string,
   signal?: AbortSignal,
@@ -124,8 +135,15 @@ async function searchTavily(
     },
     body: JSON.stringify({
       api_key: apiKey,
-      query,
+      query: context.effectiveQuery,
       max_results: maxResults,
+      ...(context.freshnessSensitive
+        ? {
+            topic: "news",
+            days: 30,
+            search_depth: "advanced",
+          }
+        : {}),
     }),
   });
 
@@ -138,20 +156,25 @@ async function searchTavily(
     title: "title",
     url: "url",
     snippet: "content",
+    publishedAt: ["published_date"],
   });
 }
 
 async function searchSerpAPI(
-  query: string,
+  context: SearchContext,
   maxResults: number,
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = new URL("https://serpapi.com/search");
   url.searchParams.set("engine", "google");
-  url.searchParams.set("q", query);
+  url.searchParams.set("q", context.effectiveQuery);
   url.searchParams.set("api_key", apiKey);
   url.searchParams.set("num", String(maxResults));
+  if (context.freshnessSensitive) {
+    url.searchParams.set("tbm", "nws");
+    url.searchParams.set("tbs", "qdr:m");
+  }
 
   const response = await fetch(url.toString(), { signal });
   if (!response.ok) {
@@ -159,21 +182,23 @@ async function searchSerpAPI(
   }
 
   const data = await response.json();
-  return toSearchResults((data?.organic_results || []).slice(0, maxResults), {
+  const rows = context.freshnessSensitive ? data?.news_results || data?.organic_results || [] : data?.organic_results || [];
+  return toSearchResults(rows.slice(0, maxResults), {
     title: "title",
     url: "link",
     snippet: "snippet",
+    publishedAt: ["date"],
   });
 }
 
 async function searchBrave(
-  query: string,
+  context: SearchContext,
   maxResults: number,
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = new URL("https://api.search.brave.com/res/v1/web/search");
-  url.searchParams.set("q", query);
+  url.searchParams.set("q", context.effectiveQuery);
   url.searchParams.set("count", String(maxResults));
 
   const response = await fetch(url.toString(), {
@@ -193,12 +218,13 @@ async function searchBrave(
     title: "title",
     url: "url",
     snippet: "description",
+    publishedAt: ["page_age", "age"],
   });
 }
 
 function toSearchResults(
   input: unknown[],
-  fields: { title: string; url: string; snippet: string },
+  fields: { title: string; url: string; snippet: string; publishedAt?: string[] },
 ): SearchResult[] {
   return input.map((item) => {
     const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
@@ -206,6 +232,7 @@ function toSearchResults(
       title: String(record[fields.title] || "Untitled"),
       url: String(record[fields.url] || ""),
       snippet: String(record[fields.snippet] || ""),
+      publishedAt: firstString(record, fields.publishedAt),
     };
   });
 }
@@ -238,4 +265,62 @@ function clampText(value: string, maxChars: number): string {
   }
 
   return `${normalized.slice(0, maxChars).trimEnd()}…`;
+}
+
+interface SearchContext {
+  originalQuery: string;
+  effectiveQuery: string;
+  freshnessSensitive: boolean;
+}
+
+export function buildSearchContext(query: string, now: Date): SearchContext {
+  const trimmedQuery = query.trim();
+  const freshnessSensitive = isFreshnessSensitiveQuery(trimmedQuery);
+
+  return {
+    originalQuery: trimmedQuery,
+    effectiveQuery: freshnessSensitive ? applyFreshnessBias(trimmedQuery, now) : trimmedQuery,
+    freshnessSensitive,
+  };
+}
+
+export function isFreshnessSensitiveQuery(query: string): boolean {
+  const normalized = query.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return CURRENT_INFO_PATTERN.test(normalized) || FINANCE_PATTERN.test(normalized);
+}
+
+function applyFreshnessBias(query: string, now: Date): string {
+  if (EXPLICIT_DATE_PATTERN.test(query)) {
+    return query;
+  }
+
+  return `${query} ${formatSearchDate(now)} latest`;
+}
+
+function formatSearchDate(now: Date): string {
+  return now.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function firstString(record: Record<string, unknown>, fields?: string[]): string | null {
+  if (!fields?.length) {
+    return null;
+  }
+
+  for (const field of fields) {
+    const value = record[field];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
 }
