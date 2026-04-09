@@ -1,21 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-
-// Local type definitions — will be moved to @/lib/types/database once migrations merge
-export interface ConversationSegment {
-  id: string;
-  conversation_id: string;
-  user_id: string;
-  status: 'active' | 'closed' | 'archived';
-  title: string | null;
-  summary: string | null;
-  summary_embedding: string | null;
-  topic_key: string | null;
-  opened_at: string;
-  closed_at: string | null;
-  last_active_at: string;
-  message_count: number;
-  metadata: Record<string, unknown>;
-}
+import type { ConversationSegment } from "@/lib/types/database";
 
 export type SegmentSignal = 'continue' | 'new' | 'revive';
 
@@ -30,6 +14,13 @@ export interface ContextHint {
   candidateSegments: ConversationSegment[];
   confidence: number;
   reason: string;
+}
+
+export interface PersistSegmentDecisionResult {
+  signal: SegmentSignal;
+  action: "continue" | "create" | "revive" | "fallback";
+  segmentId: string | null;
+  closedSegmentId: string | null;
 }
 
 const STOP_WORDS = new Set([
@@ -181,17 +172,27 @@ async function attachMessagesToSegment(
   messageIds: string[],
 ): Promise<void> {
   if (!messageIds.length) return;
-  await supabase
+  const { error } = await supabase
     .from("messages")
     .update({ segment_id: segmentId })
     .in("id", messageIds);
+  if (error) {
+    throw new Error(`Failed to attach messages to segment ${segmentId}: ${error.message}`);
+  }
 }
 
 async function createSegment(
   supabase: SupabaseClient,
-  options: { conversationId: string; userId: string; topicKey: string; title: string | null },
+  options: {
+    conversationId: string;
+    userId: string;
+    topicKey: string;
+    title: string | null;
+    nowIso: string;
+    messageCount?: number;
+  },
 ): Promise<ConversationSegment | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("conversation_segments")
     .insert({
       conversation_id: options.conversationId,
@@ -199,13 +200,107 @@ async function createSegment(
       status: "active",
       topic_key: options.topicKey,
       title: options.title,
-      opened_at: new Date().toISOString(),
-      last_active_at: new Date().toISOString(),
-      message_count: 0,
+      opened_at: options.nowIso,
+      last_active_at: options.nowIso,
+      message_count: options.messageCount ?? 0,
     })
     .select()
     .single();
+
+  if (error) {
+    throw new Error(`Failed to create segment: ${error.message}`);
+  }
+
   return data as ConversationSegment | null;
+}
+
+async function fetchActiveSegment(
+  supabase: SupabaseClient,
+  conversationId: string,
+): Promise<ConversationSegment | null> {
+  const { data, error } = await supabase
+    .from("conversation_segments")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .eq("status", "active")
+    .single();
+
+  if (error && !error.message.toLowerCase().includes("no rows")) {
+    throw new Error(`Failed to fetch active segment: ${error.message}`);
+  }
+
+  return (data as ConversationSegment | null) ?? null;
+}
+
+async function updateSegment(
+  supabase: SupabaseClient,
+  segmentId: string,
+  patch: Partial<ConversationSegment>,
+): Promise<void> {
+  const { error } = await supabase
+    .from("conversation_segments")
+    .update(patch)
+    .eq("id", segmentId);
+
+  if (error) {
+    throw new Error(`Failed to update segment ${segmentId}: ${error.message}`);
+  }
+}
+
+async function continueSegment(
+  supabase: SupabaseClient,
+  segment: ConversationSegment,
+  options: {
+    nowIso: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    signal?: PersistSegmentDecisionResult["signal"];
+    action?: PersistSegmentDecisionResult["action"];
+    closedSegmentId?: string | null;
+  },
+): Promise<PersistSegmentDecisionResult> {
+  await updateSegment(supabase, segment.id, {
+    status: "active",
+    closed_at: null,
+    last_active_at: options.nowIso,
+    message_count: segment.message_count + 2,
+  });
+  await attachMessagesToSegment(supabase, segment.id, [options.userMessageId, options.assistantMessageId]);
+
+  return {
+    signal: options.signal ?? "continue",
+    action: options.action ?? "continue",
+    segmentId: segment.id,
+    closedSegmentId: options.closedSegmentId ?? null,
+  };
+}
+
+async function rollbackToActiveSegment(
+  supabase: SupabaseClient,
+  conversationId: string,
+  previousActiveSegment: ConversationSegment | null,
+  options: {
+    nowIso: string;
+    userMessageId: string;
+    assistantMessageId: string;
+  },
+): Promise<PersistSegmentDecisionResult | null> {
+  const currentActiveSegment = await fetchActiveSegment(supabase, conversationId);
+  if (currentActiveSegment) {
+    return continueSegment(supabase, currentActiveSegment, {
+      ...options,
+      action: "fallback",
+    });
+  }
+
+  if (previousActiveSegment) {
+    return continueSegment(supabase, previousActiveSegment, {
+      ...options,
+      action: "fallback",
+    });
+  }
+
+  return null;
 }
 
 export async function persistSegmentDecision(options: {
@@ -216,65 +311,75 @@ export async function persistSegmentDecision(options: {
   assistantMessageId: string;
   signal: SegmentSignalData | null;
   contextHint: ContextHint;
-}): Promise<void> {
+}): Promise<PersistSegmentDecisionResult> {
   const { supabase, conversationId, userId, userMessageId, assistantMessageId, signal, contextHint } = options;
   const activeSegment = contextHint.activeSegment;
   const effectiveSignal = signal?.signal ?? "continue";
+  const nowIso = new Date().toISOString();
+  let closedActiveSegment = false;
 
   try {
     if (effectiveSignal === "continue" || !signal) {
       if (activeSegment) {
-        await supabase
-          .from("conversation_segments")
-          .update({
-            last_active_at: new Date().toISOString(),
-            message_count: activeSegment.message_count + 2,
-          })
-          .eq("id", activeSegment.id);
-        await attachMessagesToSegment(supabase, activeSegment.id, [userMessageId, assistantMessageId]);
-      } else {
-        const newSegment = await createSegment(supabase, {
-          conversationId,
-          userId,
-          topicKey: "general",
-          title: "General",
+        return continueSegment(supabase, activeSegment, {
+          nowIso,
+          userMessageId,
+          assistantMessageId,
         });
-        if (newSegment) {
-          await attachMessagesToSegment(supabase, newSegment.id, [userMessageId, assistantMessageId]);
-        }
+      }
+
+      const newSegment = await createSegment(supabase, {
+        conversationId,
+        userId,
+        topicKey: "general",
+        title: "General",
+        nowIso,
+      });
+      if (newSegment) {
+        return continueSegment(supabase, newSegment, {
+          nowIso,
+          userMessageId,
+          assistantMessageId,
+          action: "create",
+        });
       }
     } else if (effectiveSignal === "new") {
       if (activeSegment) {
         if (activeSegment.message_count < 3) {
-          await supabase
-            .from("conversation_segments")
-            .update({ last_active_at: new Date().toISOString(), message_count: activeSegment.message_count + 2 })
-            .eq("id", activeSegment.id);
-          await attachMessagesToSegment(supabase, activeSegment.id, [userMessageId, assistantMessageId]);
-          return;
+          return continueSegment(supabase, activeSegment, {
+            nowIso,
+            userMessageId,
+            assistantMessageId,
+          });
         }
-        await supabase
-          .from("conversation_segments")
-          .update({ status: "closed", closed_at: new Date().toISOString() })
-          .eq("id", activeSegment.id);
+        await updateSegment(supabase, activeSegment.id, {
+          status: "closed",
+          closed_at: nowIso,
+        });
+        closedActiveSegment = true;
       }
+
       const newSegment = await createSegment(supabase, {
         conversationId,
         userId,
         topicKey: signal.topicKey ?? "topic",
         title: signal.title ?? null,
+        nowIso,
       });
       if (newSegment) {
-        await attachMessagesToSegment(supabase, newSegment.id, [userMessageId, assistantMessageId]);
+        return continueSegment(supabase, newSegment, {
+          nowIso,
+          userMessageId,
+          assistantMessageId,
+          signal: "new",
+          action: "create",
+          closedSegmentId: activeSegment?.id ?? null,
+        });
       }
     } else if (effectiveSignal === "revive") {
-      if (activeSegment) {
-        await supabase
-          .from("conversation_segments")
-          .update({ status: "closed", closed_at: new Date().toISOString() })
-          .eq("id", activeSegment.id);
-      }
       const topicKey = signal.topicKey;
+      let targetSegment: ConversationSegment | null = null;
+
       if (topicKey) {
         const { data: target } = await supabase
           .from("conversation_segments")
@@ -285,37 +390,82 @@ export async function persistSegmentDecision(options: {
           .order("last_active_at", { ascending: false })
           .limit(1)
           .single();
-        if (target) {
-          await supabase
-            .from("conversation_segments")
-            .update({ status: "active", closed_at: null, last_active_at: new Date().toISOString() })
-            .eq("id", target.id);
-          await attachMessagesToSegment(supabase, target.id, [userMessageId, assistantMessageId]);
-          return;
-        }
+        targetSegment = (target as ConversationSegment | null) ?? null;
       }
+
+      if (targetSegment) {
+        if (activeSegment) {
+          await updateSegment(supabase, activeSegment.id, {
+            status: "closed",
+            closed_at: nowIso,
+          });
+          closedActiveSegment = true;
+        }
+
+        return continueSegment(supabase, targetSegment, {
+          nowIso,
+          userMessageId,
+          assistantMessageId,
+          signal: "revive",
+          action: "revive",
+          closedSegmentId: activeSegment?.id ?? null,
+        });
+      }
+
+      if (activeSegment) {
+        await updateSegment(supabase, activeSegment.id, {
+          status: "closed",
+          closed_at: nowIso,
+        });
+        closedActiveSegment = true;
+      }
+
       const newSegment = await createSegment(supabase, {
         conversationId,
         userId,
         topicKey: signal.topicKey ?? "revived",
         title: signal.title ?? null,
+        nowIso,
       });
       if (newSegment) {
-        await attachMessagesToSegment(supabase, newSegment.id, [userMessageId, assistantMessageId]);
+        return continueSegment(supabase, newSegment, {
+          nowIso,
+          userMessageId,
+          assistantMessageId,
+          signal: "revive",
+          action: "create",
+          closedSegmentId: activeSegment?.id ?? null,
+        });
       }
     }
   } catch (error) {
     const isUniqueViolation = error instanceof Error &&
       (error.message.includes("unique") || error.message.includes("duplicate"));
-    if (isUniqueViolation && activeSegment) {
-      console.warn("Segment unique constraint violation — retrying as continue");
-      await supabase
-        .from("conversation_segments")
-        .update({ last_active_at: new Date().toISOString(), message_count: activeSegment.message_count + 2 })
-        .eq("id", activeSegment.id);
-      await attachMessagesToSegment(supabase, activeSegment.id, [userMessageId, assistantMessageId]);
-    } else {
-      console.error("Segment persistence failed", error);
+    if (isUniqueViolation || closedActiveSegment) {
+      try {
+        const fallbackResult = await rollbackToActiveSegment(supabase, conversationId, activeSegment, {
+          nowIso,
+          userMessageId,
+          assistantMessageId,
+        });
+        if (fallbackResult) {
+          if (isUniqueViolation) {
+            console.warn("Segment unique constraint violation — continued on the active segment");
+          }
+          return fallbackResult;
+        }
+      } catch (rollbackError) {
+        console.error("Segment rollback failed", rollbackError);
+      }
     }
+
+    console.error("Segment persistence failed", error);
   }
+
+  return {
+    signal: effectiveSignal,
+    action: "fallback",
+    segmentId: activeSegment?.id ?? null,
+    closedSegmentId: null,
+  };
 }

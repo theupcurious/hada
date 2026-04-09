@@ -93,6 +93,26 @@ export interface MessageMetadata {
   type?: "compaction";
   thinking?: string;
   runId?: string;
+  retrieval?: {
+    strategy?: "recency" | "ranked";
+    estimatedTokens?: number;
+    hint?: {
+      confidence?: number;
+      reason?: string;
+      activeSegmentId?: string | null;
+      candidateSegmentIds?: string[];
+    };
+    sourceBreakdown?: Record<string, { available?: number; selected?: number; tokens?: number }>;
+    selections?: Array<{
+      id?: string;
+      source?: string;
+      score?: number;
+      tokenCount?: number;
+      selected?: boolean;
+      reasons?: string[];
+      preview?: string;
+    }>;
+  };
   gatewayError?: { code: string; message: string };
   backgroundJob?: {
     id?: string;
@@ -123,6 +143,7 @@ export interface MessageMetadata {
 export interface Message {
   id: string;
   conversation_id: string;
+  segment_id: string | null;
   role: MessageRole;
   content: string;
   metadata: MessageMetadata | null;
@@ -152,6 +173,41 @@ export interface UserMemory {
   kind: MemoryKind;
   pinned: boolean;
   source_segment_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationSegment {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  status: "active" | "closed" | "archived";
+  title: string | null;
+  summary: string | null;
+  summary_embedding: string | null;
+  topic_key: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  last_active_at: string;
+  message_count: number;
+  metadata: Record<string, unknown>;
+}
+
+export type SegmentArtifactKind = "memo" | "analysis" | "summary" | "other";
+
+export interface SegmentArtifact {
+  id: string;
+  segment_id: string;
+  conversation_id: string;
+  user_id: string;
+  source_message_id: string | null;
+  assistant_message_id: string | null;
+  kind: SegmentArtifactKind;
+  title: string;
+  summary: string;
+  content: string;
+  summary_embedding: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -328,6 +384,7 @@ export type Database = {
         Insert: {
           id?: string;
           conversation_id: string;
+          segment_id?: string | null;
           role: MessageRole;
           content: string;
           metadata?: MessageMetadata | null;
@@ -367,6 +424,26 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Omit<UserMemory, "id" | "user_id" | "created_at">>;
+        Relationships: [];
+      };
+      conversation_segments: {
+        Row: ConversationSegment;
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          user_id: string;
+          status?: ConversationSegment["status"];
+          title?: string | null;
+          summary?: string | null;
+          summary_embedding?: string | null;
+          topic_key?: string | null;
+          opened_at?: string;
+          closed_at?: string | null;
+          last_active_at?: string;
+          message_count?: number;
+          metadata?: Record<string, unknown>;
+        };
+        Update: Partial<Omit<ConversationSegment, "id" | "conversation_id" | "user_id" | "opened_at">>;
         Relationships: [];
       };
       telegram_link_tokens: {
@@ -452,6 +529,27 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Omit<AgentRun, "id" | "user_id" | "created_at">>;
+        Relationships: [];
+      };
+      segment_artifacts: {
+        Row: SegmentArtifact;
+        Insert: {
+          id?: string;
+          segment_id: string;
+          conversation_id: string;
+          user_id: string;
+          source_message_id?: string | null;
+          assistant_message_id?: string | null;
+          kind?: SegmentArtifactKind;
+          title: string;
+          summary: string;
+          content?: string;
+          summary_embedding?: string | null;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<SegmentArtifact, "id" | "segment_id" | "conversation_id" | "user_id" | "created_at">>;
         Relationships: [];
       };
     };

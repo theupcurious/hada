@@ -30,7 +30,7 @@ export async function GET() {
 
   const conversationId = (conversation as { id?: string } | null)?.id ?? null;
 
-  const [memoriesResult, messageCountResult, summaryCountResult] = await Promise.all([
+  const [memoriesResult, messageCountResult, summaryCountResult, segmentsResult, latestAssistantResult] = await Promise.all([
     supabase
       .from("user_memories")
       .select("topic, content, kind, pinned, updated_at")
@@ -51,6 +51,24 @@ export async function GET() {
           .eq("conversation_id", conversationId)
           .contains("metadata", { type: "compaction" })
       : Promise.resolve({ count: 0 }),
+    conversationId
+      ? supabase
+          .from("conversation_segments")
+          .select("id, status, title, topic_key, summary, last_active_at, message_count, metadata")
+          .eq("conversation_id", conversationId)
+          .order("last_active_at", { ascending: false })
+          .limit(12)
+      : Promise.resolve({ data: [] }),
+    conversationId
+      ? supabase
+          .from("messages")
+          .select("id, metadata, created_at")
+          .eq("conversation_id", conversationId)
+          .eq("role", "assistant")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   return NextResponse.json({
@@ -60,6 +78,7 @@ export async function GET() {
       totalMessages: messageCountResult.count || 0,
       compactionSummaries: summaryCountResult.count || 0,
     },
-    segments: null,
+    segments: segmentsResult.data || [],
+    latestRetrieval: (latestAssistantResult.data as { metadata?: { retrieval?: unknown } | null } | null)?.metadata?.retrieval ?? null,
   });
 }

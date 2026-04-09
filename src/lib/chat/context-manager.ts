@@ -14,6 +14,29 @@ export interface ContextAssemblyResult {
   estimatedTokens: number;
 }
 
+interface CompactionMessageRow {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  metadata: MessageMetadata | null;
+  created_at: string;
+  segment_id: string | null;
+}
+
+interface CompactionRun {
+  segmentId: string | null;
+  messages: CompactionMessageRow[];
+}
+
+export interface SegmentAwareCompactionPlan {
+  shouldCompact: boolean;
+  reason: string;
+  segmentId: string | null;
+  sourceMessages: CompactionMessageRow[];
+  lastMessageAt: string | null;
+  transcript: string;
+}
+
 export async function assembleConversationContext(options: {
   supabase: SupabaseClient;
   conversationId: string;
@@ -155,7 +178,7 @@ export async function maybeCompactConversation(options: {
 
   let chunkQuery = options.supabase
     .from("messages")
-    .select("id, role, content, metadata, created_at")
+    .select("id, role, content, metadata, created_at, segment_id")
     .eq("conversation_id", options.conversationId)
     .order("created_at", { ascending: true })
     .limit(120);
@@ -165,35 +188,18 @@ export async function maybeCompactConversation(options: {
   }
 
   const { data: chunk } = await chunkQuery;
-  type ChunkRow = {
-    id: string;
-    role: "user" | "assistant" | "system";
-    content: string;
-    metadata: MessageMetadata | null;
-    created_at: string;
-  };
+  const chunkRows = (chunk as unknown as CompactionMessageRow[] | null) || [];
+  const plan = buildSegmentAwareCompactionPlan(chunkRows, threshold);
 
-  const chunkRows = (chunk as unknown as ChunkRow[] | null) || [];
-
-  const sourceMessages = chunkRows.filter((message) => {
-    const metadata = (message.metadata || {}) as MessageMetadata;
-    return metadata.type !== "compaction" && (message.role === "user" || message.role === "assistant");
-  });
-
-  if (!sourceMessages.length) {
+  if (!plan.shouldCompact || !plan.sourceMessages.length) {
     return;
   }
-
-  const transcript = sourceMessages
-    .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
-    .join("\n\n")
-    .slice(0, 20_000);
 
   await flushMemoriesBeforeCompaction({
     supabase: options.supabase,
     userId: options.userId,
     provider: options.provider,
-    transcript,
+    transcript: plan.transcript,
   });
 
   let summary = "";
@@ -209,13 +215,13 @@ export async function maybeCompactConversation(options: {
         },
         {
           role: "user",
-          content: transcript,
+          content: plan.transcript,
         },
       ],
     });
     summary = result.content.trim();
   } catch {
-    summary = fallbackSummary(sourceMessages.map((m) => m.content));
+    summary = fallbackSummary(plan.sourceMessages.map((m) => m.content));
   }
 
   if (!summary) {
@@ -224,15 +230,94 @@ export async function maybeCompactConversation(options: {
 
   await options.supabase.from("messages").insert({
     conversation_id: options.conversationId,
+    segment_id: plan.segmentId,
     role: "system",
     content: summary,
-    metadata: { type: "compaction" },
+    metadata: {
+      type: "compaction",
+      segmentId: plan.segmentId,
+      boundaryAware: plan.segmentId !== null,
+    },
   });
 
   await options.supabase
     .from("conversations")
-    .update({ compacted_through: sourceMessages[sourceMessages.length - 1].created_at })
+    .update({ compacted_through: plan.lastMessageAt })
     .eq("id", options.conversationId);
+}
+
+export function buildSegmentAwareCompactionPlan(
+  chunkRows: CompactionMessageRow[],
+  threshold: number,
+): SegmentAwareCompactionPlan {
+  const runs = groupCompactionRuns(chunkRows);
+
+  for (const run of runs) {
+    const sourceMessages = run.messages.filter(
+      (message) => message.role === "user" || message.role === "assistant",
+    );
+
+    if (!sourceMessages.length) {
+      continue;
+    }
+
+    if (sourceMessages.length < threshold) {
+      return {
+        shouldCompact: false,
+        reason: "below_threshold",
+        segmentId: run.segmentId,
+        sourceMessages,
+        lastMessageAt: null,
+        transcript: "",
+      };
+    }
+
+    const transcript = sourceMessages
+      .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
+      .join("\n\n")
+      .slice(0, 20_000);
+
+    return {
+      shouldCompact: true,
+      reason: run.segmentId ? "segment_boundary" : "legacy_history",
+      segmentId: run.segmentId,
+      sourceMessages,
+      lastMessageAt: sourceMessages.at(-1)?.created_at ?? null,
+      transcript,
+    };
+  }
+
+  return {
+    shouldCompact: false,
+    reason: "no_compactable_messages",
+    segmentId: null,
+    sourceMessages: [],
+    lastMessageAt: null,
+    transcript: "",
+  };
+}
+
+function groupCompactionRuns(chunkRows: CompactionMessageRow[]): CompactionRun[] {
+  const runs: CompactionRun[] = [];
+
+  for (const message of chunkRows) {
+    const metadata = (message.metadata || {}) as MessageMetadata;
+    if (metadata.type === "compaction") {
+      continue;
+    }
+
+    const segmentId = message.segment_id ?? null;
+    const previous = runs.at(-1);
+
+    if (!previous || previous.segmentId !== segmentId) {
+      runs.push({ segmentId, messages: [message] });
+      continue;
+    }
+
+    previous.messages.push(message);
+  }
+
+  return runs;
 }
 
 export function estimateTokens(text: string): number {

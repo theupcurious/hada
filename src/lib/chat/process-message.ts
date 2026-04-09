@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentLoop, extractSegmentSignal } from "@/lib/chat/agent-loop";
 import { extractCardsFromToolResults } from "@/lib/chat/card-extraction";
+import { retrieveRankedConversationContext } from "@/lib/chat/context-retrieval";
+import type { LLMMessage } from "@/lib/chat/providers";
 import { computeContextHint, persistSegmentDecision, type ContextHint } from "@/lib/chat/segment-router";
+import { persistSegmentArtifact } from "@/lib/chat/segment-artifacts";
+import { queueSegmentSummaryRefresh } from "@/lib/chat/segment-summaries";
 import { buildSystemPrompt } from "@/lib/chat/build-system-prompt";
 import { assembleConversationContext, maybeCompactConversation } from "@/lib/chat/context-manager";
 import { generateFollowUpSuggestions } from "@/lib/chat/follow-up-suggestions";
@@ -110,8 +114,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   ]);
 
   // Round 3: assemble context after user message is committed to DB.
-  // computeContextHint runs in parallel since it queries a different table.
-  const [context, contextHint] = await Promise.all([
+  const [legacyContext, contextHint] = await Promise.all([
     assembleConversationContext({ supabase, conversationId: conversation.id }),
     computeContextHint({
       supabase,
@@ -122,6 +125,14 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       return null as ContextHint | null;
     }),
   ]);
+  const context = await resolveConversationContext({
+    supabase,
+    conversationId: conversation.id,
+    userId: options.userId,
+    userMessage: options.message,
+    legacyContext,
+    contextHint,
+  });
 
   toolContext.timezone =
     typeof builtPrompt.userSettings.timezone === "string"
@@ -190,9 +201,11 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     extractedSegmentSignal = segmentSignalResult;
     responseText = strippedText;
     const cards = extractCardsFromToolResults(toolResultsForCards);
+    const retrievalMetadata = buildRetrievalMetadata(context, contextHint);
     const initialMetadata: MessageMetadata = {
       source: options.source,
       runId,
+      retrieval: retrievalMetadata,
       ...(cards.length ? { cards } : {}),
       ...(extractedSegmentSignal ? { segmentSignal: extractedSegmentSignal } : {}),
       ...(options.backgroundJobId
@@ -263,15 +276,73 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     });
 
     if (contextHint !== null) {
-      void persistSegmentDecision({
-        supabase,
-        conversationId: conversation.id,
-        userId: options.userId,
-        userMessageId: userMessage.id,
-        assistantMessageId: assistantMessage.id,
-        signal: extractedSegmentSignal ?? null,
-        contextHint,
-      }).catch((e: unknown) => console.error("Segment persistence failed", e));
+      void (async () => {
+        try {
+          const segmentDecision = await persistSegmentDecision({
+            supabase,
+            conversationId: conversation.id,
+            userId: options.userId,
+            userMessageId: userMessage.id,
+            assistantMessageId: assistantMessage.id,
+            signal: extractedSegmentSignal ?? null,
+            contextHint,
+          });
+
+          const postResponseTasks: Array<Promise<unknown>> = [];
+
+          if (segmentDecision.closedSegmentId) {
+            postResponseTasks.push(
+              queueSegmentSummaryRefresh({
+                supabase,
+                provider,
+                segmentId: segmentDecision.closedSegmentId,
+                reason: "closed",
+              }),
+            );
+          }
+
+          if (segmentDecision.signal === "revive" && segmentDecision.segmentId) {
+            postResponseTasks.push(
+              queueSegmentSummaryRefresh({
+                supabase,
+                provider,
+                segmentId: segmentDecision.segmentId,
+                reason: "revived",
+              }),
+            );
+          } else if (segmentDecision.action === "continue" && segmentDecision.segmentId) {
+            postResponseTasks.push(
+              queueSegmentSummaryRefresh({
+                supabase,
+                provider,
+                segmentId: segmentDecision.segmentId,
+                reason: "grown",
+              }),
+            );
+          }
+
+          if (segmentDecision.segmentId) {
+            postResponseTasks.push(
+              persistSegmentArtifact(supabase, {
+                userId: options.userId,
+                conversationId: conversation.id,
+                segmentId: segmentDecision.segmentId,
+                sourceMessageId: userMessage.id,
+                assistantMessageId: assistantMessage.id,
+                triggeringMessage: options.message,
+                assistantResponse: responseText,
+                metadata: {
+                  topic_key: extractedSegmentSignal?.topicKey ?? null,
+                },
+              }),
+            );
+          }
+
+          await Promise.allSettled(postResponseTasks);
+        } catch (e: unknown) {
+          console.error("Segment persistence failed", e);
+        }
+      })();
     }
 
     agentRunStatus = fatalError ? deriveAgentRunStatus(fatalError) : "completed";
@@ -310,6 +381,102 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   }
 
   return result;
+}
+
+async function resolveConversationContext(options: {
+  supabase: SupabaseClient;
+  conversationId: string;
+  userId: string;
+  userMessage: string;
+  legacyContext: Awaited<ReturnType<typeof assembleConversationContext>>;
+  contextHint: ContextHint | null;
+}) {
+  if (!isRankedContextEnabled() || options.contextHint === null) {
+    return options.legacyContext;
+  }
+
+  try {
+    const rankedContext = await retrieveRankedConversationContext({
+      supabase: options.supabase,
+      conversationId: options.conversationId,
+      userId: options.userId,
+      userMessage: options.userMessage,
+      contextHint: options.contextHint,
+    });
+
+    const messages = ensureCurrentUserTurnIncluded(rankedContext.messages, options.userMessage);
+    const estimatedTokens =
+      messages === rankedContext.messages
+        ? rankedContext.estimatedTokens
+        : rankedContext.estimatedTokens + Math.ceil(options.userMessage.length / 4);
+
+    return {
+      ...rankedContext,
+      messages,
+      estimatedTokens,
+    };
+  } catch (error) {
+    console.error("Ranked context retrieval failed", error);
+    return options.legacyContext;
+  }
+}
+
+function ensureCurrentUserTurnIncluded(messages: LLMMessage[], userMessage: string): LLMMessage[] {
+  const latest = messages.at(-1);
+  if (latest?.role === "user" && latest.content === userMessage) {
+    return messages;
+  }
+
+  return [
+    ...messages,
+    {
+      role: "user" as const,
+      content: userMessage,
+    },
+  ];
+}
+
+function buildRetrievalMetadata(
+  context: Awaited<ReturnType<typeof resolveConversationContext>>,
+  contextHint: ContextHint | null,
+): MessageMetadata["retrieval"] {
+  const strategy =
+    "strategy" in context && (context.strategy === "ranked" || context.strategy === "recency")
+      ? context.strategy
+      : "recency";
+  const sourceBreakdown =
+    "sourceBreakdown" in context && typeof context.sourceBreakdown === "object" && context.sourceBreakdown
+      ? (context.sourceBreakdown as NonNullable<MessageMetadata["retrieval"]>["sourceBreakdown"])
+      : undefined;
+  const selections =
+    "selections" in context && Array.isArray(context.selections)
+      ? (context.selections as NonNullable<MessageMetadata["retrieval"]>["selections"])
+      : undefined;
+  return {
+    strategy,
+    estimatedTokens: context.estimatedTokens,
+    ...(contextHint
+      ? {
+          hint: {
+            confidence: contextHint.confidence,
+            reason: contextHint.reason,
+            activeSegmentId: contextHint.activeSegment?.id ?? null,
+            candidateSegmentIds: contextHint.candidateSegments.map((segment) => segment.id),
+          },
+        }
+      : {}),
+    ...(sourceBreakdown ? { sourceBreakdown } : {}),
+    ...(selections ? { selections } : {}),
+  };
+}
+
+function isRankedContextEnabled(): boolean {
+  const raw = process.env.HADA_ENABLE_RANKED_CONTEXT_RETRIEVAL;
+  if (!raw) {
+    return true;
+  }
+
+  return !["0", "false", "off"].includes(raw.trim().toLowerCase());
 }
 
 async function emitEvent(

@@ -20,7 +20,29 @@ interface DebugData {
     totalMessages: number;
     compactionSummaries: number;
   };
-  segments: null;
+  segments: Array<{
+    id: string;
+    status: string;
+    title: string | null;
+    topic_key: string | null;
+    summary: string | null;
+    last_active_at: string;
+    message_count: number;
+    metadata?: {
+      summary_refreshed_at?: string;
+    } | null;
+  }>;
+  latestRetrieval: {
+    strategy?: string;
+    estimatedTokens?: number;
+    hint?: {
+      confidence?: number;
+      reason?: string;
+      activeSegmentId?: string | null;
+      candidateSegmentIds?: string[];
+    };
+    sourceBreakdown?: Record<string, { available?: number; selected?: number; tokens?: number }>;
+  } | null;
 }
 
 export function DebugTab() {
@@ -117,6 +139,67 @@ export function DebugTab() {
                 <p className="mt-1 text-xs text-zinc-400">{new Date(m.updated_at).toLocaleString()}</p>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Segments ({data.segments.length})
+        </h3>
+        {data.segments.length === 0 ? (
+          <p className="text-sm text-zinc-400">No segments yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {data.segments.map((segment) => (
+              <div key={segment.id} className="rounded-lg border border-zinc-100 p-3 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm text-zinc-800 dark:text-zinc-200">
+                    {segment.title || segment.topic_key || "Untitled segment"}
+                  </span>
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    {segment.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs font-mono text-zinc-400">{segment.id}</p>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">
+                  {segment.summary || "No summary yet."}
+                </p>
+                <p className="mt-1 text-xs text-zinc-400">
+                  messages={segment.message_count} last_active={new Date(segment.last_active_at).toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">Latest Retrieval</h3>
+        {!data.latestRetrieval ? (
+          <p className="text-sm text-zinc-400">No retrieval metadata saved yet.</p>
+        ) : (
+          <div className="space-y-3 text-sm">
+            <div className="text-zinc-600 dark:text-zinc-300">
+              strategy={data.latestRetrieval.strategy || "unknown"} estimatedTokens={data.latestRetrieval.estimatedTokens ?? "n/a"}
+            </div>
+            {data.latestRetrieval.hint ? (
+              <div className="text-zinc-500 dark:text-zinc-400">
+                hint confidence={data.latestRetrieval.hint.confidence ?? "n/a"} reason={data.latestRetrieval.hint.reason || "n/a"}
+              </div>
+            ) : null}
+            {data.latestRetrieval.sourceBreakdown ? (
+              <div className="space-y-1">
+                {Object.entries(data.latestRetrieval.sourceBreakdown).map(([source, stats]) => (
+                  <div key={source} className="flex gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    <span className="w-36 shrink-0 font-mono">{source}</span>
+                    <span>available={stats.available ?? 0}</span>
+                    <span>selected={stats.selected ?? 0}</span>
+                    <span>tokens={stats.tokens ?? 0}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
--- Add memory classification columns to user_memories
--- source_segment_id FK will be added in migration 014 after conversation_segments table is created
+-- Add memory classification columns to user_memories.
+-- The source_segment_id FK is added by 012_conversation_segments.sql.
 
 alter table user_memories
   add column if not exists kind text not null default 'profile'

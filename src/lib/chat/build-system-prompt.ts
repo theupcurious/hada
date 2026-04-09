@@ -106,6 +106,16 @@ export async function buildSystemPrompt(options: {
       : []),
     "## Response Language",
     languageGuidance,
+    "## Internal Topic Segments",
+    [
+      "Manage internal topic segments silently.",
+      "At the end of every response, include exactly one hidden metadata line in one of these formats:",
+      "<!-- segment:continue -->",
+      "<!-- segment:new:topic-key:Short Title -->",
+      "<!-- segment:revive:topic-key -->",
+      "Default to continue unless the user has clearly started a new topic or returned to a previous one.",
+      "This metadata line is stripped before the response is shown to the user.",
+    ].join("\n"),
     "## Available Tools",
     summarizeToolList(options.tools),
   ];

@@ -145,6 +145,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         let apiReasoningDetails: unknown[] | undefined;
         let iterationText = "";
         const thinkFilter = createThinkFilter();
+        const hiddenMetadataFilter = createHiddenMetadataFilter();
         let thinkingEventYielded = false;
 
         for await (const streamEvent of callLLMStream({
@@ -158,7 +159,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           markProgress();
           if (streamEvent.type === "text") {
             rawContent += streamEvent.chunk;
-            const emittable = thinkFilter.feed(streamEvent.chunk);
+            const emittable = hiddenMetadataFilter.feed(thinkFilter.feed(streamEvent.chunk));
             // Emit early thinking signal as soon as we detect a reasoning block
             // so the UI can show "Thinking..." instead of being silent for 60+ seconds.
             if (thinkFilter.phase === "in_think" && !thinkingEventYielded) {
@@ -178,7 +179,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
         }
 
         // Flush any content held in the think buffer at end of stream
-        const flushed = thinkFilter.flush();
+        const flushed = hiddenMetadataFilter.feed(thinkFilter.flush()) + hiddenMetadataFilter.flush();
         if (flushed) {
           iterationText += flushed;
           yield { type: "text_delta", content: flushed };
@@ -880,10 +881,18 @@ interface ThinkFilter {
   readonly phase: "detecting" | "in_think" | "streaming";
 }
 
+interface HiddenMetadataFilter {
+  feed(chunk: string): string;
+  flush(): string;
+}
+
 const REASONING_TAG_PAIRS = [
   { open: "<think>", close: "</think>" },
   { open: "<thought>", close: "</thought>" },
 ] as const;
+const SEGMENT_SIGNAL_REGEX = /<!--\s*segment:(continue|new|revive)(?::([^:\s>][^:>]*))?(?::([^>]*?))?\s*-->/i;
+const SEGMENT_SIGNAL_REGEX_GLOBAL = /<!--\s*segment:(continue|new|revive)(?::([^:\s>][^:>]*))?(?::([^>]*?))?\s*-->/gi;
+const SEGMENT_COMMENT_PREFIXES = ["<!-- segment:", "<!--segment:"] as const;
 
 function createThinkFilter(): ThinkFilter {
   type Phase = "detecting" | "in_think" | "streaming";
@@ -980,6 +989,78 @@ function createThinkFilter(): ThinkFilter {
   };
 }
 
+export function createHiddenMetadataFilter(): HiddenMetadataFilter {
+  let buf = "";
+
+  function stripCompleteSignals(text: string): string {
+    return text.replace(SEGMENT_SIGNAL_REGEX_GLOBAL, "");
+  }
+
+  function findTrailingPrefixLength(text: string): number {
+    const lower = text.toLowerCase();
+    let keep = 0;
+
+    for (const prefix of SEGMENT_COMMENT_PREFIXES) {
+      const normalizedPrefix = prefix.toLowerCase();
+      const maxCandidate = Math.min(normalizedPrefix.length - 1, lower.length);
+      for (let length = 1; length <= maxCandidate; length += 1) {
+        if (normalizedPrefix.startsWith(lower.slice(-length))) {
+          keep = Math.max(keep, length);
+        }
+      }
+    }
+
+    return keep;
+  }
+
+  function findUnclosedSegmentStart(text: string): number {
+    const lower = text.toLowerCase();
+    let latest = -1;
+
+    for (const prefix of SEGMENT_COMMENT_PREFIXES) {
+      const index = lower.lastIndexOf(prefix.toLowerCase());
+      if (index !== -1 && lower.indexOf("-->", index) === -1) {
+        latest = Math.max(latest, index);
+      }
+    }
+
+    return latest;
+  }
+
+  function feed(chunk: string): string {
+    buf = stripCompleteSignals(buf + chunk);
+
+    const unclosedStart = findUnclosedSegmentStart(buf);
+    if (unclosedStart !== -1) {
+      const out = buf.slice(0, unclosedStart);
+      buf = buf.slice(unclosedStart);
+      return out;
+    }
+
+    const keep = findTrailingPrefixLength(buf);
+    if (keep === 0) {
+      const out = buf;
+      buf = "";
+      return out;
+    }
+
+    const out = buf.slice(0, -keep);
+    buf = buf.slice(-keep);
+    return out;
+  }
+
+  function flush(): string {
+    const out = stripCompleteSignals(buf);
+    buf = "";
+    return out;
+  }
+
+  return {
+    feed,
+    flush,
+  };
+}
+
 // ─── Text chunking ────────────────────────────────────────────────────────────
 
 function chunkText(text: string, maxChunkSize: number): string[] {
@@ -1071,6 +1152,7 @@ export function sanitizeAssistantContent(text: string): string {
   output = output.replace(/(?:^|\n)\s*\{?\s*(?:tool|name)\s*=>[\s\S]*$/gim, "\n");
   output = output.replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, "");
   output = output.replace(/<tool_calls>[\s\S]*$/gi, "");
+  output = output.replace(SEGMENT_SIGNAL_REGEX_GLOBAL, "");
 
   // Clean up common parameter markers leaked by some providers.
   output = output.replace(/<!--\$[^>]+-->/g, "");
@@ -1108,8 +1190,7 @@ export function extractSegmentSignal(text: string): {
   cleanedText: string;
   signal: SegmentSignalData | null;
 } {
-  const segmentRegex = /<!--\s*segment:(continue|new|revive)(?::([^:\s>-][^:>-]*))?(?::([^-][^>]*))?-->/i;
-  const match = text.match(segmentRegex);
+  const match = text.match(SEGMENT_SIGNAL_REGEX);
 
   if (!match) {
     return { cleanedText: text, signal: null };
