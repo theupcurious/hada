@@ -41,6 +41,13 @@ const SETTINGS_LAYOUT_COPY: Record<
     signOutAria: "サインアウト",
     signOut: "サインアウト",
   },
+  zh: {
+    section: "设置",
+    backToChatAria: "返回聊天",
+    backToChat: "返回聊天",
+    signOutAria: "退出登录",
+    signOut: "退出登录",
+  },
 };
 
 export default function SettingsLayout({

@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import { summarizeToolList } from "@/lib/chat/tools";
 import { getPersonaById } from "@/lib/chat/personas";
-import { normalizeLocale, type AppLocale } from "@/lib/i18n";
+import { normalizeLocale, resolveTurnLocale, type AppLocale } from "@/lib/i18n";
 import type { MessageSource, UserSettings } from "@/lib/types/database";
 
 const MEMORY_TOKEN_BUDGET = 2000;
@@ -19,6 +19,8 @@ export interface BuildSystemPromptResult {
   userSettings: UserSettings;
   userEmail: string | null;
   connectedIntegrations: string[];
+  responseLocale: AppLocale;
+  responseLocaleSource: "settings" | "message";
 }
 
 export async function buildSystemPrompt(options: {
@@ -27,6 +29,7 @@ export async function buildSystemPrompt(options: {
   source: MessageSource;
   tools: AgentTool[];
   connectedIntegrations?: string[];
+  userMessage?: string;
 }): Promise<BuildSystemPromptResult> {
   const basePrompt = await getBasePrompt();
 
@@ -64,7 +67,8 @@ export async function buildSystemPrompt(options: {
     : "";
   const onboardingPreferences = formatOnboardingPreferences(userSettings);
   const preferredLocale = normalizeLocale(userSettings.locale);
-  const languageGuidance = buildLanguageGuidance(preferredLocale);
+  const resolvedResponseLocale = resolveTurnLocale(options.userMessage ?? "", preferredLocale);
+  const languageGuidance = buildLanguageGuidance(preferredLocale, resolvedResponseLocale);
   const connectedIntegrations = options.connectedIntegrations ?? (
     (integrationResult as { data: Array<{ provider: string }> | null } | null)
       ?.data?.map((row) => row.provider) ?? []
@@ -139,6 +143,8 @@ export async function buildSystemPrompt(options: {
     userSettings,
     userEmail: user?.email || null,
     connectedIntegrations,
+    responseLocale: resolvedResponseLocale.locale,
+    responseLocaleSource: resolvedResponseLocale.source,
   };
 }
 
@@ -324,11 +330,33 @@ function formatAssistantVoice(value: NonNullable<NonNullable<UserSettings["assis
   }
 }
 
-function buildLanguageGuidance(locale: AppLocale): string {
-  const languageName = locale === "ko" ? "Korean" : locale === "ja" ? "Japanese" : "English";
+function buildLanguageGuidance(
+  preferredLocale: AppLocale,
+  resolvedLocale: { locale: AppLocale; source: "settings" | "message" },
+): string {
+  const preferredLanguageName = getLanguageName(preferredLocale);
+  const activeLanguageName = getLanguageName(resolvedLocale.locale);
+
   return [
-    `Preferred response language: ${languageName}.`,
-    "Default to this language for all user-visible output, including summaries, cards, and follow-up suggestions.",
-    "If the user explicitly asks for another language in a specific message, follow that request.",
+    `Default response language from user settings: ${preferredLanguageName}.`,
+    resolvedLocale.source === "message"
+      ? `Current turn override: reply in ${activeLanguageName} because the user's latest message is written in that language.`
+      : `Current turn response language: ${activeLanguageName}.`,
+    "Use this language for all user-visible output, including summaries, cards, and follow-up suggestions.",
+    "If the user explicitly asks for another language in this message, follow that request.",
   ].join("\n");
+}
+
+function getLanguageName(locale: AppLocale): string {
+  switch (locale) {
+    case "ko":
+      return "Korean";
+    case "ja":
+      return "Japanese";
+    case "zh":
+      return "Chinese";
+    case "en":
+    default:
+      return "English";
+  }
 }

@@ -130,6 +130,34 @@ const HOME_COPY: Record<
       { title: "メモリ", desc: "会話をまたいで好みと文脈を保持", icon: "🧠" },
     ],
   },
+  zh: {
+    login: "登录",
+    getStarted: "开始使用",
+    heroTitlePrefix: "真正能帮你",
+    heroTitleAccent: "把事情推进下去的 AI 助手",
+    heroDescription:
+      "Hada 可以管理日历、起草邮件、预约服务、做研究并处理任务，像一位 24/7 在线的高效执行助理。",
+    startFree: "免费开始",
+    seeFeatures: "查看 Hada 能做什么",
+    previewYou: "你",
+    previewUserMessage: "帮我预约周五下午剪头发",
+    previewAssistantMessage: "我找到了 3 家周五下午有空档的附近沙龙：",
+    previewCardTitle: "The Cutting Room",
+    previewCardSubtitle: "下午 2:00、4:00 可预约",
+    previewCardCta: "预约 2 点",
+    capabilities: "能力",
+    featuresHeadingPrefix: "Hada 可以为你",
+    featuresHeadingAccent: "完成的事",
+    footerTagline: "Hada — 你的 AI 助手",
+    features: [
+      { title: "日历", desc: "安排会议、检查空档、发送邀请", icon: "📅" },
+      { title: "邮件", desc: "起草回复、总结线程、代你发送", icon: "✉️" },
+      { title: "研究", desc: "查找信息、比较选项、生成摘要", icon: "🔍" },
+      { title: "任务", desc: "设置提醒、安排定期任务、自动跟进", icon: "✅" },
+      { title: "Telegram", desc: "随时随地通过 Telegram 联系 Hada", icon: "💬" },
+      { title: "记忆", desc: "跨对话记住你的偏好与上下文", icon: "🧠" },
+    ],
+  },
 };
 
 export default function Home() {

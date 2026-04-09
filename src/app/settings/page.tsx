@@ -46,12 +46,20 @@ const SETTINGS_TABS_BY_LOCALE: Record<AppLocale, SettingsTabDescriptor[]> = {
     { id: "tasks", label: "タスク", description: "スケジュールされたタスクと自動化", icon: TasksIcon },
     { id: "status", label: "ステータス", description: "ランタイム状態とプロバイダー確認", icon: StatusIcon },
   ],
+  zh: [
+    { id: "integrations", label: "集成", description: "Google、Telegram 和已连接工具", icon: IntegrationsIcon },
+    { id: "account", label: "账户", description: "个人资料、时区和默认设置", icon: AccountIcon },
+    { id: "memory", label: "记忆", description: "跨会话保存的偏好与事实", icon: MemoryIcon },
+    { id: "tasks", label: "任务", description: "定时任务与自动化", icon: TasksIcon },
+    { id: "status", label: "状态", description: "运行状态与提供商检查", icon: StatusIcon },
+  ],
 };
 
 const SETTINGS_PAGE_COPY: Record<AppLocale, { title: string }> = {
   en: { title: "Settings" },
   ko: { title: "설정" },
   ja: { title: "設定" },
+  zh: { title: "设置" },
 };
 
 export default function SettingsPage() {

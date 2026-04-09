@@ -355,6 +355,59 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterThinkItThroughPrompt:
       "考えを整理したいテーマがあります。まず何について考えているかを聞き、前提・リスク・良い意思決定の基準など複数の観点で整理して、次の一手を明確にしてください。",
   },
+  zh: {
+    greetingMorning: "早上好",
+    greetingAfternoon: "下午好",
+    greetingEvening: "晚上好",
+    greetingFallbackName: "你好",
+    defaultWelcomeSubtitle: "你今天想推进什么？",
+    welcomeReadyPrefix: "已按你的风格准备好：",
+    styleDecisionFirst: "先给结论",
+    styleContextFirst: "先讲背景",
+    styleMorningDeepWork: "上午深度工作",
+    styleAfternoonDeepWork: "下午深度工作",
+    styleFlexibleWorkRhythm: "灵活的工作节奏",
+    workspaceReady: "你的工作区已准备就绪。",
+    welcomeContinueLastWorkspace: "继续上次的工作区",
+    actionContinue: "继续",
+    actionOpenChat: "打开聊天",
+    actionOpen: "打开",
+    updatedPrefix: "更新于",
+    viewDocs: "查看文档",
+    viewTasks: "查看任务",
+    inputPlaceholder: "给 Hada 发消息...",
+    inputHint:
+      "按 Enter 发送，Shift+Enter 换行。Hada 也会出错，重要信息请自行核实。",
+    loadingEarlierMessages: "正在加载更早的消息...",
+    loading: "加载中...",
+    statusPrefix: "状态",
+    statusOnline: "在线",
+    statusFallback: "备用",
+    statusConnecting: "连接中",
+    statusOffline: "离线",
+    openDocsAria: "打开文档",
+    docsLabel: "文档",
+    openSettingsAria: "打开设置",
+    settingsLabel: "设置",
+    signOutAria: "退出登录",
+    signOutLabel: "退出登录",
+    responseTitle: "回复",
+    defaultErrorMessage: "抱歉，发生了错误。",
+    connectionErrorMessage: "抱歉，连接出现问题。请再试一次。",
+    interruptedMessage: "回复在完成前被中断了。请再试一次。",
+    starterPlanMyDayLabel: "规划今天",
+    starterPlanMyDayPrompt:
+      "查看我今天的日历和任务。给我一个务实的日程安排，包含最高优先级、冲突提醒，以及下午 3 点前最值得保护的深度工作时段。",
+    starterResearchTopicLabel: "研究一个主题",
+    starterResearchTopicPrompt:
+      "帮我研究一个主题。先问我想研究什么，然后使用最新资料，整理一份简洁、带来源依据的重点摘要。",
+    starterCreateRoadmapLabel: "创建路线图",
+    starterCreateRoadmapPrompt:
+      "帮我制定一个项目路线图。先问我想启动什么项目，然后调研相关领域，在工作区创建路线图文档，并在聊天里给我一个简短执行摘要。",
+    starterThinkItThroughLabel: "理清思路",
+    starterThinkItThroughPrompt:
+      "我有件事想想清楚。先问我在思考什么，然后从假设、风险、以及怎样才算好决策等多个角度帮我梳理，最后收敛到一个明确的下一步。",
+  },
 };
 
 export default function ChatPage() {
@@ -2051,6 +2104,16 @@ function buildDocAndReviewStatusText(documentCount: number, dueTodayCount: numbe
     return `本日レビュー ${dueTodayCount} 件`;
   }
 
+  if (locale === "zh") {
+    if (documentCount > 0 && dueTodayCount > 0) {
+      return `进行中的文档 ${documentCount} 份 • 今天待复查 ${dueTodayCount} 项`;
+    }
+    if (documentCount > 0) {
+      return `进行中的文档 ${documentCount} 份`;
+    }
+    return `今天待复查 ${dueTodayCount} 项`;
+  }
+
   if (documentCount > 0 && dueTodayCount > 0) {
     return `${documentCount} docs in progress • ${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
   }
@@ -2083,6 +2146,17 @@ function formatWritingStyleLabel(
         return "バランス型スタイル";
       case "detailed":
         return "詳細なスタイル";
+    }
+  }
+
+  if (locale === "zh") {
+    switch (value) {
+      case "concise":
+        return "简洁风格";
+      case "balanced":
+        return "平衡风格";
+      case "detailed":
+        return "详细风格";
     }
   }
 

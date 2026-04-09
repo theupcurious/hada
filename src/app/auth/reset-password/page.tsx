@@ -66,6 +66,19 @@ const RESET_COPY: Record<
     updatePassword: "パスワードを更新",
     backToSignIn: "サインインに戻る",
   },
+  zh: {
+    passwordsMismatch: "两次输入的密码不一致。",
+    passwordTooShort: "密码至少需要 6 个字符。",
+    title: "设置新密码",
+    subtitle: "为你的账户设置一个新密码。",
+    updatedTitle: "密码已更新！",
+    redirecting: "正在带你进入应用…",
+    newPasswordPlaceholder: "新密码",
+    confirmPasswordPlaceholder: "确认新密码",
+    updating: "更新中…",
+    updatePassword: "更新密码",
+    backToSignIn: "返回登录",
+  },
 };
 
 export default function ResetPasswordPage() {

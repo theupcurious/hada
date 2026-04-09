@@ -67,6 +67,19 @@ const SIGNUP_COPY: Record<
     hasAccount: "すでにアカウントをお持ちですか？",
     signIn: "サインイン",
   },
+  zh: {
+    title: "创建账户",
+    subtitle: "开始用 Hada 把事情真正推进下去",
+    namePlaceholder: "姓名",
+    emailPlaceholder: "邮箱",
+    passwordPlaceholder: "密码",
+    creatingAccount: "创建账户中...",
+    createAccount: "创建账户",
+    orContinueWith: "或继续使用",
+    continueWithGoogle: "使用 Google 继续",
+    hasAccount: "已经有账号了？",
+    signIn: "登录",
+  },
 };
 
 export default function SignUpPage() {

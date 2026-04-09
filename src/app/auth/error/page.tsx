@@ -93,4 +93,11 @@ const AUTH_ERROR_COPY: Record<
     resendLink: "確認リンクを再送",
     backToSignup: "登録に戻る",
   },
+  zh: {
+    title: "无法验证这个链接",
+    description: "该验证链接可能已过期或已被使用。你可以在下方重新请求一个新链接。",
+    errorCodePrefix: "错误代码",
+    resendLink: "重新发送验证链接",
+    backToSignup: "返回注册",
+  },
 };

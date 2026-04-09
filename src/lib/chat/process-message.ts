@@ -110,6 +110,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       source: options.source,
       tools,
       connectedIntegrations,
+      userMessage: options.message,
     }),
   ]);
 
