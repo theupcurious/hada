@@ -8,13 +8,14 @@ import { IntegrationsTab } from "@/components/settings/integrations-tab";
 import { AccountTab } from "@/components/settings/account-tab";
 import { MemoryTab } from "@/components/settings/memory-tab";
 import { TasksTab } from "@/components/settings/tasks-tab";
+import { DebugTab } from "@/components/settings/debug-tab";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import type { AppLocale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState, type ComponentType } from "react";
+import { Suspense, useEffect, useState, type ComponentType } from "react";
 
-type SettingsTabId = "integrations" | "account" | "memory" | "tasks" | "status";
+type SettingsTabId = "integrations" | "account" | "memory" | "tasks" | "status" | "debug";
 
 type SettingsTabDescriptor = {
   id: SettingsTabId;
@@ -64,8 +65,22 @@ export default function SettingsPage() {
 function SettingsContent() {
   const locale = useResolvedLocale();
   const copy = SETTINGS_PAGE_COPY[locale];
-  const tabs = SETTINGS_TABS_BY_LOCALE[locale];
   const searchParams = useSearchParams();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/debug/context")
+      .then(r => { if (r.ok) setIsAdmin(true); })
+      .catch(() => {});
+  }, []);
+
+  const baseTabs = SETTINGS_TABS_BY_LOCALE[locale];
+  const tabs: SettingsTabDescriptor[] = [
+    ...baseTabs,
+    ...(isAdmin
+      ? [{ id: "debug" as SettingsTabId, label: "Debug", description: "Admin context debug panel", icon: DebugIcon }]
+      : []),
+  ];
 
   const initialTab = (() => {
     const tab = searchParams.get("tab");
@@ -121,6 +136,7 @@ function SettingsContent() {
             {activeTab === "memory" ? <MemoryTab /> : null}
             {activeTab === "tasks" ? <TasksTab /> : null}
             {activeTab === "status" ? <StatusTab /> : null}
+            {activeTab === "debug" ? <DebugTab /> : null}
           </div>
         </div>
       </div>
@@ -167,10 +183,22 @@ function SettingsContent() {
             <TabsContent value="status" className="mt-0">
               <StatusTab />
             </TabsContent>
+            <TabsContent value="debug" className="mt-0">
+              <DebugTab />
+            </TabsContent>
           </div>
         </div>
       </Tabs>
     </div>
+  );
+}
+
+function DebugIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
   );
 }
 

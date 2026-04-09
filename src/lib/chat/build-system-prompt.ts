@@ -44,8 +44,9 @@ export async function buildSystemPrompt(options: {
           .eq("user_id", options.userId),
     options.supabase
       .from("user_memories")
-      .select("topic, content, updated_at")
+      .select("topic, content, updated_at, kind, pinned")
       .eq("user_id", options.userId)
+      .order("pinned", { ascending: false })
       .order("updated_at", { ascending: false }),
   ]);
 
@@ -69,7 +70,7 @@ export async function buildSystemPrompt(options: {
       ?.data?.map((row) => row.provider) ?? []
   );
   const memorySection = formatMemories(
-    (memoryResult.data as unknown as Array<{ topic: string; content: string; updated_at: string }> | null) || [],
+    (memoryResult.data as unknown as Array<{ topic: string; content: string; updated_at: string; kind?: string; pinned?: boolean }> | null) || [],
   );
   const channelContext =
     options.source === "telegram"
@@ -142,17 +143,25 @@ async function getBasePrompt(): Promise<string> {
 }
 
 function formatMemories(
-  memories: Array<{ topic: string; content: string; updated_at: string }>,
+  memories: Array<{ topic: string; content: string; updated_at: string; kind?: string; pinned?: boolean }>,
 ): string {
   if (!memories.length) {
     return "No stored memories yet.";
   }
 
   const maxChars = MEMORY_TOKEN_BUDGET * APPROX_CHARS_PER_TOKEN;
+
+  // Priority: pinned first, then profile, then preference
+  // project and archive are excluded from global injection (retrieved contextually in Phase 3)
+  const pinned = memories.filter(m => m.pinned);
+  const profile = memories.filter(m => !m.pinned && (m.kind === 'profile' || !m.kind));
+  const preference = memories.filter(m => !m.pinned && m.kind === 'preference');
+
+  const ordered = [...pinned, ...profile, ...preference];
   const selected: string[] = [];
   let totalChars = 0;
 
-  for (const memory of memories) {
+  for (const memory of ordered) {
     const line = `- ${memory.topic}: ${memory.content}`;
     if (totalChars + line.length > maxChars) {
       continue;

@@ -100,6 +100,7 @@ export interface MessageMetadata {
     pending?: boolean;
   };
   followUpSuggestions?: string[];
+  segmentSignal?: { signal: string; topicKey?: string; title?: string };
   feedback?: {
     value?: "up" | "down";
     updated_at?: string;
@@ -140,12 +141,17 @@ export interface Integration {
   updated_at: string;
 }
 
+export type MemoryKind = 'profile' | 'project' | 'preference' | 'archive';
+
 export interface UserMemory {
   id: string;
   user_id: string;
   topic: string;
   content: string;
   embedding: string | null;
+  kind: MemoryKind;
+  pinned: boolean;
+  source_segment_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -354,6 +360,9 @@ export type Database = {
           topic: string;
           content: string;
           embedding?: string | null;
+          kind?: MemoryKind;
+          pinned?: boolean;
+          source_segment_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
