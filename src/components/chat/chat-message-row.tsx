@@ -399,7 +399,7 @@ export function ChatMessageRow({
               className={`absolute top-0 left-0 inline-flex items-center gap-2 transition-opacity duration-150 ${
                 message.isStreaming
                   ? "opacity-0 pointer-events-none"
-                  : "opacity-30 group-hover:opacity-100 pointer-events-auto"
+                  : "opacity-0 group-hover:opacity-100 pointer-events-auto"
               }`}
             >
               <MessageActions
