@@ -1535,10 +1535,20 @@ export default function ChatPage() {
   };
 
   const handleDeleteMessage = async (messageId: string) => {
-    // Optimistic remove
-    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    // Find the user message immediately before this assistant message.
+    let precedingUserMessageId: string | null = null;
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === messageId);
+      if (idx > 0 && prev[idx - 1].role === "user") {
+        precedingUserMessageId = prev[idx - 1].id;
+      }
+      return prev.filter((m) => m.id !== messageId && m.id !== precedingUserMessageId);
+    });
     try {
-      await fetch(`/api/conversations/messages/${messageId}`, { method: "DELETE" });
+      const toDelete = [messageId, precedingUserMessageId].filter(Boolean) as string[];
+      await Promise.all(
+        toDelete.map((id) => fetch(`/api/conversations/messages/${id}`, { method: "DELETE" })),
+      );
     } catch (error) {
       console.error("Delete message error:", error);
     }
