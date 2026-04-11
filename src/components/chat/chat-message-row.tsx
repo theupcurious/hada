@@ -190,7 +190,6 @@ export function ChatMessageRow({
   onOpenArtifact,
 }: ChatMessageRowProps) {
   const [copied, setCopied] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   const pills = useMemo(
     () =>
@@ -231,11 +230,7 @@ export function ChatMessageRow({
     message.content.trim().length > 0;
 
   return (
-    <div
-      className="flex min-w-0 gap-2 sm:gap-3"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="group flex min-w-0 gap-2 sm:gap-3">
       {/* Avatar */}
       {message.role === "assistant" ? (
         <div className="h-8 w-8 shrink-0 rounded-full avatar-accent-ring">
@@ -402,7 +397,9 @@ export function ChatMessageRow({
           <div className="min-h-[32px] mt-2 relative">
             <div
               className={`absolute top-0 left-0 inline-flex items-center gap-2 transition-opacity duration-150 ${
-                !message.isStreaming && isHovered ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                message.isStreaming
+                  ? "opacity-0 pointer-events-none"
+                  : "opacity-30 group-hover:opacity-100 pointer-events-auto"
               }`}
             >
               <MessageActions
