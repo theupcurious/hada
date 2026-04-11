@@ -221,6 +221,17 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       ...(fatalError ? { gatewayError: { code: "AGENT_ERROR", message: fatalError } } : {}),
     };
 
+    // Start follow-up suggestions in parallel with saving the message — it only
+    // needs responseText, not the saved message ID, so there is no data dependency.
+    const followUpPromise =
+      fatalError || options.source !== "web"
+        ? Promise.resolve([] as string[])
+        : generateFollowUpSuggestions({
+            provider,
+            userMessage: options.message,
+            assistantResponse: responseText,
+          }).catch(() => [] as string[]);
+
     const assistantMessage = options.assistantMessageId
       ? await updateMessageById(
           supabase,
@@ -238,24 +249,14 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
 
     await emitEvent(options.onEvent, { type: "message_saved", id: assistantMessage.id });
 
-    const followUpSuggestions =
-      fatalError || options.source !== "web"
-        ? []
-        : await generateFollowUpSuggestions({
-            provider,
-            userMessage: options.message,
-            assistantResponse: responseText,
-          }).catch(() => []);
+    const followUpSuggestions = await followUpPromise;
 
     if (followUpSuggestions.length > 0) {
       initialMetadata.followUpSuggestions = followUpSuggestions;
-      try {
-        await updateMessageById(supabase, assistantMessage.id, responseText, initialMetadata);
-      } catch (error) {
-        // Follow-up suggestions are non-critical. If this persistence step fails,
-        // keep the successful assistant response and continue the request.
-        console.error("Failed to persist follow-up suggestions", error);
-      }
+      // Persist suggestions in the background — non-critical, don't block the response.
+      updateMessageById(supabase, assistantMessage.id, responseText, initialMetadata).catch(
+        (error) => console.error("Failed to persist follow-up suggestions", error),
+      );
       await emitEvent(options.onEvent, { type: "follow_up_suggestions", suggestions: followUpSuggestions });
     }
 
