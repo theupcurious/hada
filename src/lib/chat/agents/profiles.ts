@@ -21,7 +21,7 @@ export const AGENT_PROFILES: Record<string, SubAgentProfile> = {
     systemPrompt:
       "You are a focused research assistant. Your job is to find accurate, relevant information using web search and fetch tools. Be thorough but concise. Return structured findings with sources.",
     allowedTools: ["web_search", "web_fetch"],
-    maxIterations: 6,
+    maxIterations: 15,
     timeout: 210_000,
     idleTimeout: 150_000,
   },
