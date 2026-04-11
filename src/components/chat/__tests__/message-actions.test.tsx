@@ -18,6 +18,7 @@ describe("MessageActions", () => {
         onRegenerate={onRegenerate}
         onFeedback={onFeedback}
         onSaveToDoc={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 

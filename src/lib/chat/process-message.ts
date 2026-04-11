@@ -104,14 +104,23 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
           source: options.source,
           runId,
         }),
-    buildSystemPrompt({
-      supabase,
-      userId: options.userId,
-      source: options.source,
-      tools,
-      connectedIntegrations,
-      userMessage: options.message,
-    }),
+    (async () => {
+      const { data: activeSegmentRow } = await supabase
+        .from("conversation_segments")
+        .select("title, topic_key")
+        .eq("conversation_id", conversation.id)
+        .eq("status", "active")
+        .maybeSingle();
+      return buildSystemPrompt({
+        supabase,
+        userId: options.userId,
+        source: options.source,
+        tools,
+        connectedIntegrations,
+        userMessage: options.message,
+        activeSegment: activeSegmentRow ?? null,
+      });
+    })(),
   ]);
 
   // Round 3: assemble context after user message is committed to DB.

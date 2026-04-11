@@ -30,6 +30,7 @@ export async function buildSystemPrompt(options: {
   tools: AgentTool[];
   connectedIntegrations?: string[];
   userMessage?: string;
+  activeSegment?: { title: string | null; topic_key: string | null } | null;
 }): Promise<BuildSystemPromptResult> {
   const basePrompt = await getBasePrompt();
 
@@ -117,7 +118,9 @@ export async function buildSystemPrompt(options: {
       "<!-- segment:continue -->",
       "<!-- segment:new:topic-key:Short Title -->",
       "<!-- segment:revive:topic-key -->",
-      "Default to continue unless the user has clearly started a new topic or returned to a previous one.",
+      options.activeSegment
+        ? `Current segment: "${options.activeSegment.title ?? options.activeSegment.topic_key ?? "general"}". Emit <!-- segment:new:topic-key:Short Title --> if this message is about a distinctly different subject. Emit <!-- segment:continue --> if it's the same topic or a natural follow-on.`
+        : "Default to continue unless the user has clearly started a new topic or returned to a previous one.",
       "This metadata line is stripped before the response is shown to the user.",
     ].join("\n"),
     "## Available Tools",
