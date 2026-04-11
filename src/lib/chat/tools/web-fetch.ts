@@ -3,6 +3,7 @@ import type { AgentTool } from "@/lib/chat/agent-loop";
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
 
 const MAX_FETCH_CHARS = 24_000;
+const FETCH_TIMEOUT_MS = 12_000;
 
 export const webFetchManifest: ToolManifest = {
   name: "web_fetch",
@@ -45,8 +46,12 @@ export function createWebFetchTool(): AgentTool {
       }
 
       try {
+        const signals = [AbortSignal.timeout(FETCH_TIMEOUT_MS)];
+        if (options?.signal) signals.push(options.signal);
+        const signal = AbortSignal.any(signals);
+
         const response = await fetch(url.toString(), {
-          signal: options?.signal,
+          signal,
           redirect: "follow",
           headers: {
             "User-Agent":
@@ -80,7 +85,9 @@ export function createWebFetchTool(): AgentTool {
         });
       } catch (error) {
         if (isAbortError(error)) {
-          throw error;
+          // Re-throw only if the agent itself was cancelled, not a local timeout.
+          if (options?.signal?.aborted) throw error;
+          return JSON.stringify({ success: false, error: "fetch timed out" });
         }
         return JSON.stringify({
           success: false,
@@ -138,7 +145,6 @@ function htmlToText(html: string): string {
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException
-    ? error.name === "AbortError"
-    : error instanceof Error && error.name === "AbortError";
+  if (!(error instanceof Error)) return false;
+  return error.name === "AbortError" || error.name === "TimeoutError";
 }
