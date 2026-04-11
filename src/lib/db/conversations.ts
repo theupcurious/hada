@@ -97,6 +97,35 @@ export async function updateMessageById(
 }
 
 /**
+ * Delete a single message by ID, scoped to the given user for safety.
+ */
+export async function deleteMessageById(
+  supabase: SupabaseClient,
+  messageId: string,
+  userId: string,
+): Promise<void> {
+  // Resolve the user's conversation first so we only delete messages they own.
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!conv) return; // No conversation — nothing to delete.
+
+  const { error } = await supabase
+    .from("messages")
+    .delete()
+    .eq("id", messageId)
+    .eq("conversation_id", conv.id);
+
+  if (error) {
+    throw new Error(`Failed to delete message: ${error.message}`);
+  }
+}
+
+/**
  * Get recent messages from a conversation with pagination.
  * Returns messages in chronological order (oldest first).
  * Use `before` to paginate backwards (load older messages).

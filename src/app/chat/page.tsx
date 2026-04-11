@@ -1534,6 +1534,16 @@ export default function ChatPage() {
     }
   };
 
+  const handleDeleteMessage = async (messageId: string) => {
+    // Optimistic remove
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    try {
+      await fetch(`/api/conversations/messages/${messageId}`, { method: "DELETE" });
+    } catch (error) {
+      console.error("Delete message error:", error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await sendMessage();
@@ -1924,6 +1934,7 @@ export default function ChatPage() {
                           onFeedback={handleMessageFeedback}
                           onSaveToDoc={handleSaveToDoc}
                           onOpenArtifact={handleOpenArtifact}
+                          onDelete={handleDeleteMessage}
                         />
                       </motion.div>
                     ))}

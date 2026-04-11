@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Check, Copy, ExternalLink, RefreshCcw, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Bookmark, Check, Copy, ExternalLink, RefreshCcw, Trash2, ThumbsDown, ThumbsUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function MessageActions(props: {
@@ -12,6 +12,7 @@ export function MessageActions(props: {
   onFeedback: (value: "up" | "down") => void;
   onSaveToDoc: () => void;
   onOpenArtifact?: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-zinc-200/80 bg-white/95 p-1 shadow-lg shadow-black/5 backdrop-blur dark:border-zinc-800/80 dark:bg-zinc-950/90">
@@ -75,6 +76,16 @@ export function MessageActions(props: {
         onClick={() => props.onFeedback("down")}
       >
         <ThumbsDown className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        aria-label="Delete message"
+        onClick={props.onDelete}
+        className="text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
       </Button>
     </div>
   );

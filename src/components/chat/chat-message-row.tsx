@@ -73,6 +73,7 @@ interface ChatMessageRowProps {
   onFeedback: (messageId: string, value: "up" | "down") => Promise<void>;
   onSaveToDoc: (messageId: string, content: string) => void;
   onOpenArtifact: (messageId: string, content: string) => void;
+  onDelete: (messageId: string) => void;
 }
 
 function isCalendarEventData(value: unknown): value is CalendarEventCardData {
@@ -188,6 +189,7 @@ export function ChatMessageRow({
   onFeedback,
   onSaveToDoc,
   onOpenArtifact,
+  onDelete,
 }: ChatMessageRowProps) {
   const [copied, setCopied] = useState(false);
 
@@ -221,6 +223,7 @@ export function ChatMessageRow({
 
   const handleSaveToDoc = () => onSaveToDoc(message.id, message.content);
   const handleOpenArtifact = () => onOpenArtifact(message.id, message.content);
+  const handleDelete = () => onDelete(message.id);
 
   const isLong = message.content.length > 900;
 
@@ -411,6 +414,7 @@ export function ChatMessageRow({
                 onFeedback={handleFeedback}
                 onSaveToDoc={handleSaveToDoc}
                 onOpenArtifact={handleOpenArtifact}
+                onDelete={handleDelete}
               />
             </div>
           </div>
