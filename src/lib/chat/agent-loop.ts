@@ -246,7 +246,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
             }
           }
 
-          yield { type: "done", content: finalText.trim() };
+          yield { type: "done", content: finalText.trim(), rawContent: rawContent.trim() };
           return;
         }
 

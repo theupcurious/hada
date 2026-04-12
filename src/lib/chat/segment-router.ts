@@ -134,13 +134,14 @@ export async function computeContextHint(options: {
     confidence = 0.85;
     reason = `high_overlap_low_idle:jaccard=${jaccard.toFixed(2)},idle=${idle.toFixed(1)}h`;
     candidateCount = 0;
-  } else if (jaccard >= 0.1 || idle <= 12) {
+  } else if (jaccard >= 0.15 && idle <= 4) {
+    // Both keyword overlap AND recency must hold for medium confidence
     confidence = 0.5;
     reason = `medium:jaccard=${jaccard.toFixed(2)},idle=${idle.toFixed(1)}h`;
     candidateCount = 2;
   } else {
     confidence = 0.15;
-    reason = `low_overlap_long_idle:jaccard=${jaccard.toFixed(2)},idle=${idle.toFixed(1)}h`;
+    reason = `low_overlap_or_long_idle:jaccard=${jaccard.toFixed(2)},idle=${idle.toFixed(1)}h`;
     candidateCount = 3;
   }
 
@@ -345,7 +346,9 @@ export async function persistSegmentDecision(options: {
       }
     } else if (effectiveSignal === "new") {
       if (activeSegment) {
-        if (activeSegment.message_count < 3) {
+        // Only protect against segment thrashing if the segment was JUST created (0 messages).
+        // Previously this guard was message_count < 3, which swallowed the first 1-2 topic shifts.
+        if (activeSegment.message_count < 1) {
           return continueSegment(supabase, activeSegment, {
             nowIso,
             userMessageId,

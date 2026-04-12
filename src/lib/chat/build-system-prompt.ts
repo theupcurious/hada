@@ -30,7 +30,7 @@ export async function buildSystemPrompt(options: {
   tools: AgentTool[];
   connectedIntegrations?: string[];
   userMessage?: string;
-  activeSegment?: { title: string | null; topic_key: string | null } | null;
+  activeSegment?: { title: string | null; topic_key: string | null; message_count?: number | null; last_active_at?: string | null } | null;
 }): Promise<BuildSystemPromptResult> {
   const basePrompt = await getBasePrompt();
 
@@ -112,17 +112,7 @@ export async function buildSystemPrompt(options: {
     "## Response Language",
     languageGuidance,
     "## Internal Topic Segments",
-    [
-      "Manage internal topic segments silently.",
-      "At the end of every response, include exactly one hidden metadata line in one of these formats:",
-      "<!-- segment:continue -->",
-      "<!-- segment:new:topic-key:Short Title -->",
-      "<!-- segment:revive:topic-key -->",
-      options.activeSegment
-        ? `Current segment: "${options.activeSegment.title ?? options.activeSegment.topic_key ?? "general"}". Emit <!-- segment:new:topic-key:Short Title --> if this message is about a distinctly different subject. Emit <!-- segment:continue --> if it's the same topic or a natural follow-on.`
-        : "Default to continue unless the user has clearly started a new topic or returned to a previous one.",
-      "This metadata line is stripped before the response is shown to the user.",
-    ].join("\n"),
+    buildSegmentGuidance(options.activeSegment ?? null),
     "## Available Tools",
     summarizeToolList(options.tools),
   ];
@@ -160,6 +150,68 @@ async function getBasePrompt(): Promise<string> {
   cachedBasePrompt = await readFile(promptPath, "utf-8");
   return cachedBasePrompt;
 }
+
+function buildSegmentGuidance(
+  activeSegment: { title: string | null; topic_key: string | null; message_count?: number | null; last_active_at?: string | null } | null,
+): string {
+  const lines: string[] = [
+    "Manage internal topic segments silently.",
+    "At the end of EVERY response, include exactly one hidden metadata line in one of these formats:",
+    "  <!-- segment:continue -->",
+    "  <!-- segment:new:topic-key:Short Title -->",
+    "  <!-- segment:revive:topic-key -->",
+    "",
+    "SEGMENTATION RULES — be generous, not conservative:",
+    "- Emit segment:new whenever the subject matter shifts, even partially.",
+    "- Do NOT wait for a complete topic break. A gradual drift counts.",
+    "- Examples that warrant segment:new:",
+    "    • User was discussing a project, now asks a general question unrelated to it",
+    "    • User switches from a technical topic to a personal/life topic",
+    "    • User introduces a new person, place, product, or concept not tied to the current thread",
+    "    • The user's intent or goal visibly changes (e.g. from planning → execution → reflection)",
+    "- Examples that warrant segment:continue:",
+    "    • Follow-up questions on the same subject",
+    "    • Refinements or clarifications of the current task",
+    "    • Asking for more detail or a different format for the same content",
+    "- Use segment:revive if the user returns to a topic from earlier in the conversation.",
+    "- topic-key must be a short kebab-case label (e.g. travel-planning, recipe-ideas, work-email).",
+    "- Short Title is 2–5 words in title case.",
+    "- This hidden line is stripped before the response reaches the user.",
+  ];
+
+  if (activeSegment) {
+    const name = activeSegment.title ?? activeSegment.topic_key ?? "general";
+    const count = typeof activeSegment.message_count === "number" ? activeSegment.message_count : null;
+    const ageLabel = activeSegment.last_active_at ? formatSegmentAge(activeSegment.last_active_at) : null;
+
+    const contextParts: string[] = [`Current segment: "${name}"`];
+    if (count !== null) contextParts.push(`${count} messages so far`);
+    if (ageLabel) contextParts.push(`last active ${ageLabel}`);
+    lines.push("");
+    lines.push(contextParts.join(", ") + ".");
+    if (count !== null && count >= 6) {
+      lines.push(`This segment already has ${count} messages — be especially willing to start a new segment if the topic has shifted.`);
+    }
+  } else {
+    lines.push("");
+    lines.push("No active segment yet. A new one will be created from your signal.");
+    lines.push("Prefer segment:new with a descriptive topic-key for the first substantive message.");
+  }
+
+  return lines.join("\n");
+}
+
+function formatSegmentAge(lastActiveAt: string): string {
+  const diffMs = Date.now() - new Date(lastActiveAt).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 2) return "just now";
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return `${Math.floor(diffH / 24)}d ago`;
+}
+
+
 
 function formatMemories(
   memories: Array<{ topic: string; content: string; updated_at: string; kind?: string; pinned?: boolean }>,

@@ -107,7 +107,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     (async () => {
       const { data: activeSegmentRow } = await supabase
         .from("conversation_segments")
-        .select("title, topic_key")
+        .select("title, topic_key, message_count, last_active_at")
         .eq("conversation_id", conversation.id)
         .eq("status", "active")
         .maybeSingle();
@@ -160,6 +160,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   const systemPrompt = builtPrompt.prompt + "\n\n" + runtimeSection;
 
   let assembled = "";
+  let rawContentFromDone = "";
   let fatalError: string | null = null;
   let extractedSegmentSignal: ReturnType<typeof extractSegmentSignal>["signal"] = null;
   const runBudget = resolveRunBudget(options.message);
@@ -188,6 +189,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
         // as the authoritative saved response, overriding any intermediate
         // "Let me search…" text that streaming may have accumulated.
         assembled = event.content;
+        rawContentFromDone = event.rawContent ?? event.content;
       } else if (event.type === "tool_result") {
         toolCallLog.push({
           name: event.name,
@@ -207,7 +209,11 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       await emitEvent(options.onEvent, event);
     }
     const rawText = assembled.trim() || fatalError || "I ran into an issue while processing that.";
-    const { cleanedText: strippedText, signal: segmentSignalResult } = extractSegmentSignal(rawText);
+    // Extract segment signal from the unfiltered LLM output (rawContentFromDone) so the
+    // <!-- segment:... --> comment survives the stream filter that strips it from visible text.
+    const signalSource = rawContentFromDone.trim() || rawText;
+    const { signal: segmentSignalResult } = extractSegmentSignal(signalSource);
+    const strippedText = rawText;
     extractedSegmentSignal = segmentSignalResult;
     responseText = strippedText;
     const cards = extractCardsFromToolResults(toolResultsForCards);

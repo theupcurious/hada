@@ -339,7 +339,7 @@ export type AgentEvent =
   | { type: "step_failed"; stepId: string; planId: string; error: string; agentName?: string }
   | { type: "delegation_started"; agentName: string; task: string }
   | { type: "delegation_completed"; agentName: string; result: string }
-  | { type: "done"; content: string; agentName?: string }
+  | { type: "done"; content: string; rawContent?: string; agentName?: string }
   | { type: "message_saved"; id: string }
   | { type: "follow_up_suggestions"; suggestions: string[] }
   | { type: "context_compacted"; removedCount: number }
