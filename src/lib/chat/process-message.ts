@@ -746,25 +746,41 @@ function maybeOverrideSegmentSignal(options: {
   const activeSegment = contextHint.activeSegment;
   const messageCount = activeSegment.message_count ?? 0;
 
-  // Don't override for very young segments.
-  if (messageCount < 4) {
+  // Guard 1: Don't override for young segments — need at least 4 full
+  // user-assistant exchanges (8 messages) before considering a split.
+  if (messageCount < 8) {
+    return llmSignal;
+  }
+
+  // Guard 2: Require the segment to have a real summary. Without one
+  // the segment metadata is just "General / general" and every message
+  // would register as zero overlap.
+  const summaryText = (activeSegment.summary ?? "").trim();
+  if (!summaryText || summaryText.length < 20) {
+    return llmSignal;
+  }
+
+  // Guard 3: Short or pronoun-heavy messages ("what about that?",
+  // "any others?", "thanks") are almost always follow-ups, regardless
+  // of keyword overlap. Require ≥4 content tokens.
+  const messageTokens = heuristicTokenize(userMessage);
+  if (messageTokens.size < 4) {
     return llmSignal;
   }
 
   // Compute keyword overlap between the user's message and the segment metadata.
   const segmentText = [
     activeSegment.title ?? "",
-    activeSegment.summary ?? "",
+    summaryText,
     activeSegment.topic_key ?? "",
   ].join(" ");
-  const messageTokens = heuristicTokenize(userMessage);
   const segmentTokens = heuristicTokenize(segmentText);
   const overlap = heuristicJaccard(messageTokens, segmentTokens);
 
-  // Thresholds: stricter for younger segments, more lenient for old ones.
-  const overlapThreshold = messageCount >= 20 ? 0.12 : 0.08;
+  // Thresholds: more lenient for very large segments where a split is overdue.
+  const overlapThreshold = messageCount >= 30 ? 0.10 : 0.05;
 
-  if (overlap < overlapThreshold && messageTokens.size >= 2) {
+  if (overlap < overlapThreshold) {
     const topicKey = deriveTopicKey(userMessage);
     const title = deriveTitleFromMessage(userMessage);
     console.log(
