@@ -214,7 +214,26 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     const signalSource = rawContentFromDone.trim() || rawText;
     const { signal: segmentSignalResult } = extractSegmentSignal(signalSource);
     const strippedText = rawText;
-    extractedSegmentSignal = segmentSignalResult;
+
+    // Server-side heuristic fallback: if the LLM didn't emit a segment signal
+    // (or emitted "continue"), detect obvious topic shifts automatically.
+    extractedSegmentSignal = maybeOverrideSegmentSignal({
+      llmSignal: segmentSignalResult,
+      userMessage: options.message,
+      contextHint,
+    });
+    if (extractedSegmentSignal !== segmentSignalResult) {
+      console.log("[segment] Server-side override: LLM said",
+        segmentSignalResult?.signal ?? "(none)",
+        "→ overridden to", extractedSegmentSignal?.signal ?? "(none)",
+      );
+    } else {
+      console.log("[segment] LLM signal:",
+        segmentSignalResult
+          ? `${segmentSignalResult.signal}${segmentSignalResult.topicKey ? `:${segmentSignalResult.topicKey}` : ""}`
+          : "(none — defaulting to continue)",
+      );
+    }
     responseText = strippedText;
     const cards = extractCardsFromToolResults(toolResultsForCards);
     const retrievalMetadata = buildRetrievalMetadata(context, contextHint);
@@ -652,4 +671,112 @@ function resolveOpenRouterReasoningConfig(
     enabled: true,
     ...(effort ? { effort } : {}),
   };
+}
+
+// ─── Server-side segment heuristic fallback ───────────────────────────────────
+// If the LLM doesn't emit a segment signal or always says "continue", we
+// detect obvious topic shifts ourselves based on keyword overlap and segment
+// depth.  This ensures segmentation works even with models that ignore the
+// prompt instruction.
+
+const SEGMENT_STOP_WORDS = new Set([
+  "a","an","the","and","or","but","in","on","at","to","for","of","with",
+  "is","was","are","were","be","been","being","have","has","had","do","does","did",
+  "will","would","could","should","may","might","shall","can","need","dare",
+  "i","you","he","she","it","we","they","me","him","her","us","them",
+  "my","your","his","its","our","their","this","that","these","those",
+  "what","which","who","how","when","where","why","not","no","so","if","then",
+]);
+
+function heuristicTokenize(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !SEGMENT_STOP_WORDS.has(w)),
+  );
+}
+
+function heuristicJaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size && !b.size) return 0;
+  let intersection = 0;
+  for (const word of a) {
+    if (b.has(word)) intersection++;
+  }
+  return intersection / (a.size + b.size - intersection);
+}
+
+function deriveTopicKey(text: string): string {
+  const tokens = heuristicTokenize(text);
+  const words = [...tokens].slice(0, 3);
+  if (!words.length) return "new-topic";
+  return words.join("-");
+}
+
+function deriveTitleFromMessage(text: string): string {
+  const cleaned = text
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = cleaned.split(" ").slice(0, 5);
+  return words
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ") || "New Topic";
+}
+
+type SegmentSignalLike = { signal: "continue" | "new" | "revive"; topicKey?: string; title?: string } | null;
+
+function maybeOverrideSegmentSignal(options: {
+  llmSignal: SegmentSignalLike;
+  userMessage: string;
+  contextHint: ContextHint | null;
+}): SegmentSignalLike {
+  const { llmSignal, userMessage, contextHint } = options;
+
+  // If the LLM already said "new" or "revive", respect it.
+  if (llmSignal && llmSignal.signal !== "continue") {
+    return llmSignal;
+  }
+
+  // No context hint or no active segment — can't evaluate.
+  if (!contextHint?.activeSegment) {
+    return llmSignal;
+  }
+
+  const activeSegment = contextHint.activeSegment;
+  const messageCount = activeSegment.message_count ?? 0;
+
+  // Don't override for very young segments.
+  if (messageCount < 4) {
+    return llmSignal;
+  }
+
+  // Compute keyword overlap between the user's message and the segment metadata.
+  const segmentText = [
+    activeSegment.title ?? "",
+    activeSegment.summary ?? "",
+    activeSegment.topic_key ?? "",
+  ].join(" ");
+  const messageTokens = heuristicTokenize(userMessage);
+  const segmentTokens = heuristicTokenize(segmentText);
+  const overlap = heuristicJaccard(messageTokens, segmentTokens);
+
+  // Thresholds: stricter for younger segments, more lenient for old ones.
+  const overlapThreshold = messageCount >= 20 ? 0.12 : 0.08;
+
+  if (overlap < overlapThreshold && messageTokens.size >= 2) {
+    const topicKey = deriveTopicKey(userMessage);
+    const title = deriveTitleFromMessage(userMessage);
+    console.log(
+      `[segment] Heuristic override: segment "${activeSegment.title}" has ${messageCount} msgs, ` +
+      `jaccard=${overlap.toFixed(3)} < ${overlapThreshold} → creating new segment "${title}" (${topicKey})`,
+    );
+    return {
+      signal: "new",
+      topicKey,
+      title,
+    };
+  }
+
+  return llmSignal;
 }
