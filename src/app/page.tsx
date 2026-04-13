@@ -67,7 +67,7 @@ const HOME_COPY: Record<
     footerTagline: "Hada — Your AI Assistant",
     features: [
       { title: "Calendar", desc: "Schedule meetings, check availability, send invites", icon: "📅" },
-      { title: "Email", desc: "Draft responses, summarize threads, send on your behalf", icon: "✉️" },
+      { title: "Wiki", desc: "Maintain an AI-organized personal knowledge base and document workspace", icon: "📚" },
       { title: "Research", desc: "Find information, compare options, create summaries", icon: "🔍" },
       { title: "Tasks", desc: "Set reminders, schedule recurring jobs, follow up automatically", icon: "✅" },
       { title: "Telegram", desc: "Message Hada from anywhere — works over Telegram too", icon: "💬" },
@@ -95,7 +95,7 @@ const HOME_COPY: Record<
     footerTagline: "Hada — 당신의 AI 비서",
     features: [
       { title: "캘린더", desc: "미팅 예약, 가능 시간 확인, 초대 발송", icon: "📅" },
-      { title: "이메일", desc: "답장 초안, 스레드 요약, 대신 발송", icon: "✉️" },
+      { title: "위키", desc: "AI가 관리하는 개인 지식 베이스 및 문서 관리", icon: "📚" },
       { title: "리서치", desc: "정보 탐색, 옵션 비교, 요약 정리", icon: "🔍" },
       { title: "작업", desc: "리마인더 설정, 반복 작업 스케줄, 자동 후속", icon: "✅" },
       { title: "텔레그램", desc: "언제든 텔레그램으로 Hada와 대화", icon: "💬" },
@@ -123,7 +123,7 @@ const HOME_COPY: Record<
     footerTagline: "Hada — あなたのAIアシスタント",
     features: [
       { title: "カレンダー", desc: "予定調整、空き確認、招待送信", icon: "📅" },
-      { title: "メール", desc: "返信下書き、スレッド要約、代理送信", icon: "✉️" },
+      { title: "Wiki", desc: "AIが整理するパーソナルナレッジベースとドキュメント管理", icon: "📚" },
       { title: "調査", desc: "情報収集、比較、要約作成", icon: "🔍" },
       { title: "タスク", desc: "リマインダー、定期実行、フォロー自動化", icon: "✅" },
       { title: "Telegram", desc: "どこからでも Telegram で Hada と会話", icon: "💬" },
@@ -151,7 +151,7 @@ const HOME_COPY: Record<
     footerTagline: "Hada — 你的 AI 助手",
     features: [
       { title: "日历", desc: "安排会议、检查空档、发送邀请", icon: "📅" },
-      { title: "邮件", desc: "起草回复、总结线程、代你发送", icon: "✉️" },
+      { title: "Wiki", desc: "维护由 AI 整理的个人知识库与互联文档", icon: "📚" },
       { title: "研究", desc: "查找信息、比较选项、生成摘要", icon: "🔍" },
       { title: "任务", desc: "设置提醒、安排定期任务、自动跟进", icon: "✅" },
       { title: "Telegram", desc: "随时随地通过 Telegram 联系 Hada", icon: "💬" },
