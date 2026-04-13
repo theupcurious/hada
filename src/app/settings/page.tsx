@@ -9,13 +9,14 @@ import { AccountTab } from "@/components/settings/account-tab";
 import { MemoryTab } from "@/components/settings/memory-tab";
 import { TasksTab } from "@/components/settings/tasks-tab";
 import { DebugTab } from "@/components/settings/debug-tab";
+import { HelpTab } from "@/components/settings/help-tab";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import type { AppLocale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type ComponentType } from "react";
 
-type SettingsTabId = "integrations" | "account" | "memory" | "tasks" | "status" | "debug";
+type SettingsTabId = "integrations" | "account" | "memory" | "tasks" | "help" | "status" | "debug";
 
 type SettingsTabDescriptor = {
   id: SettingsTabId;
@@ -30,6 +31,7 @@ const SETTINGS_TABS_BY_LOCALE: Record<AppLocale, SettingsTabDescriptor[]> = {
     { id: "account", label: "Account", description: "Profile, timezone, and defaults", icon: AccountIcon },
     { id: "memory", label: "Memory", description: "Saved preferences across chats", icon: MemoryIcon },
     { id: "tasks", label: "Tasks", description: "Scheduled tasks and automations", icon: TasksIcon },
+    { id: "help", label: "Help", description: "How docs, wiki ingest, and chat signals work", icon: HelpIcon },
     { id: "status", label: "Status", description: "Runtime health and provider checks", icon: StatusIcon },
   ],
   ko: [
@@ -37,6 +39,7 @@ const SETTINGS_TABS_BY_LOCALE: Record<AppLocale, SettingsTabDescriptor[]> = {
     { id: "account", label: "계정", description: "프로필, 시간대, 기본값", icon: AccountIcon },
     { id: "memory", label: "메모리", description: "대화 전반의 저장된 선호도", icon: MemoryIcon },
     { id: "tasks", label: "작업", description: "예약 작업 및 자동화", icon: TasksIcon },
+    { id: "help", label: "도움말", description: "문서, 위키 인제스트, 채팅 상태 안내", icon: HelpIcon },
     { id: "status", label: "상태", description: "런타임 상태 및 제공자 점검", icon: StatusIcon },
   ],
   ja: [
@@ -44,6 +47,7 @@ const SETTINGS_TABS_BY_LOCALE: Record<AppLocale, SettingsTabDescriptor[]> = {
     { id: "account", label: "アカウント", description: "プロフィール、タイムゾーン、既定値", icon: AccountIcon },
     { id: "memory", label: "メモリ", description: "会話をまたいで保持される設定", icon: MemoryIcon },
     { id: "tasks", label: "タスク", description: "スケジュールされたタスクと自動化", icon: TasksIcon },
+    { id: "help", label: "ヘルプ", description: "Docs、Wiki取り込み、状態表示の説明", icon: HelpIcon },
     { id: "status", label: "ステータス", description: "ランタイム状態とプロバイダー確認", icon: StatusIcon },
   ],
   zh: [
@@ -51,6 +55,7 @@ const SETTINGS_TABS_BY_LOCALE: Record<AppLocale, SettingsTabDescriptor[]> = {
     { id: "account", label: "账户", description: "个人资料、时区和默认设置", icon: AccountIcon },
     { id: "memory", label: "记忆", description: "跨会话保存的偏好与事实", icon: MemoryIcon },
     { id: "tasks", label: "任务", description: "定时任务与自动化", icon: TasksIcon },
+    { id: "help", label: "帮助", description: "文档、Wiki 导入与状态提示说明", icon: HelpIcon },
     { id: "status", label: "状态", description: "运行状态与提供商检查", icon: StatusIcon },
   ],
 };
@@ -143,6 +148,7 @@ function SettingsContent() {
             {activeTab === "account" ? <AccountTab /> : null}
             {activeTab === "memory" ? <MemoryTab /> : null}
             {activeTab === "tasks" ? <TasksTab /> : null}
+            {activeTab === "help" ? <HelpTab /> : null}
             {activeTab === "status" ? <StatusTab /> : null}
             {activeTab === "debug" ? <DebugTab /> : null}
           </div>
@@ -187,6 +193,9 @@ function SettingsContent() {
             </TabsContent>
             <TabsContent value="tasks" className="mt-0">
               <TasksTab />
+            </TabsContent>
+            <TabsContent value="help" className="mt-0">
+              <HelpTab />
             </TabsContent>
             <TabsContent value="status" className="mt-0">
               <StatusTab />
@@ -252,6 +261,16 @@ function TasksIcon({ className }: { className?: string }) {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M9 11l3 3L22 4" />
       <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+
+function HelpIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
     </svg>
   );
 }

@@ -725,7 +725,7 @@ function WysiwygPane({
 
   const handleIngestIntoWiki = () => {
     const prompt = `Ingest "${doc.title}" (document id: ${doc.id}) into my wiki`;
-    router.push(`/chat?draft=${encodeURIComponent(prompt)}`);
+    router.push(`/chat?q=${encodeURIComponent(prompt)}`);
   };
 
   const prepareShare = async () => {
