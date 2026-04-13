@@ -27,7 +27,7 @@ import {
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Calendar, FileText, Lightbulb, LayoutDashboard, LogOut, Search, Settings2 } from "lucide-react";
+import { Calendar, FileText, Lightbulb, LayoutDashboard, LogOut, Octagon, Search, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
@@ -1817,12 +1817,14 @@ export default function ChatPage() {
           {isLoading ? (
             <Button
               type="button"
-              size="sm"
+              size="icon"
               variant="outline"
               onClick={stopStreamingResponse}
-              className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
+              aria-label={copy.stopResponseLabel}
+              title={copy.stopResponseLabel}
+              className="h-8 w-8 rounded-xl border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
             >
-              {copy.stopResponseLabel}
+              <Octagon className="h-4 w-4 fill-current" />
             </Button>
           ) : (
             <Button
