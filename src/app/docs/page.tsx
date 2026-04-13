@@ -189,12 +189,7 @@ function DashboardPageContent() {
   // 4a/4c: Wiki graph view
   const [showGraph, setShowGraph] = useState(false);
 
-  // 4d: Wiki drop-zone drag state + upload banner
-  const [wikiDragOver, setWikiDragOver] = useState(false);
-  const [wikiUploadBanner, setWikiUploadBanner] = useState<{ title: string } | null>(null);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const wikiFileInputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -352,29 +347,6 @@ function DashboardPageContent() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [loadDocs, selectDoc]);
 
-  // 4d: Upload a file directly into the wiki/ folder
-  const handleWikiUpload = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      const content = String(evt.target?.result ?? "");
-      const title = file.name.replace(/\.(md|txt)$/i, "");
-      const response = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content, folder: "wiki" }),
-      });
-      if (!response.ok) return;
-      const data = (await response.json()) as { document?: Document };
-      if (!data.document) return;
-      await loadDocs();
-      setExpandedFolders((prev) => new Set([...prev, "wiki"]));
-      await selectDoc(data.document.id);
-      setWikiUploadBanner({ title });
-    };
-    reader.readAsText(file);
-    if (wikiFileInputRef.current) wikiFileInputRef.current.value = "";
-  }, [loadDocs, selectDoc]);
-
 
   const toggleFolder = (name: string) => {
     setExpandedFolders((prev) => {
@@ -434,6 +406,7 @@ function DashboardPageContent() {
     return { nodes: [...nodes, ...missingNodes], edges };
   }, [docs, activeDoc]);
   const rootDocs = docs.filter((d) => !d.folder);
+  const wikiExists = docs.some((d) => d.folder === "wiki");
 
   const sidebar = (
     <div className="flex h-full flex-col">
@@ -534,38 +507,6 @@ function DashboardPageContent() {
                       <button onClick={() => void createDoc(folder)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300">
                         <Plus className="h-3 w-3" />New in {isWiki ? "wiki" : folder}
                       </button>
-                      {/* 4d: Wiki drop zone */}
-                      {isWiki && (
-                        <>
-                          <input
-                            ref={wikiFileInputRef}
-                            type="file"
-                            accept=".md,.txt,text/markdown,text/plain"
-                            className="hidden"
-                            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleWikiUpload(f); }}
-                          />
-                          <div
-                            onDragOver={(e) => { e.preventDefault(); setWikiDragOver(true); }}
-                            onDragLeave={() => setWikiDragOver(false)}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              setWikiDragOver(false);
-                              const f = e.dataTransfer.files[0];
-                              if (f) handleWikiUpload(f);
-                            }}
-                            onClick={() => wikiFileInputRef.current?.click()}
-                            className={cn(
-                              "mx-1 mt-1 cursor-pointer rounded-md border border-dashed px-2 py-2 text-center text-[10px] transition-colors",
-                              wikiDragOver
-                                ? "border-violet-400 bg-violet-500/10 text-violet-500"
-                                : "border-zinc-200/70 text-zinc-400 hover:border-violet-300 hover:text-violet-500 dark:border-zinc-700",
-                            )}
-                          >
-                            <Upload className="mx-auto mb-0.5 h-3 w-3" />
-                            Drop .md or .txt to add to wiki
-                          </div>
-                        </>
-                      )}
                     </div>
                   </motion.div>
                 )}
@@ -641,33 +582,6 @@ function DashboardPageContent() {
         </div>
 
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* 4d: Upload banner */}
-          <AnimatePresence>
-            {wikiUploadBanner && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="flex shrink-0 items-center justify-between gap-2 border-b border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-700 dark:border-violet-800/60 dark:bg-violet-950/40 dark:text-violet-300"
-              >
-                <div className="flex items-center gap-2">
-                  <span>📄 &quot;{wikiUploadBanner.title}&quot; uploaded to wiki.</span>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    className="h-7 border-violet-300 bg-white/50 px-3 text-xs text-violet-700 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-800/50"
-                    onClick={() => router.push(`/chat?q=${encodeURIComponent(`Ingest my new wiki page "${wikiUploadBanner.title}" into the knowledge base.`)}`)}
-                  >
-                    Ingest
-                  </Button>
-                </div>
-                <button onClick={() => setWikiUploadBanner(null)} className="shrink-0 rounded p-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {isLoading ? (
             <div className="flex flex-1 items-center justify-center">
               <span className="text-sm text-zinc-400">Loading...</span>
@@ -706,6 +620,8 @@ function DashboardPageContent() {
               onRefreshDocs={loadDocs}
               folders={folders}
               onNavigateToDoc={(id) => void selectDoc(id)}
+              wikiExists={wikiExists}
+              router={router}
             />
           ) : (
             <EmptyPane onCreate={() => void createDoc(null)} />
@@ -725,6 +641,8 @@ function WysiwygPane({
   onRefreshDocs,
   folders,
   onNavigateToDoc,
+  wikiExists,
+  router,
 }: {
   doc: Document;
   isSaving: boolean;
@@ -733,6 +651,8 @@ function WysiwygPane({
   onRefreshDocs: () => Promise<DocListItem[]>;
   folders: string[];
   onNavigateToDoc: (id: string) => void;
+  wikiExists: boolean;
+  router: ReturnType<typeof useRouter>;
 }) {
   const [title, setTitle] = useState(doc.title);
   const [folder, setFolder] = useState(doc.folder ?? "");
@@ -799,6 +719,13 @@ function WysiwygPane({
     anchor.download = toMarkdownFilename(title);
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const canIngestIntoWiki = doc.folder !== "wiki" && wikiExists;
+
+  const handleIngestIntoWiki = () => {
+    const prompt = `Ingest "${doc.title}" (document id: ${doc.id}) into my wiki`;
+    router.push(`/chat?draft=${encodeURIComponent(prompt)}`);
   };
 
   const prepareShare = async () => {
@@ -901,6 +828,11 @@ function WysiwygPane({
           <Button size="sm" variant="ghost" onClick={() => void handleOpenShareModal()} disabled={isPreparingShare || isSaving} title="Share document">
             <Share2 className="h-4 w-4" />
           </Button>
+          {canIngestIntoWiki ? (
+            <Button size="sm" variant="ghost" onClick={handleIngestIntoWiki}>
+              Ingest into Wiki
+            </Button>
+          ) : null}
           <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 dark:text-red-400" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -930,7 +862,6 @@ function WysiwygPane({
           .wysiwyg-editor strong { font-weight: 600; }
           .wysiwyg-editor .is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #a1a1aa; pointer-events: none; height: 0; }
         `}</style>
-        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events,jsx-a11y/no-static-element-interactions */}
         <div onClick={(e) => void handleEditorClick(e)}>
           <EditorContent editor={editor} />
         </div>
@@ -1160,7 +1091,6 @@ function WikiGraphView({
     };
     animRef.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   const pos = posRef.current;

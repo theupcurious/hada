@@ -1776,7 +1776,16 @@ export default function ChatPage() {
     
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      const draft = url.searchParams.get("draft");
       const q = url.searchParams.get("q");
+      if (draft) {
+        hasProcessedQuery.current = true;
+        url.searchParams.delete("draft");
+        window.history.replaceState({}, document.title, url.toString());
+        setInput(draft);
+        textareaRef.current?.focus();
+        return;
+      }
       if (q) {
         hasProcessedQuery.current = true;
         url.searchParams.delete("q");
