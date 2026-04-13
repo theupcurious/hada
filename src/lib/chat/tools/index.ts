@@ -20,6 +20,8 @@ import { createReadDocumentTool, readDocumentManifest } from "@/lib/chat/tools/r
 import { createCreateDocumentTool, createDocumentManifest } from "@/lib/chat/tools/create-document";
 import { createUpdateDocumentTool, updateDocumentManifest } from "@/lib/chat/tools/update-document";
 import { createMcpCallTool, mcpCallManifest } from "@/lib/chat/tools/mcp-call";
+import { createSearchDocumentsTool, searchDocumentsManifest } from "@/lib/chat/tools/search-documents";
+import { createDeleteDocumentTool, deleteDocumentManifest } from "@/lib/chat/tools/delete-document";
 import { registry } from "@/lib/chat/tools/tool-registry";
 
 export interface CreateToolsOptions {
@@ -40,6 +42,8 @@ registry.register({ manifest: readDocumentManifest, create: createReadDocumentTo
 registry.register({ manifest: createDocumentManifest, create: createCreateDocumentTool });
 registry.register({ manifest: updateDocumentManifest, create: createUpdateDocumentTool });
 registry.register({ manifest: mcpCallManifest, create: createMcpCallTool });
+registry.register({ manifest: searchDocumentsManifest, create: createSearchDocumentsTool });
+registry.register({ manifest: deleteDocumentManifest, create: createDeleteDocumentTool });
 
 // Register Google Calendar tools
 registry.register({

@@ -4,11 +4,12 @@ export const dynamic = "force-dynamic";
 
 import Image from "next/image";
 import Link from "next/link";
-import React, { useCallback, useEffect, useRef, useState, Suspense } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
+  BookOpen,
   Check,
   ChevronDown,
   ChevronRight,
@@ -18,6 +19,7 @@ import {
   Folder,
   Link2,
   MessageSquare,
+  Network,
   Plus,
   Settings2,
   Share2,
@@ -25,6 +27,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { InputRule, Mark } from "@tiptap/core";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown as MarkdownExtension } from "tiptap-markdown";
@@ -92,7 +95,73 @@ Hada can also list and read your documents on its own when relevant.
 - Update documents regularly so your assistant has fresh context
 `;
 
+// ── WikiLink Tiptap extension ────────────────────────────────────────────────
+
+const WIKILINK_REGEX = /\[\[([^\]]+)\]\]/g;
+
+/** Parses all [[Page Title]] references from a piece of text. */
+function parseWikiLinks(text: string): string[] {
+  const results: string[] = [];
+  let m: RegExpExecArray | null;
+  const re = new RegExp(WIKILINK_REGEX.source, "g");
+  while ((m = re.exec(text)) !== null) {
+    results.push(m[1].trim());
+  }
+  return results;
+}
+
+/**
+ * Custom Tiptap Mark that renders [[Page Title]] as a styled interactive span.
+ * The markdown serializer preserves the [[...]] syntax so the raw markdown
+ * stored in the database is never corrupted.
+ */
+const WikiLinkMark = Mark.create({
+  name: "wikilink",
+  priority: 1001,
+
+  addAttributes() {
+    return {
+      title: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute("data-wikilink"),
+        renderHTML: (attrs) => ({ "data-wikilink": attrs.title }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "span[data-wikilink]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      {
+        ...HTMLAttributes,
+        class:
+          "wikilink-mark cursor-pointer rounded-sm border-b border-violet-400 bg-violet-500/10 px-0.5 text-violet-600 hover:bg-violet-500/20 dark:border-violet-500 dark:text-violet-400 dark:hover:bg-violet-500/15 transition-colors",
+      },
+      0,
+    ];
+  },
+
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /\[\[([^\]]+)\]\]$/,
+        handler: ({ state, range, match }) => {
+          const title = match[1];
+          const { tr } = state;
+          const mark = this.type.create({ title });
+          tr.replaceWith(range.from, range.to, state.schema.text(`[[${title}]]`, [mark]));
+        },
+      }),
+    ];
+  },
+});
+
 export default function DashboardPage() {
+
   return (
     <Suspense fallback={
       <div className="flex h-dvh items-center justify-center bg-zinc-50 dark:bg-zinc-950 text-zinc-400">
@@ -116,8 +185,18 @@ function DashboardPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // 4a/4c: Wiki graph view
+  const [showGraph, setShowGraph] = useState(false);
+
+  // 4d: Wiki drop-zone drag state + upload banner
+  const [wikiDragOver, setWikiDragOver] = useState(false);
+  const [wikiUploadBanner, setWikiUploadBanner] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wikiFileInputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
+
 
   const loadDocs = useCallback(async () => {
     const response = await fetch("/api/documents");
@@ -256,7 +335,7 @@ function DashboardPageContent() {
     const reader = new FileReader();
     reader.onload = async (evt) => {
       const content = String(evt.target?.result ?? "");
-      const title = file.name.replace(/\.md$/i, "");
+      const title = file.name.replace(/\.(md|txt)$/i, "");
       const response = await fetch("/api/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -271,6 +350,30 @@ function DashboardPageContent() {
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [loadDocs, selectDoc]);
+
+  // 4d: Upload a file directly into the wiki/ folder
+  const handleWikiUpload = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const content = String(evt.target?.result ?? "");
+      const title = file.name.replace(/\.(md|txt)$/i, "");
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content, folder: "wiki" }),
+      });
+      if (!response.ok) return;
+      const data = (await response.json()) as { document?: Document };
+      if (!data.document) return;
+      await loadDocs();
+      setExpandedFolders((prev) => new Set([...prev, "wiki"]));
+      await selectDoc(data.document.id);
+      setWikiUploadBanner(`"${title}" uploaded to wiki. Ask Hada to ingest it.`);
+    };
+    reader.readAsText(file);
+    if (wikiFileInputRef.current) wikiFileInputRef.current.value = "";
+  }, [loadDocs, selectDoc]);
+
 
   const toggleFolder = (name: string) => {
     setExpandedFolders((prev) => {
@@ -290,7 +393,45 @@ function DashboardPageContent() {
     setNewFolderName("");
   };
 
-  const folders = [...new Set(docs.filter((d) => d.folder).map((d) => d.folder as string))].sort();
+  // 4a: Pin wiki folder to the top of the list
+  const folders = useMemo(() => {
+    const all = [...new Set(docs.filter((d) => d.folder).map((d) => d.folder as string))];
+    return all.sort((a, b) => {
+      if (a === "wiki") return -1;
+      if (b === "wiki") return 1;
+      return a.localeCompare(b);
+    });
+  }, [docs]);
+
+  // 4c: Build graph data from [[wikilinks]] in available content
+  const graphData = useMemo(() => {
+    const wikiDocs = docs.filter((d) => d.folder === "wiki");
+    if (wikiDocs.length === 0) return null;
+
+    const titleToId = new Map(wikiDocs.map((d) => [d.title.toLowerCase(), d.id]));
+    const nodes = wikiDocs.map((d) => ({ id: d.id, title: d.title }));
+    const edges: { from: string; to: string }[] = [];
+    const missing = new Map<string, string>(); // title → synthetic id
+
+    for (const doc of wikiDocs) {
+      const content = (doc.id === activeDoc?.id ? activeDoc.content : null) ?? doc.preview ?? "";
+      const links = parseWikiLinks(content);
+      for (const link of links) {
+        const targetId = titleToId.get(link.toLowerCase());
+        if (targetId) {
+          edges.push({ from: doc.id, to: targetId });
+        } else {
+          // orphan reference
+          const synthId = `missing:${link}`;
+          if (!missing.has(link)) missing.set(link, synthId);
+          edges.push({ from: doc.id, to: synthId });
+        }
+      }
+    }
+
+    const missingNodes = [...missing.entries()].map(([title, id]) => ({ id, title, missing: true }));
+    return { nodes: [...nodes, ...missingNodes], edges };
+  }, [docs, activeDoc]);
   const rootDocs = docs.filter((d) => !d.folder);
 
   const sidebar = (
@@ -301,36 +442,86 @@ function DashboardPageContent() {
           <button onClick={() => void createDoc(null)} className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="New document">
             <Plus className="h-3.5 w-3.5" />
           </button>
-          <label htmlFor="doc-upload" className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="Upload .md file">
+          <label htmlFor="doc-upload" className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="Upload .md or .txt file">
             <Upload className="h-3.5 w-3.5" />
           </label>
-          <input ref={fileInputRef} id="doc-upload" type="file" accept=".md,text/markdown" className="hidden" onChange={handleUpload} />
+          <input ref={fileInputRef} id="doc-upload" type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={handleUpload} />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-1 pb-2">
         {folders.map((folder) => {
+          const isWiki = folder === "wiki";
           const folderDocs = docs.filter((d) => d.folder === folder);
           const isExpanded = expandedFolders.has(folder);
+          const lastUpdated = folderDocs.length > 0
+            ? folderDocs.reduce((latest, d) => d.updated_at > latest ? d.updated_at : latest, folderDocs[0].updated_at)
+            : null;
+          const lastUpdatedLabel = lastUpdated
+            ? (() => {
+                const diffMs = Date.now() - new Date(lastUpdated).getTime();
+                const diffMin = Math.floor(diffMs / 60_000);
+                if (diffMin < 2) return "just now";
+                if (diffMin < 60) return `${diffMin}m ago`;
+                const diffH = Math.floor(diffMin / 60);
+                if (diffH < 24) return `${diffH}h ago`;
+                return `${Math.floor(diffH / 24)}d ago`;
+              })()
+            : null;
+
           return (
             <div key={folder} className="group">
               <div className="flex items-center gap-1">
-                <button onClick={() => toggleFolder(folder)} className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
+                <button onClick={() => toggleFolder(folder)} className={cn(
+                  "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                  isWiki
+                    ? "text-violet-700 hover:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/10"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
+                )}>
                   {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />}
-                  <Folder className="h-3.5 w-3.5 shrink-0 text-teal-500" />
-                  <span className="truncate font-medium">{folder}</span>
-                  <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{folderDocs.length}</span>
+                  {isWiki
+                    ? <BookOpen className="h-3.5 w-3.5 shrink-0 text-violet-500" />
+                    : <Folder className="h-3.5 w-3.5 shrink-0 text-teal-500" />}
+                  <span className="truncate font-medium">{isWiki ? "Wiki" : folder}</span>
+                  {isWiki ? (
+                    <span className="ml-auto flex shrink-0 items-center gap-1">
+                      {lastUpdatedLabel && (
+                        <span className="text-[10px] text-violet-400/70 dark:text-violet-500/70">{lastUpdatedLabel}</span>
+                      )}
+                      <span className="rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+                        {folderDocs.length}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{folderDocs.length}</span>
+                  )}
                 </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void deleteFolder(folder, folderDocs.map((doc) => doc.id));
-                  }}
-                  className="shrink-0 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-950/40"
-                  title={`Delete folder ${folder}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-zinc-400 hover:text-red-500 dark:hover:text-red-400" />
-                </button>
+                {isWiki && graphData && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowGraph((v) => !v); }}
+                    className={cn(
+                      "shrink-0 rounded p-1 transition-colors",
+                      showGraph
+                        ? "bg-violet-500/15 text-violet-500"
+                        : "opacity-0 text-zinc-400 group-hover:opacity-100 hover:bg-violet-500/10 hover:text-violet-500",
+                    )}
+                    title="Graph view"
+                  >
+                    <Network className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {!isWiki && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void deleteFolder(folder, folderDocs.map((doc) => doc.id));
+                    }}
+                    className="shrink-0 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-950/40"
+                    title={`Delete folder ${folder}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-zinc-400 hover:text-red-500 dark:hover:text-red-400" />
+                  </button>
+                )}
               </div>
               <AnimatePresence initial={false}>
                 {isExpanded && (
@@ -340,8 +531,40 @@ function DashboardPageContent() {
                         <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} onDelete={deleteDoc} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
                       ))}
                       <button onClick={() => void createDoc(folder)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300">
-                        <Plus className="h-3 w-3" />New in {folder}
+                        <Plus className="h-3 w-3" />New in {isWiki ? "wiki" : folder}
                       </button>
+                      {/* 4d: Wiki drop zone */}
+                      {isWiki && (
+                        <>
+                          <input
+                            ref={wikiFileInputRef}
+                            type="file"
+                            accept=".md,.txt,text/markdown,text/plain"
+                            className="hidden"
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleWikiUpload(f); }}
+                          />
+                          <div
+                            onDragOver={(e) => { e.preventDefault(); setWikiDragOver(true); }}
+                            onDragLeave={() => setWikiDragOver(false)}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              setWikiDragOver(false);
+                              const f = e.dataTransfer.files[0];
+                              if (f) handleWikiUpload(f);
+                            }}
+                            onClick={() => wikiFileInputRef.current?.click()}
+                            className={cn(
+                              "mx-1 mt-1 cursor-pointer rounded-md border border-dashed px-2 py-2 text-center text-[10px] transition-colors",
+                              wikiDragOver
+                                ? "border-violet-400 bg-violet-500/10 text-violet-500"
+                                : "border-zinc-200/70 text-zinc-400 hover:border-violet-300 hover:text-violet-500 dark:border-zinc-700",
+                            )}
+                          >
+                            <Upload className="mx-auto mb-0.5 h-3 w-3" />
+                            Drop .md or .txt to add to wiki
+                          </div>
+                        </>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -417,10 +640,34 @@ function DashboardPageContent() {
         </div>
 
         <div className="flex flex-1 flex-col overflow-hidden">
+          {/* 4d: Upload banner */}
+          <AnimatePresence>
+            {wikiUploadBanner && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="flex shrink-0 items-center justify-between gap-2 border-b border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-700 dark:border-violet-800/60 dark:bg-violet-950/40 dark:text-violet-300"
+              >
+                <span>📄 {wikiUploadBanner}</span>
+                <button onClick={() => setWikiUploadBanner(null)} className="shrink-0 rounded p-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {isLoading ? (
             <div className="flex flex-1 items-center justify-center">
               <span className="text-sm text-zinc-400">Loading...</span>
             </div>
+          ) : showGraph && graphData ? (
+            <WikiGraphView
+              data={graphData}
+              activeDocId={activeDocId}
+              onSelectDoc={(id) => { setShowGraph(false); void selectDoc(id); }}
+              onClose={() => setShowGraph(false)}
+            />
           ) : activeDoc ? (
             <WysiwygPane
               key={activeDoc.id}
@@ -447,6 +694,7 @@ function DashboardPageContent() {
               onDelete={() => void deleteDoc(activeDoc.id)}
               onRefreshDocs={loadDocs}
               folders={folders}
+              onNavigateToDoc={(id) => void selectDoc(id)}
             />
           ) : (
             <EmptyPane onCreate={() => void createDoc(null)} />
@@ -457,6 +705,7 @@ function DashboardPageContent() {
   );
 }
 
+
 function WysiwygPane({
   doc,
   isSaving,
@@ -464,6 +713,7 @@ function WysiwygPane({
   onDelete,
   onRefreshDocs,
   folders,
+  onNavigateToDoc,
 }: {
   doc: Document;
   isSaving: boolean;
@@ -471,6 +721,7 @@ function WysiwygPane({
   onDelete: () => void;
   onRefreshDocs: () => Promise<DocListItem[]>;
   folders: string[];
+  onNavigateToDoc: (id: string) => void;
 }) {
   const [title, setTitle] = useState(doc.title);
   const [folder, setFolder] = useState(doc.folder ?? "");
@@ -490,6 +741,7 @@ function WysiwygPane({
       TableRow,
       TableHeader,
       TableCell,
+      WikiLinkMark,
     ],
     content: doc.content,
     editorProps: {
@@ -499,6 +751,21 @@ function WysiwygPane({
     },
     onUpdate: () => setIsDirty(true),
   });
+
+  // 4b: Handle clicks on [[wikilink]] spans inside the editor
+  const handleEditorClick = useCallback(async (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement).closest("[data-wikilink]");
+    if (!target) return;
+    const title = (target as HTMLElement).getAttribute("data-wikilink");
+    if (!title) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const res = await fetch(`/api/documents/by-title?title=${encodeURIComponent(title)}&folder=wiki`);
+    if (res.ok) {
+      const data = await res.json() as { id?: string };
+      if (data.id) onNavigateToDoc(data.id);
+    }
+  }, [onNavigateToDoc]);
 
   const getMarkdownContent = () => {
     if (!editor) return doc.content;
@@ -652,7 +919,10 @@ function WysiwygPane({
           .wysiwyg-editor strong { font-weight: 600; }
           .wysiwyg-editor .is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #a1a1aa; pointer-events: none; height: 0; }
         `}</style>
-        <EditorContent editor={editor} />
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events,jsx-a11y/no-static-element-interactions */}
+        <div onClick={(e) => void handleEditorClick(e)}>
+          <EditorContent editor={editor} />
+        </div>
       </div>
 
       {showShareModal ? (
@@ -776,6 +1046,203 @@ function DocShareModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ── 4c: Wiki graph view ──────────────────────────────────────────────────────
+
+type GraphNode = { id: string; title: string; missing?: boolean };
+type GraphEdge = { from: string; to: string };
+
+function WikiGraphView({
+  data,
+  activeDocId,
+  onSelectDoc,
+  onClose,
+}: {
+  data: { nodes: GraphNode[]; edges: GraphEdge[] };
+  activeDocId: string | null;
+  onSelectDoc: (id: string) => void;
+  onClose: () => void;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const animRef = useRef<number>(0);
+
+  // Node positions as a ref (mutated by physics, triggering DOM updates directly)
+  const posRef = useRef<Map<string, { x: number; y: number; vx: number; vy: number }>>(new Map());
+  const [, forceRender] = useState(0);
+
+  // Inbound link count per node (for hub sizing)
+  const inbound = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of data.edges) {
+      counts.set(e.to, (counts.get(e.to) ?? 0) + 1);
+    }
+    return counts;
+  }, [data.edges]);
+
+  // Initialize positions in a circle
+  useEffect(() => {
+    const { nodes } = data;
+    const W = svgRef.current?.clientWidth ?? 600;
+    const H = svgRef.current?.clientHeight ?? 400;
+    const cx = W / 2, cy = H / 2;
+    const r = Math.min(W, H) * 0.35;
+    posRef.current = new Map(
+      nodes.map((n, i) => {
+        const angle = (2 * Math.PI * i) / nodes.length;
+        return [n.id, { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle), vx: 0, vy: 0 }];
+      })
+    );
+
+    let tick = 0;
+    const step = () => {
+      tick++;
+      const pos = posRef.current;
+      const W2 = svgRef.current?.clientWidth ?? 600;
+      const H2 = svgRef.current?.clientHeight ?? 400;
+      const cx2 = W2 / 2, cy2 = H2 / 2;
+
+      // Spring edges
+      for (const e of data.edges) {
+        const a = pos.get(e.from), b = pos.get(e.to);
+        if (!a || !b) continue;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const idealLen = 110;
+        const force = (dist - idealLen) * 0.04;
+        const fx = (dx / dist) * force, fy = (dy / dist) * force;
+        a.vx += fx; a.vy += fy;
+        b.vx -= fx; b.vy -= fy;
+      }
+
+      // Repulsion between all nodes
+      const nodeList = nodes.map((n) => pos.get(n.id)!);
+      for (let i = 0; i < nodeList.length; i++) {
+        for (let j = i + 1; j < nodeList.length; j++) {
+          const a = nodeList[i], b = nodeList[j];
+          if (!a || !b) continue;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const rep = 2200 / (dist * dist);
+          const fx = (dx / dist) * rep, fy = (dy / dist) * rep;
+          a.vx -= fx; a.vy -= fy;
+          b.vx += fx; b.vy += fy;
+        }
+      }
+
+      // Gravity toward center
+      for (const p of pos.values()) {
+        p.vx += (cx2 - p.x) * 0.008;
+        p.vy += (cy2 - p.y) * 0.008;
+        // Damping
+        p.vx *= 0.78;
+        p.vy *= 0.78;
+        p.x += p.vx;
+        p.y += p.vy;
+      }
+
+      if (tick % 3 === 0) forceRender((n) => n + 1); // re-render every 3 ticks
+      if (tick < 160) {
+        animRef.current = requestAnimationFrame(step);
+      }
+    };
+    animRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(animRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const pos = posRef.current;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="relative flex flex-1 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950"
+    >
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 px-4 py-2.5 dark:border-zinc-800/60">
+        <div className="flex items-center gap-2">
+          <Network className="h-4 w-4 text-violet-500" />
+          <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Wiki Graph</span>
+          <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+            {data.nodes.filter(n => !n.missing).length} pages · {data.edges.length} links
+          </span>
+        </div>
+        <button onClick={onClose} className="rounded p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Legend */}
+      <div className="absolute right-4 top-14 z-10 flex flex-col gap-1 rounded-lg border border-zinc-200/60 bg-white/80 p-2 text-[10px] text-zinc-500 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-400">
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" />Wiki page</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-orange-400" />Active</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-dashed border-zinc-400" />Missing page</span>
+      </div>
+
+      {/* SVG graph */}
+      <svg ref={svgRef} className="flex-1 w-full h-full">
+        <defs>
+          <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill="#a78bfa" fillOpacity="0.5" />
+          </marker>
+        </defs>
+
+        {/* Edges */}
+        {data.edges.map((e, i) => {
+          const a = pos.get(e.from), b = pos.get(e.to);
+          if (!a || !b) return null;
+          return (
+            <line
+              key={i}
+              x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              stroke="#a78bfa"
+              strokeOpacity={0.35}
+              strokeWidth={1.5}
+              markerEnd="url(#arrow)"
+            />
+          );
+        })}
+
+        {/* Nodes */}
+        {data.nodes.map((node) => {
+          const p = pos.get(node.id);
+          if (!p) return null;
+          const hubCount = inbound.get(node.id) ?? 0;
+          const r = node.missing ? 5 : Math.max(8, Math.min(22, 9 + hubCount * 3));
+          const isActive = node.id === activeDocId;
+
+          return (
+            <g
+              key={node.id}
+              transform={`translate(${p.x},${p.y})`}
+              style={{ cursor: node.missing ? "default" : "pointer" }}
+              onClick={() => !node.missing && onSelectDoc(node.id)}
+            >
+              <circle
+                r={r}
+                fill={node.missing ? "transparent" : isActive ? "#f97316" : "#8b5cf6"}
+                fillOpacity={node.missing ? 0 : 0.85}
+                stroke={node.missing ? "#a1a1aa" : isActive ? "#f97316" : "#7c3aed"}
+                strokeWidth={node.missing ? 1.5 : 2}
+                strokeDasharray={node.missing ? "3 2" : undefined}
+              />
+              {isActive && <circle r={r + 4} fill="none" stroke="#f97316" strokeWidth={1.5} strokeOpacity={0.4} />}
+              <text
+                textAnchor="middle"
+                dy={r + 12}
+                fontSize={10}
+                fill="currentColor"
+                className="select-none fill-zinc-600 dark:fill-zinc-400"
+              >
+                {node.title.length > 18 ? node.title.slice(0, 17) + "…" : node.title}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </motion.div>
   );
 }
 

@@ -6,12 +6,17 @@ export const listDocumentsManifest: ToolManifest = {
   name: "list_documents",
   displayName: "List Documents",
   description:
-    "List the user's saved documents (title, folder, and a short preview). Call this to discover what context documents exist before deciding to read one.",
+    "List the user's saved documents (title, folder, and a short preview). Call this to discover what context documents exist before deciding to read one. Use the optional folder parameter to list only documents in a specific folder (e.g., 'wiki').",
   category: "documents",
   riskLevel: "low",
   parameters: {
     type: "object",
-    properties: {},
+    properties: {
+      folder: {
+        type: "string",
+        description: "Optional folder to filter by (e.g., 'wiki'). Omit to list all documents.",
+      },
+    },
     required: [],
   },
 };
@@ -21,12 +26,20 @@ export function createListDocumentsTool(context: ToolContext): AgentTool {
     name: listDocumentsManifest.name,
     description: listDocumentsManifest.description,
     parameters: listDocumentsManifest.parameters,
-    async execute() {
-      const { data, error } = await context.supabase
+    async execute(args) {
+      const folder = args?.folder ? String(args.folder).trim() : null;
+
+      let dbQuery = context.supabase
         .from("documents")
         .select("id, title, folder, content")
         .eq("user_id", context.userId)
         .order("updated_at", { ascending: false });
+
+      if (folder) {
+        dbQuery = dbQuery.eq("folder", folder);
+      }
+
+      const { data, error } = await dbQuery;
 
       if (error) return JSON.stringify({ error: error.message });
 

@@ -11,6 +11,7 @@ const MEMORY_TOKEN_BUDGET = 2000;
 const APPROX_CHARS_PER_TOKEN = 4;
 
 let cachedBasePrompt: string | null = null;
+let cachedWikiSchema: string | null = null;
 
 export interface BuildSystemPromptResult {
   prompt: string;
@@ -34,7 +35,7 @@ export async function buildSystemPrompt(options: {
 }): Promise<BuildSystemPromptResult> {
   const basePrompt = await getBasePrompt();
 
-  const [userResult, integrationResult, memoryResult] = await Promise.all([
+  const [userResult, integrationResult, memoryResult, wikiCountResult] = await Promise.all([
     options.supabase
       .from("users")
       .select("name, email, tier, settings")
@@ -52,7 +53,14 @@ export async function buildSystemPrompt(options: {
       .eq("user_id", options.userId)
       .order("pinned", { ascending: false })
       .order("updated_at", { ascending: false }),
+    options.supabase
+      .from("documents")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", options.userId)
+      .eq("folder", "wiki"),
   ]);
+
+  const hasWiki = (wikiCountResult?.count ?? 0) > 0;
 
   const user = (userResult.data as unknown as {
     name?: string | null;
@@ -98,6 +106,8 @@ export async function buildSystemPrompt(options: {
     `- Location: ${userLocation}`,
   ];
 
+  const wikiSchema = hasWiki ? await getWikiSchema() : null;
+
   const stableSections = [
     basePrompt,
     ...(persona.promptModifier
@@ -113,6 +123,7 @@ export async function buildSystemPrompt(options: {
     languageGuidance,
     "## Internal Topic Segments",
     buildSegmentGuidance(options.activeSegment ?? null),
+    ...(wikiSchema ? [wikiSchema] : []),
     "## Available Tools",
     summarizeToolList(options.tools),
   ];
@@ -139,6 +150,16 @@ export async function buildSystemPrompt(options: {
     responseLocale: resolvedResponseLocale.locale,
     responseLocaleSource: resolvedResponseLocale.source,
   };
+}
+
+async function getWikiSchema(): Promise<string> {
+  if (cachedWikiSchema) {
+    return cachedWikiSchema;
+  }
+
+  const schemaPath = path.join(process.cwd(), "src/lib/chat/prompts/wiki-schema.md");
+  cachedWikiSchema = await readFile(schemaPath, "utf-8");
+  return cachedWikiSchema;
 }
 
 async function getBasePrompt(): Promise<string> {
