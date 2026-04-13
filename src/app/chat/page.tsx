@@ -1770,6 +1770,26 @@ export default function ChatPage() {
     </form>
   );
 
+  const hasProcessedQuery = useRef(false);
+  useEffect(() => {
+    if (hasProcessedQuery.current || isLoadingHistory || isLoading || showFirstRunSetup) return;
+    
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      const q = url.searchParams.get("q");
+      if (q) {
+        hasProcessedQuery.current = true;
+        url.searchParams.delete("q");
+        window.history.replaceState({}, document.title, url.toString());
+        // Small delay to ensure state and DOM are settled
+        setTimeout(() => {
+          void sendMessage(q);
+        }, 50);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadingHistory, isLoading, showFirstRunSetup]);
+
   return (
     <div lang={localeTag} className="fixed inset-0 flex flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}

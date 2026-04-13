@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
@@ -191,11 +191,12 @@ function DashboardPageContent() {
 
   // 4d: Wiki drop-zone drag state + upload banner
   const [wikiDragOver, setWikiDragOver] = useState(false);
-  const [wikiUploadBanner, setWikiUploadBanner] = useState<string | null>(null);
+  const [wikiUploadBanner, setWikiUploadBanner] = useState<{ title: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wikiFileInputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
+  const router = useRouter();
 
 
   const loadDocs = useCallback(async () => {
@@ -368,7 +369,7 @@ function DashboardPageContent() {
       await loadDocs();
       setExpandedFolders((prev) => new Set([...prev, "wiki"]));
       await selectDoc(data.document.id);
-      setWikiUploadBanner(`"${title}" uploaded to wiki. Ask Hada to ingest it.`);
+      setWikiUploadBanner({ title });
     };
     reader.readAsText(file);
     if (wikiFileInputRef.current) wikiFileInputRef.current.value = "";
@@ -649,7 +650,17 @@ function DashboardPageContent() {
                 exit={{ opacity: 0, y: -8 }}
                 className="flex shrink-0 items-center justify-between gap-2 border-b border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-700 dark:border-violet-800/60 dark:bg-violet-950/40 dark:text-violet-300"
               >
-                <span>📄 {wikiUploadBanner}</span>
+                <div className="flex items-center gap-2">
+                  <span>📄 &quot;{wikiUploadBanner.title}&quot; uploaded to wiki.</span>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="h-7 border-violet-300 bg-white/50 px-3 text-xs text-violet-700 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-800/50"
+                    onClick={() => router.push(`/chat?q=${encodeURIComponent(`Ingest my new wiki page "${wikiUploadBanner.title}" into the knowledge base.`)}`)}
+                  >
+                    Ingest
+                  </Button>
+                </div>
                 <button onClick={() => setWikiUploadBanner(null)} className="shrink-0 rounded p-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40">
                   <X className="h-3.5 w-3.5" />
                 </button>
