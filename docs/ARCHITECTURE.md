@@ -156,7 +156,7 @@ Current registered tools:
 - Memory: `save_memory`, `recall_memory`
 - Web: `web_search`, `web_fetch`
 - Scheduling/system: `schedule_task`, `plan_task`, `delegate_task`
-- Documents: `list_documents`, `read_document`, `create_document`, `update_document`
+- Documents & Wiki: `list_documents`, `read_document`, `create_document`, `update_document`, `search_documents`, `delete_document`
 - Structured output: `render_card`
 - Integration bridge: `mcp_call`
 - Google Calendar: `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`
@@ -175,6 +175,7 @@ Current registered tools:
 - Long-term memory summary with class-aware gating
 - Channel context (`web` / `telegram` / `scheduled`)
 - Internal topic-segment instructions for the model
+- LLM Wiki schema (dynamically injected only if the user has an active `wiki/` folder)
 
 For Anthropic, stable/dynamic prompt parts are passed separately to enable prompt-caching behavior.
 
@@ -245,10 +246,12 @@ Document workspace with:
 
 - User-scoped document CRUD
 - Folder grouping (`folder` column)
-- Tiptap markdown editing
-- `.md` upload
+- Tiptap markdown editing with `[[wikilink]]` support
+- `.md` and `.txt` upload (global and wiki-specific drop zones)
+- LLM-maintained personal wiki in the `wiki/` folder with strict schema rules
+- Interactive SVG graph visualization of wiki pages and their connections
 - Share link creation and public shared-doc view
-- Deep-linking to specific doc IDs
+- Deep-linking navigation and click-to-traverse wiki links
 
 ### `/settings`
 

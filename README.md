@@ -19,7 +19,7 @@ Hada is a multi-channel assistant app built around an in-app agent loop. It supp
 - Single visible conversation per user with internal topic segments (`conversation_segments`)
 - Ranked context retrieval across active-segment recency, segment summaries, long-term memories, and durable segment artifacts
 - Long-term memory (`user_memories`) with semantic recall + text fallback
-- Documents workspace (`/docs`) with markdown editor, foldering, upload, and share links
+- Documents workspace (`/docs`) with markdown editor, foldering, upload, share links, and an LLM-maintained personal wiki
 - Durable long-form outputs stored as segment artifacts (`segment_artifacts`)
 - Smart card rendering (`comparison`, `steps`, `checklist`)
 - Follow-up suggestions after web chat responses
@@ -38,7 +38,7 @@ Current registered tools:
 - `schedule_task`
 - `plan_task`, `delegate_task`
 - `render_card`
-- `list_documents`, `read_document`, `create_document`, `update_document`
+- `list_documents`, `read_document`, `create_document`, `update_document`, `search_documents`, `delete_document`
 - `mcp_call`
 - `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`
 
