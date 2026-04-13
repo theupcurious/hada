@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
@@ -191,7 +191,6 @@ function DashboardPageContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
-  const router = useRouter();
 
 
   const loadDocs = useCallback(async () => {
@@ -621,7 +620,6 @@ function DashboardPageContent() {
               folders={folders}
               onNavigateToDoc={(id) => void selectDoc(id)}
               wikiExists={wikiExists}
-              router={router}
             />
           ) : (
             <EmptyPane onCreate={() => void createDoc(null)} />
@@ -642,7 +640,6 @@ function WysiwygPane({
   folders,
   onNavigateToDoc,
   wikiExists,
-  router,
 }: {
   doc: Document;
   isSaving: boolean;
@@ -652,7 +649,6 @@ function WysiwygPane({
   folders: string[];
   onNavigateToDoc: (id: string) => void;
   wikiExists: boolean;
-  router: ReturnType<typeof useRouter>;
 }) {
   const [title, setTitle] = useState(doc.title);
   const [folder, setFolder] = useState(doc.folder ?? "");
@@ -663,6 +659,9 @@ function WysiwygPane({
   const [isRevokingShare, setIsRevokingShare] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [copiedShareLink, setCopiedShareLink] = useState(false);
+  const [isIngesting, setIsIngesting] = useState(false);
+  const [ingestStatus, setIngestStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const ingestStatusTimerRef = useRef<number | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -723,9 +722,164 @@ function WysiwygPane({
 
   const canIngestIntoWiki = doc.folder !== "wiki" && wikiExists;
 
-  const handleIngestIntoWiki = () => {
-    const prompt = `Ingest "${doc.title}" (document id: ${doc.id}) into my wiki`;
-    router.push(`/chat?q=${encodeURIComponent(prompt)}`);
+  useEffect(() => {
+    return () => {
+      if (ingestStatusTimerRef.current !== null) {
+        window.clearTimeout(ingestStatusTimerRef.current);
+      }
+    };
+  }, []);
+
+  const pollBackgroundIngestJob = useCallback(async (jobId: string) => {
+    let cursor = 0;
+
+    while (true) {
+      const response = await fetch(`/api/background-jobs/${encodeURIComponent(jobId)}?after=${cursor}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to check background ingest status.");
+      }
+
+      const data = (await response.json()) as {
+        job?: { status?: "queued" | "running" | "completed" | "failed" | "timeout"; last_error?: string | null };
+        events?: Array<{ seq?: number }>;
+        assistantMessage?: { content?: string; metadata?: { gatewayError?: { message?: string } } | null } | null;
+      };
+      const events = Array.isArray(data.events) ? data.events : [];
+      for (const entry of events) {
+        if (typeof entry.seq === "number") {
+          cursor = Math.max(cursor, entry.seq);
+        }
+      }
+
+      const status = data.job?.status;
+      if (status === "completed") {
+        return;
+      }
+      if (status === "failed" || status === "timeout") {
+        const gatewayMessage = data.assistantMessage?.metadata?.gatewayError?.message;
+        const assistantContent = data.assistantMessage?.content;
+        const fallback =
+          typeof data.job?.last_error === "string" && data.job.last_error.trim()
+            ? data.job.last_error
+            : typeof assistantContent === "string" && assistantContent.trim()
+            ? assistantContent
+            : "Wiki ingest failed.";
+        throw new Error(
+          typeof gatewayMessage === "string" && gatewayMessage.trim() ? gatewayMessage : fallback,
+        );
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 1400));
+    }
+  }, []);
+
+  const runIngestRequest = useCallback(async (prompt: string) => {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: prompt }),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? "Failed to start wiki ingest.");
+    }
+
+    if (!response.body) {
+      throw new Error("No response stream from chat API.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let completed = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+
+        for (const line of frame.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6);
+          if (!payload) continue;
+
+          let event: Record<string, unknown>;
+          try {
+            event = JSON.parse(payload) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+
+          if (event.type === "error") {
+            throw new Error(typeof event.message === "string" ? event.message : "Wiki ingest failed.");
+          }
+
+          if (event.type === "complete") {
+            if (event.isError === true) {
+              throw new Error(
+                typeof event.errorMessage === "string" && event.errorMessage.trim()
+                  ? event.errorMessage
+                  : "Wiki ingest failed.",
+              );
+            }
+            completed = true;
+          }
+
+          if (event.type === "background_job" && typeof event.jobId === "string" && event.jobId.trim()) {
+            await pollBackgroundIngestJob(event.jobId);
+            completed = true;
+          }
+        }
+      }
+    }
+
+    if (!completed) {
+      throw new Error("Wiki ingest ended before completion.");
+    }
+  }, [pollBackgroundIngestJob]);
+
+  const handleIngestIntoWiki = async () => {
+    if (isIngesting) return;
+
+    setIngestStatus(null);
+    setIsIngesting(true);
+
+    try {
+      if (isDirty) {
+        const saved = await handleSave();
+        if (!saved) {
+          throw new Error("Could not save latest changes before ingest.");
+        }
+      }
+
+      const prompt = `Ingest "${title.trim() || doc.title}" (document id: ${doc.id}) into my wiki`;
+      await runIngestRequest(prompt);
+      setIngestStatus({ type: "success", message: "Ingest complete." });
+      void onRefreshDocs();
+    } catch (error) {
+      setIngestStatus({
+        type: "error",
+        message: error instanceof Error ? error.message : "Ingest failed.",
+      });
+    } finally {
+      setIsIngesting(false);
+      if (ingestStatusTimerRef.current !== null) {
+        window.clearTimeout(ingestStatusTimerRef.current);
+      }
+      ingestStatusTimerRef.current = window.setTimeout(() => {
+        setIngestStatus(null);
+        ingestStatusTimerRef.current = null;
+      }, 6000);
+    }
   };
 
   const prepareShare = async () => {
@@ -829,9 +983,21 @@ function WysiwygPane({
             <Share2 className="h-4 w-4" />
           </Button>
           {canIngestIntoWiki ? (
-            <Button size="sm" variant="ghost" onClick={handleIngestIntoWiki}>
-              Ingest into Wiki
+            <Button size="sm" variant="ghost" onClick={() => void handleIngestIntoWiki()} disabled={isIngesting || isSaving}>
+              {isIngesting ? "Ingesting..." : "Ingest into Wiki"}
             </Button>
+          ) : null}
+          {ingestStatus ? (
+            <span
+              className={cn(
+                "text-xs",
+                ingestStatus.type === "success"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-red-600 dark:text-red-400",
+              )}
+            >
+              {ingestStatus.message}
+            </span>
           ) : null}
           <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 dark:text-red-400" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />

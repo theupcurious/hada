@@ -185,6 +185,7 @@ interface ChatLocaleCopy {
   defaultErrorMessage: string;
   connectionErrorMessage: string;
   interruptedMessage: string;
+  stopResponseLabel: string;
   starterPlanMyDayLabel: string;
   starterPlanMyDayPrompt: string;
   starterResearchTopicLabel: string;
@@ -236,6 +237,7 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     defaultErrorMessage: "Sorry, I encountered an error.",
     connectionErrorMessage: "Sorry, I'm having trouble connecting. Please try again.",
     interruptedMessage: "Response interrupted before completion. Please try again.",
+    stopResponseLabel: "Stop",
     starterPlanMyDayLabel: "Plan My Day",
     starterPlanMyDayPrompt:
       "Review my calendar and tasks for today. Give me a practical day plan with top priorities, conflict warnings, and the best deep-work block to protect before 3 PM.",
@@ -289,6 +291,7 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     defaultErrorMessage: "죄송합니다. 오류가 발생했습니다.",
     connectionErrorMessage: "죄송합니다. 연결에 문제가 있습니다. 다시 시도해 주세요.",
     interruptedMessage: "응답이 완료되기 전에 중단되었습니다. 다시 시도해 주세요.",
+    stopResponseLabel: "중단",
     starterPlanMyDayLabel: "오늘 일정 계획",
     starterPlanMyDayPrompt:
       "오늘의 일정과 작업을 검토해 주세요. 최우선 순위, 충돌 가능성, 그리고 오후 3시 이전에 보호할 최적의 집중 업무 시간을 포함한 실용적인 하루 계획을 만들어 주세요.",
@@ -342,6 +345,7 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     defaultErrorMessage: "申し訳ありません。エラーが発生しました。",
     connectionErrorMessage: "接続に問題があります。もう一度お試しください。",
     interruptedMessage: "応答が完了前に中断されました。もう一度お試しください。",
+    stopResponseLabel: "停止",
     starterPlanMyDayLabel: "今日の計画",
     starterPlanMyDayPrompt:
       "今日のカレンダーとタスクを確認してください。優先順位、競合リスク、15時までに確保すべき最適な集中時間を含む実用的な1日の計画を作ってください。",
@@ -395,6 +399,7 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     defaultErrorMessage: "抱歉，发生了错误。",
     connectionErrorMessage: "抱歉，连接出现问题。请再试一次。",
     interruptedMessage: "回复在完成前被中断了。请再试一次。",
+    stopResponseLabel: "停止",
     starterPlanMyDayLabel: "规划今天",
     starterPlanMyDayPrompt:
       "查看我今天的日历和任务。给我一个务实的日程安排，包含最高优先级、冲突提醒，以及下午 3 点前最值得保护的深度工作时段。",
@@ -436,6 +441,9 @@ export default function ChatPage() {
   const backgroundJobPollersRef = useRef(new Map<string, number>());
   const backgroundJobCursorRef = useRef(new Map<string, number>());
   const pendingResponsePollRef = useRef<number | null>(null);
+  const activeRequestControllerRef = useRef<AbortController | null>(null);
+  const activeAssistantMessageIdRef = useRef<string | null>(null);
+  const didUserAbortRef = useRef(false);
   // Token drain queue: buffer text_delta tokens and release at a steady pace to smooth
   // out network bursts (TCP delivers batches of tokens at once → visually choppy).
   const pendingTokensRef = useRef<Map<string, string>>(new Map());
@@ -1192,6 +1200,7 @@ export default function ChatPage() {
     let receivedTerminalEvent = false;
     // Track the current assistant message ID in case it changes from temp → real
     let currentAssistantId = assistantMessageId;
+    activeAssistantMessageIdRef.current = currentAssistantId;
     eventOrderRef.current = 0;
 
     const processStreamEvent = (event: Record<string, unknown>) => {
@@ -1226,6 +1235,7 @@ export default function ChatPage() {
           }),
         );
         currentAssistantId = realAssistantId;
+        activeAssistantMessageIdRef.current = currentAssistantId;
       } else if (event.type === "message_saved") {
         const realAssistantId = String(event.id ?? currentAssistantId);
         setMessages((prev) =>
@@ -1240,6 +1250,7 @@ export default function ChatPage() {
           ),
         );
         currentAssistantId = realAssistantId;
+        activeAssistantMessageIdRef.current = currentAssistantId;
       } else if (event.type === "follow_up_suggestions") {
         const suggestions = Array.isArray(event.suggestions) ? (event.suggestions as string[]) : [];
         setMessages((prev) =>
@@ -1296,6 +1307,7 @@ export default function ChatPage() {
           }),
         );
         currentAssistantId = realAssistantId;
+        activeAssistantMessageIdRef.current = currentAssistantId;
 
         if (jobId) {
           ensureBackgroundJobPolling(jobId, realAssistantId);
@@ -1380,6 +1392,32 @@ export default function ChatPage() {
     setAttachedDocs((prev) => prev.filter((d) => d.id !== docId));
   };
 
+  const markMessageInterrupted = useCallback((messageId: string | null) => {
+    if (!messageId) return;
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId
+          ? {
+              ...msg,
+              content: msg.content.trim()
+                ? `${msg.content}\n\n${copy.interruptedMessage}`
+                : copy.interruptedMessage,
+              isStreaming: false,
+              isError: false,
+              streamSegments: undefined,
+            }
+          : msg,
+      ),
+    );
+  }, [copy.interruptedMessage]);
+
+  const stopStreamingResponse = useCallback(() => {
+    const controller = activeRequestControllerRef.current;
+    if (!controller) return;
+    didUserAbortRef.current = true;
+    controller.abort();
+  }, []);
+
   const sendMessage = async (overrideMessage?: string) => {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
@@ -1418,6 +1456,10 @@ export default function ChatPage() {
     setAttachedDocs([]);
     setIsLoading(true);
     setIsThinking(true);
+    didUserAbortRef.current = false;
+    activeAssistantMessageIdRef.current = tempAssistantId;
+    const requestController = new AbortController();
+    activeRequestControllerRef.current = requestController;
 
     let resolvedAssistantId = tempAssistantId;
     try {
@@ -1425,27 +1467,38 @@ export default function ChatPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: fullMessage }),
+        signal: requestController.signal,
       });
 
       resolvedAssistantId = await processChatStream(response, tempAssistantId, tempUserId);
+      activeAssistantMessageIdRef.current = resolvedAssistantId;
     } catch (error) {
-      console.error("Chat error:", error);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === resolvedAssistantId
-            ? {
-                ...msg,
-                content: error instanceof Error
-                  ? error.message
-                  : copy.connectionErrorMessage,
-                isStreaming: false,
-                isError: true,
-                streamSegments: undefined,
-              }
-            : msg,
-        ),
-      );
+      if (didUserAbortRef.current || isAbortError(error)) {
+        markMessageInterrupted(activeAssistantMessageIdRef.current ?? resolvedAssistantId);
+      } else {
+        console.error("Chat error:", error);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === resolvedAssistantId
+              ? {
+                  ...msg,
+                  content: error instanceof Error
+                    ? error.message
+                    : copy.connectionErrorMessage,
+                  isStreaming: false,
+                  isError: true,
+                  streamSegments: undefined,
+                }
+              : msg,
+          ),
+        );
+      }
     } finally {
+      if (activeRequestControllerRef.current === requestController) {
+        activeRequestControllerRef.current = null;
+      }
+      activeAssistantMessageIdRef.current = null;
+      didUserAbortRef.current = false;
       setIsLoading(false);
       setIsThinking(false);
     }
@@ -1483,28 +1536,42 @@ export default function ChatPage() {
 
     setIsLoading(true);
     setIsThinking(true);
+    didUserAbortRef.current = false;
+    activeAssistantMessageIdRef.current = assistantMessageId;
+    const requestController = new AbortController();
+    activeRequestControllerRef.current = requestController;
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerateAssistantMessageId: assistantMessageId }),
+        signal: requestController.signal,
       });
 
       // No user message ID to update for regeneration — pass null
       await processChatStream(response, assistantMessageId, null);
     } catch (error) {
-      console.error("Regenerate error:", error);
-      updateMessage(assistantMessageId, (message) => ({
-        ...message,
-        content: error instanceof Error
-          ? error.message
-          : copy.connectionErrorMessage,
-        isStreaming: false,
-        isError: true,
-        streamSegments: undefined,
-      }));
+      if (didUserAbortRef.current || isAbortError(error)) {
+        markMessageInterrupted(activeAssistantMessageIdRef.current ?? assistantMessageId);
+      } else {
+        console.error("Regenerate error:", error);
+        updateMessage(assistantMessageId, (message) => ({
+          ...message,
+          content: error instanceof Error
+            ? error.message
+            : copy.connectionErrorMessage,
+          isStreaming: false,
+          isError: true,
+          streamSegments: undefined,
+        }));
+      }
     } finally {
+      if (activeRequestControllerRef.current === requestController) {
+        activeRequestControllerRef.current = null;
+      }
+      activeAssistantMessageIdRef.current = null;
+      didUserAbortRef.current = false;
       setIsLoading(false);
       setIsThinking(false);
     }
@@ -1747,21 +1814,33 @@ export default function ChatPage() {
             onDetach={handleDetachDoc}
           />
           <div className="flex-1" />
-          <Button
-            type="submit"
-            disabled={isLoading || !input.trim()}
-            size="sm"
-            className="rounded-xl gradient-brand text-white border-0 shadow-md shadow-teal-500/20 disabled:opacity-40"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="h-4 w-4"
+          {isLoading ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={stopStreamingResponse}
+              className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
             >
-              <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-            </svg>
-          </Button>
+              {copy.stopResponseLabel}
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              disabled={!input.trim()}
+              size="sm"
+              className="rounded-xl gradient-brand text-white border-0 shadow-md shadow-teal-500/20 disabled:opacity-40"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="h-4 w-4"
+              >
+                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+              </svg>
+            </Button>
+          )}
         </div>
       </div>
       <p className="mt-2 hidden text-center text-xs text-zinc-400 sm:block">
@@ -2254,4 +2333,12 @@ function getConnectionStatusLabel(status: string, copy: ChatLocaleCopy): string 
     default:
       return status;
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  return (error as { name?: string }).name === "AbortError";
 }

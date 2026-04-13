@@ -170,7 +170,7 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       description: "What the ingest button does.",
       items: [
         "The Ingest into Wiki button appears on non-wiki documents when a wiki already exists.",
-        "Clicking it opens Chat and auto-sends an ingest request with the document id for exact matching.",
+        "Clicking it runs ingest directly from Docs using the document id for exact matching.",
         "If you do not see the button, create or bootstrap your wiki first (for example, ask Chat to start your wiki).",
       ],
     },
@@ -178,9 +178,9 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       title: "How To Tell It Is Running",
       description: "Where to look for progress and completion.",
       items: [
-        "Started: your ingest prompt appears as a user message and the assistant row shows Starting or status pills.",
-        "Running: the assistant message stays in streaming mode with activity labels like Thinking or Working in background.",
-        "Done: streaming stops and the assistant posts a final result message. If something fails, you will see an error message.",
+        "Started: the Ingest button switches to Ingesting...",
+        "Running: stay on the document; ingest continues in place.",
+        "Done: a status message appears next to the button (Ingest complete or an error).",
       ],
     },
     promptGuideSection: {
@@ -226,7 +226,7 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       description: "인제스트 버튼 동작 방식입니다.",
       items: [
         "wiki가 이미 있을 때, wiki가 아닌 문서에서만 Ingest into Wiki 버튼이 보입니다.",
-        "클릭하면 Chat으로 이동하며 문서 id가 포함된 인제스트 요청이 자동 전송됩니다.",
+        "클릭하면 Docs 화면에서 바로 인제스트가 실행되며 문서 id로 정확히 매칭합니다.",
         "버튼이 보이지 않으면 먼저 wiki를 시작하세요. 예: Chat에 위키 시작을 요청.",
       ],
     },
@@ -234,9 +234,9 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       title: "진행 상태 확인",
       description: "진행 중/완료를 확인하는 위치입니다.",
       items: [
-        "시작됨: 사용자 메시지가 보이고 assistant 행에 Starting 또는 상태 pill이 표시됩니다.",
-        "진행 중: assistant 메시지가 스트리밍 상태로 유지되며 Thinking/Working in background 등이 표시됩니다.",
-        "완료됨: 스트리밍이 끝나고 최종 결과가 표시됩니다. 실패 시 오류 메시지가 표시됩니다.",
+        "시작됨: Ingest 버튼이 Ingesting...으로 바뀝니다.",
+        "진행 중: 문서 화면을 벗어나지 않고 인제스트가 계속 실행됩니다.",
+        "완료됨: 버튼 옆에 Ingest complete 또는 오류 메시지가 표시됩니다.",
       ],
     },
     promptGuideSection: {
@@ -282,7 +282,7 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       description: "取り込みボタンの動作です。",
       items: [
         "Wikiが存在し、対象がwiki外ドキュメントのときだけ Ingest into Wiki が表示されます。",
-        "クリックするとChatへ移動し、文書id付きの取り込み依頼を自動送信します。",
+        "クリックするとDocs内で直接取り込みを実行し、文書idで正確に対象を指定します。",
         "ボタンが表示されない場合は、まずChatでWiki作成を実行してください。",
       ],
     },
@@ -290,9 +290,9 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       title: "実行中かどうかの見方",
       description: "開始・実行中・完了の判定方法です。",
       items: [
-        "開始: ユーザーメッセージが出て、assistant行にStartingまたはステータスが表示されます。",
-        "実行中: assistantメッセージがストリーミング状態になり、Thinking等のラベルが表示されます。",
-        "完了: ストリーミングが止まり、最終結果メッセージが表示されます。失敗時はエラー表示です。",
+        "開始: Ingestボタンが Ingesting... に変わります。",
+        "実行中: ドキュメント画面内で処理が継続します。",
+        "完了: ボタン横に Ingest complete またはエラーメッセージが表示されます。",
       ],
     },
     promptGuideSection: {
@@ -338,7 +338,7 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       description: "导入按钮会做什么。",
       items: [
         "只有在 Wiki 已存在且当前文档不在 wiki 文件夹时，才会显示 Ingest into Wiki。",
-        "点击后会跳转到 Chat，并自动发送带 document id 的导入请求。",
+        "点击后会在 Docs 内直接执行导入，并用 document id 精确匹配目标文档。",
         "如果看不到按钮，请先在 Chat 中创建或初始化你的 Wiki。",
       ],
     },
@@ -346,9 +346,9 @@ const HELP_COPY: Record<AppLocale, HelpCopy> = {
       title: "如何判断是否在运行",
       description: "查看开始、进行中与完成状态。",
       items: [
-        "已开始：你会看到用户消息，assistant 行会显示 Starting 或状态标签。",
-        "进行中：assistant 消息保持流式状态，并显示 Thinking / Working in background 等标签。",
-        "已完成：流式状态结束，assistant 给出最终结果；失败时会显示错误消息。",
+        "已开始：Ingest 按钮会变为 Ingesting...",
+        "进行中：留在当前文档页即可，导入会继续执行。",
+        "已完成：按钮旁会显示 Ingest complete 或错误信息。",
       ],
     },
     promptGuideSection: {
