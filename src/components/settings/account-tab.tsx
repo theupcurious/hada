@@ -242,7 +242,7 @@ export function AccountTab() {
       ? getOpenRouterReasoningCapabilities(selectedOpenRouterModelId)
       : null;
   const selectedReasoningEffort =
-    openRouterReasoningCapability?.supportedEfforts.includes(reasoningEffort)
+    reasoningEffort && openRouterReasoningCapability?.supportedEfforts.includes(reasoningEffort)
       ? reasoningEffort
       : "";
 
