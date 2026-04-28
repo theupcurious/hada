@@ -11,6 +11,7 @@ export interface OpenRouterReasoningCapabilities {
   supportsReasoningToggle: boolean;
   supportsPreservedReasoning: boolean;
   supportsEffort: boolean;
+  supportedEfforts: OpenRouterReasoningEffort[];
 }
 
 const SUPPORTED_EFFORT_VALUES: OpenRouterReasoningEffort[] = ["low", "medium", "high", "xhigh"];
@@ -24,15 +25,18 @@ function buildCapabilities(params: {
   label: string;
   description: string;
   supportsPreservedReasoning: boolean;
-  supportsEffort?: boolean;
+  supportedEfforts?: OpenRouterReasoningEffort[];
 }): OpenRouterReasoningCapabilities {
+  const supportedEfforts = params.supportedEfforts ?? [];
+
   return {
     tier: params.tier,
     label: params.label,
     description: params.description,
     supportsReasoningToggle: true,
     supportsPreservedReasoning: params.supportsPreservedReasoning,
-    supportsEffort: Boolean(params.supportsEffort),
+    supportsEffort: supportedEfforts.length > 0,
+    supportedEfforts,
   };
 }
 
@@ -60,6 +64,7 @@ export function getOpenRouterReasoningCapabilities(
       supportsReasoningToggle: false,
       supportsPreservedReasoning: false,
       supportsEffort: false,
+      supportedEfforts: [],
     };
   }
 
@@ -69,7 +74,7 @@ export function getOpenRouterReasoningCapabilities(
       label: "Full reasoning support",
       description: "Thinking is preserved across tool turns, and effort can be adjusted.",
       supportsPreservedReasoning: true,
-      supportsEffort: true,
+      supportedEfforts: SUPPORTED_EFFORT_VALUES,
     });
   }
 
@@ -109,6 +114,16 @@ export function getOpenRouterReasoningCapabilities(
     });
   }
 
+  if (normalized.startsWith("deepseek/deepseek-v4")) {
+    return buildCapabilities({
+      tier: "full",
+      label: "Full reasoning support",
+      description: "Thinking is preserved across tool turns, and high-effort modes can be adjusted.",
+      supportsPreservedReasoning: true,
+      supportedEfforts: ["high", "xhigh"],
+    });
+  }
+
   if (normalized.startsWith("deepseek/deepseek-v3.2")) {
     return buildCapabilities({
       tier: "experimental",
@@ -120,10 +135,10 @@ export function getOpenRouterReasoningCapabilities(
 
   if (normalized.startsWith("z-ai/glm-5.1")) {
     return buildCapabilities({
-      tier: "partial",
-      label: "Reasoning only",
-      description: "Thinking is available, but preserved reasoning is not currently supported.",
-      supportsPreservedReasoning: false,
+      tier: "full",
+      label: "Full reasoning support",
+      description: "Thinking is preserved across tool turns.",
+      supportsPreservedReasoning: true,
     });
   }
 
@@ -134,5 +149,6 @@ export function getOpenRouterReasoningCapabilities(
     supportsReasoningToggle: false,
     supportsPreservedReasoning: false,
     supportsEffort: false,
+    supportedEfforts: [],
   };
 }

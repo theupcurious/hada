@@ -659,7 +659,11 @@ function buildOpenAICompatibleRequestBody(options: {
 
     body.reasoning = {
       enabled: true,
-      ...(capabilities.supportsEffort && reasoning.effort ? { effort: reasoning.effort } : {}),
+      ...(capabilities.supportsEffort &&
+      reasoning.effort &&
+      capabilities.supportedEfforts.includes(reasoning.effort)
+        ? { effort: reasoning.effort }
+        : {}),
     };
   }
 

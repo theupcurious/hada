@@ -241,6 +241,10 @@ export function AccountTab() {
     provider === "openrouter"
       ? getOpenRouterReasoningCapabilities(selectedOpenRouterModelId)
       : null;
+  const selectedReasoningEffort =
+    openRouterReasoningCapability?.supportedEfforts.includes(reasoningEffort)
+      ? reasoningEffort
+      : "";
 
   async function persistSettings(nextSettings: UserSettings) {
     if (!profile) {
@@ -282,7 +286,11 @@ export function AccountTab() {
       if (openRouterCapabilities?.supportsReasoningToggle) {
         if (reasoningEnabled) {
           nextSettings.llm_reasoning_enabled = true;
-          if (openRouterCapabilities.supportsEffort && reasoningEffort) {
+          if (
+            openRouterCapabilities.supportsEffort &&
+            reasoningEffort &&
+            openRouterCapabilities.supportedEfforts.includes(reasoningEffort)
+          ) {
             nextSettings.llm_reasoning_effort = reasoningEffort;
           } else {
             delete nextSettings.llm_reasoning_effort;
@@ -709,16 +717,24 @@ export function AccountTab() {
                       <label className="text-sm font-medium">Thinking level</label>
                       <select
                         className="h-10 w-full rounded-md border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
-                        value={reasoningEffort}
+                        value={selectedReasoningEffort}
                         onChange={(event) =>
                           setReasoningEffort(normalizeOpenRouterReasoningEffort(event.target.value))
                         }
                       >
                         <option value="">Use model default</option>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="xhigh">Extra high</option>
+                        {openRouterReasoningCapability.supportedEfforts.includes("low") && (
+                          <option value="low">Low</option>
+                        )}
+                        {openRouterReasoningCapability.supportedEfforts.includes("medium") && (
+                          <option value="medium">Medium</option>
+                        )}
+                        {openRouterReasoningCapability.supportedEfforts.includes("high") && (
+                          <option value="high">High</option>
+                        )}
+                        {openRouterReasoningCapability.supportedEfforts.includes("xhigh") && (
+                          <option value="xhigh">Extra high</option>
+                        )}
                       </select>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">
                         Higher effort can improve answers but may use more tokens and latency.

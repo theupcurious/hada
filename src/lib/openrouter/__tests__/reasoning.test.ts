@@ -20,6 +20,7 @@ describe("getOpenRouterReasoningCapabilities", () => {
       supportsReasoningToggle: true,
       supportsPreservedReasoning: true,
       supportsEffort: true,
+      supportedEfforts: ["low", "medium", "high", "xhigh"],
     });
   });
 
@@ -45,7 +46,21 @@ describe("getOpenRouterReasoningCapabilities", () => {
       supportsEffort: false,
     });
 
-    expect(getOpenRouterReasoningCapabilities("moonshotai/kimi-k2.5")).toMatchObject({
+    expect(getOpenRouterReasoningCapabilities("xiaomi/mimo-v2.5")).toMatchObject({
+      tier: "full",
+      supportsReasoningToggle: true,
+      supportsPreservedReasoning: true,
+      supportsEffort: false,
+    });
+
+    expect(getOpenRouterReasoningCapabilities("xiaomi/mimo-v2.5-pro")).toMatchObject({
+      tier: "full",
+      supportsReasoningToggle: true,
+      supportsPreservedReasoning: true,
+      supportsEffort: false,
+    });
+
+    expect(getOpenRouterReasoningCapabilities("moonshotai/kimi-k2.6")).toMatchObject({
       tier: "full",
       supportsReasoningToggle: true,
       supportsPreservedReasoning: true,
@@ -53,18 +68,36 @@ describe("getOpenRouterReasoningCapabilities", () => {
     });
   });
 
-  it("marks DeepSeek as experimental and GLM as partial", () => {
-    expect(getOpenRouterReasoningCapabilities("deepseek/deepseek-v3.2")).toMatchObject({
-      tier: "experimental",
+  it("marks DeepSeek V4 and GLM 5.1 as full reasoning models", () => {
+    expect(getOpenRouterReasoningCapabilities("deepseek/deepseek-v4-flash")).toMatchObject({
+      tier: "full",
+      supportsReasoningToggle: true,
+      supportsPreservedReasoning: true,
+      supportsEffort: true,
+      supportedEfforts: ["high", "xhigh"],
+    });
+
+    expect(getOpenRouterReasoningCapabilities("deepseek/deepseek-v4-pro")).toMatchObject({
+      tier: "full",
+      supportsReasoningToggle: true,
+      supportsPreservedReasoning: true,
+      supportsEffort: true,
+      supportedEfforts: ["high", "xhigh"],
+    });
+
+    expect(getOpenRouterReasoningCapabilities("z-ai/glm-5.1")).toMatchObject({
+      tier: "full",
       supportsReasoningToggle: true,
       supportsPreservedReasoning: true,
       supportsEffort: false,
     });
+  });
 
-    expect(getOpenRouterReasoningCapabilities("z-ai/glm-5.1")).toMatchObject({
-      tier: "partial",
+  it("marks older DeepSeek reasoning support as experimental", () => {
+    expect(getOpenRouterReasoningCapabilities("deepseek/deepseek-v3.2")).toMatchObject({
+      tier: "experimental",
       supportsReasoningToggle: true,
-      supportsPreservedReasoning: false,
+      supportsPreservedReasoning: true,
       supportsEffort: false,
     });
   });

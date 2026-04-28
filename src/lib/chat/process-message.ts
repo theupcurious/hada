@@ -666,10 +666,12 @@ function resolveOpenRouterReasoningConfig(
         typeof settings.llm_reasoning_effort === "string" ? settings.llm_reasoning_effort : undefined,
       ) || undefined
     : undefined;
+  const supportedEffort =
+    effort && capabilities.supportedEfforts.includes(effort) ? effort : undefined;
 
   return {
     enabled: true,
-    ...(effort ? { effort } : {}),
+    ...(supportedEffort ? { effort: supportedEffort } : {}),
   };
 }
 
