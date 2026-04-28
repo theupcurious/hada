@@ -1379,9 +1379,7 @@ export default function ChatPage() {
   };
 
   const handleOpenArtifact = (_messageId: string, content: string) => {
-    const titleMatch = content.match(/^#{1,3}\s+(.+)/m);
-    const title = titleMatch ? titleMatch[1].trim() : copy.responseTitle;
-    setArtifactContent({ title, content, type: "response" });
+    void sendMessage(`Ingest this into my wiki:\n\n${content}`);
   };
 
   const handleAttachDoc = (doc: AttachedDoc) => {

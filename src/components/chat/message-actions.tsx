@@ -41,9 +41,9 @@ export function MessageActions(props: {
           type="button"
           size="icon-xs"
           variant="ghost"
-          aria-label="Open as document"
+          aria-label="Ingest to wiki"
           onClick={props.onOpenArtifact}
-          title="Open as document"
+          title="Ingest to wiki"
         >
           <ExternalLink className="h-3.5 w-3.5" />
         </Button>
