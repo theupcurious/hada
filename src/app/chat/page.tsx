@@ -414,6 +414,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
   },
 };
 
+const PAGE_BOTTOM_THRESHOLD_PX = 160;
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -434,6 +436,7 @@ export default function ChatPage() {
   const [saveModalContent, setSaveModalContent] = useState<string | null>(null);
   const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([]);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const eventOrderRef = useRef(0);
   const backgroundJobPollersRef = useRef(new Map<string, number>());
@@ -455,6 +458,11 @@ export default function ChatPage() {
 
   const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
+
+  const isNearPageBottom = () => {
+    const documentHeight = document.documentElement.scrollHeight;
+    return window.innerHeight + window.scrollY >= documentHeight - PAGE_BOTTOM_THRESHOLD_PX;
   };
 
   const scrollToTop = () => {
@@ -1008,6 +1016,17 @@ export default function ChatPage() {
     return () => window.removeEventListener("scroll", handleWindowScroll);
   }, [showConversation, hasMoreHistory, isLoadingMore, loadMoreHistory]);
 
+  useEffect(() => {
+    if (!showConversation) return;
+
+    const handleWindowScroll = () => {
+      shouldAutoScrollRef.current = isNearPageBottom();
+    };
+
+    window.addEventListener("scroll", handleWindowScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleWindowScroll);
+  }, [showConversation]);
+
   const autosizeTextarea = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -1143,8 +1162,14 @@ export default function ChatPage() {
       return;
     }
 
-    // Ensure the newest message (or loader) is visible.
-    requestAnimationFrame(() => scrollToBottom("auto"));
+    if (!shouldAutoScrollRef.current) return;
+
+    // Follow streaming output only while the user remains near the bottom.
+    requestAnimationFrame(() => {
+      if (shouldAutoScrollRef.current) {
+        scrollToBottom("auto");
+      }
+    });
   }, [messages, isLoading, isThinking, showConversation]);
 
   useEffect(() => {
@@ -1429,6 +1454,7 @@ export default function ChatPage() {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
     setShowConversation(true);
+    shouldAutoScrollRef.current = true;
 
     // Build message with attached doc context prepended
     const docsToSend = attachedDocs;
@@ -1459,6 +1485,7 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
       },
     ]);
+    requestAnimationFrame(() => scrollToBottom());
     if (!overrideMessage) setInput("");
     setAttachedDocs([]);
     setIsLoading(true);
@@ -1515,7 +1542,6 @@ export default function ChatPage() {
     void sendMessage(text);
     requestAnimationFrame(() => {
       autosizeTextarea();
-      scrollToBottom();
     });
   };
 
@@ -1630,10 +1656,9 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await sendMessage();
+    void sendMessage();
     requestAnimationFrame(() => {
       autosizeTextarea();
-      scrollToBottom();
     });
   };
 
