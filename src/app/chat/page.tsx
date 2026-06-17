@@ -3,7 +3,6 @@
 export const dynamic = "force-dynamic";
 
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { createClient } from "@/lib/supabase/client";
 import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
@@ -435,7 +434,6 @@ export default function ChatPage() {
   const [saveModalContent, setSaveModalContent] = useState<string | null>(null);
   const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([]);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const eventOrderRef = useRef(0);
   const backgroundJobPollersRef = useRef(new Map<string, number>());
@@ -460,10 +458,7 @@ export default function ChatPage() {
   };
 
   const scrollToTop = () => {
-    const viewport = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
-    if (viewport instanceof HTMLElement) {
-      viewport.scrollTop = 0;
-    }
+    window.scrollTo({ top: 0, behavior: "auto" });
   };
 
   const apiMessageToMessage = (msg: ApiMessage): Message => ({
@@ -982,22 +977,36 @@ export default function ChatPage() {
     setIsLoadingMore(true);
     const oldestMessage = messages[0];
 
-    // Store scroll position before loading
-    const scrollArea = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
-    const scrollHeightBefore = scrollArea?.scrollHeight || 0;
+    // Store document scroll position before loading.
+    const scrollHeightBefore = document.documentElement.scrollHeight;
+    const scrollYBefore = window.scrollY;
 
     await loadHistory(oldestMessage.id);
 
     // Restore scroll position after messages are prepended
     requestAnimationFrame(() => {
-      if (scrollArea) {
-        const scrollHeightAfter = scrollArea.scrollHeight;
-        scrollArea.scrollTop = scrollHeightAfter - scrollHeightBefore;
-      }
+      const scrollHeightAfter = document.documentElement.scrollHeight;
+      window.scrollTo({
+        top: scrollYBefore + (scrollHeightAfter - scrollHeightBefore),
+        behavior: "auto",
+      });
     });
 
     setIsLoadingMore(false);
   }, [isLoadingMore, hasMoreHistory, messages, loadHistory]);
+
+  useEffect(() => {
+    if (!showConversation || !hasMoreHistory) return;
+
+    const handleWindowScroll = () => {
+      if (window.scrollY < 100 && hasMoreHistory && !isLoadingMore) {
+        void loadMoreHistory();
+      }
+    };
+
+    window.addEventListener("scroll", handleWindowScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleWindowScroll);
+  }, [showConversation, hasMoreHistory, isLoadingMore, loadMoreHistory]);
 
   const autosizeTextarea = () => {
     const el = textareaRef.current;
@@ -1879,10 +1888,10 @@ export default function ChatPage() {
   }, [isLoadingHistory, isLoading, showFirstRunSetup]);
 
   return (
-    <div lang={localeTag} className="fixed inset-0 flex flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+    <div lang={localeTag} className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
 
-      <header className="border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
+      <header className="sticky top-0 z-30 border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
         <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <div className="flex h-6 w-6 items-center justify-center rounded-lg overflow-hidden shadow-md shadow-teal-500/20">
@@ -1962,110 +1971,98 @@ export default function ChatPage() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex min-w-0 flex-1 overflow-hidden">
-        <div className={`flex min-w-0 h-full w-full flex-col ${artifactContent ? "md:max-w-none md:px-3 sm:px-3" : "max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
+      <div className="flex min-w-0 flex-1">
+        <div className={`flex min-w-0 w-full flex-col ${artifactContent ? "md:max-w-none md:px-3 sm:px-3" : "max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
 
           {/* Messages Area */}
-          <div className="flex-1 min-h-0 py-4">
-            <ScrollArea
-              className="h-full"
-              ref={scrollAreaRef}
-              onScrollCapture={(e) => {
-                const target = e.target as HTMLElement;
-                // Load more when scrolled near top (within 100px)
-                if (target.scrollTop < 100 && hasMoreHistory && !isLoadingMore) {
-                  loadMoreHistory();
-                }
-              }}
-            >
-              <div className="space-y-6 pb-6 pr-3 sm:pr-4 min-w-0 w-full">
-                {isLoadingMore && (
-                  <div className="flex justify-center py-2">
-                    <span className="text-sm text-zinc-400">{copy.loadingEarlierMessages}</span>
-                  </div>
-                )}
-                {isLoadingHistory ? (
-                  <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                    <span className="text-sm text-zinc-400">{copy.loading}</span>
-                  </div>
-                ) : shouldShowLanding ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-8 pt-5 sm:min-h-[60vh] sm:justify-center sm:px-4 sm:pb-10 sm:pt-6"
-                  >
-                    {showFirstRunSetup ? (
-                      <FirstRunSetup
-                        className="w-full max-w-4xl"
-                        initialValues={buildInitialSetupValues(userSettings)}
-                        onComplete={(values) => void handleFirstRunComplete(values)}
-                        onSkip={() => void handleFirstRunSkip()}
-                      />
-                    ) : (
-                      <div className="w-full max-w-4xl">
-                        <WelcomeHome
-                          greeting={welcomeGreeting}
-                          subtitle={welcomeSubtitle}
-                          starterActions={welcomeStarterActions}
-                          continueRow={welcomeContinueRow}
-                          statusLine={{
-                            text: welcomeStatusText,
-                            actionLabel:
-                              recentDocuments.length > 0
-                                ? copy.viewDocs
-                                : dueTodayCount > 0
-                                ? copy.viewTasks
-                                : undefined,
-                            onAction: recentDocuments.length > 0
-                              ? () => router.push("/docs")
+          <div className="flex-1 py-4">
+            <div className={`min-w-0 w-full space-y-6 ${showConversation ? "pb-32" : "pb-8"}`}>
+              {isLoadingMore && (
+                <div className="flex justify-center py-2">
+                  <span className="text-sm text-zinc-400">{copy.loadingEarlierMessages}</span>
+                </div>
+              )}
+              {isLoadingHistory ? (
+                <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                  <span className="text-sm text-zinc-400">{copy.loading}</span>
+                </div>
+              ) : shouldShowLanding ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-8 pt-5 sm:min-h-[60vh] sm:justify-center sm:px-4 sm:pb-10 sm:pt-6"
+                >
+                  {showFirstRunSetup ? (
+                    <FirstRunSetup
+                      className="w-full max-w-4xl"
+                      initialValues={buildInitialSetupValues(userSettings)}
+                      onComplete={(values) => void handleFirstRunComplete(values)}
+                      onSkip={() => void handleFirstRunSkip()}
+                    />
+                  ) : (
+                    <div className="w-full max-w-4xl">
+                      <WelcomeHome
+                        greeting={welcomeGreeting}
+                        subtitle={welcomeSubtitle}
+                        starterActions={welcomeStarterActions}
+                        continueRow={welcomeContinueRow}
+                        statusLine={{
+                          text: welcomeStatusText,
+                          actionLabel:
+                            recentDocuments.length > 0
+                              ? copy.viewDocs
                               : dueTodayCount > 0
-                              ? () => router.push("/settings?tab=tasks")
+                              ? copy.viewTasks
                               : undefined,
-                          }}
-                        />
+                          onAction: recentDocuments.length > 0
+                            ? () => router.push("/docs")
+                            : dueTodayCount > 0
+                            ? () => router.push("/settings?tab=tasks")
+                            : undefined,
+                        }}
+                      />
 
-                        <div className="mx-auto mt-8 w-full max-w-xl sm:mt-10">
-                          {inputForm}
-                        </div>
+                      <div className="mx-auto mt-8 w-full max-w-xl sm:mt-10">
+                        {inputForm}
                       </div>
-                    )}
-                  </motion.div>
-                ) : (
-                  <AnimatePresence>
-                    {messages.map((message) => (
-                      <motion.div
-                        key={message.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.18, ease: "easeOut" }}
-                        className="min-w-0"
-                      >
-                        <ChatMessageRow
-                          message={message}
-                          userName={user?.name}
-                          isLoading={isLoading}
-                          onQuickReply={handleQuickReply}
-                          onCopy={handleCopyMessage}
-                          onRegenerate={handleRegenerateMessage}
-                          onFeedback={handleMessageFeedback}
-                          onSaveToDoc={handleSaveToDoc}
-                          onOpenArtifact={handleOpenArtifact}
-                          onDelete={handleDeleteMessage}
-                        />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                )}
-                <div ref={endOfMessagesRef} />
-              </div>
-            </ScrollArea>
+                    </div>
+                  )}
+                </motion.div>
+              ) : (
+                <AnimatePresence>
+                  {messages.map((message) => (
+                    <motion.div
+                      key={message.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.18, ease: "easeOut" }}
+                      className="min-w-0"
+                    >
+                      <ChatMessageRow
+                        message={message}
+                        userName={user?.name}
+                        isLoading={isLoading}
+                        onQuickReply={handleQuickReply}
+                        onCopy={handleCopyMessage}
+                        onRegenerate={handleRegenerateMessage}
+                        onFeedback={handleMessageFeedback}
+                        onSaveToDoc={handleSaveToDoc}
+                        onOpenArtifact={handleOpenArtifact}
+                        onDelete={handleDeleteMessage}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              )}
+              <div ref={endOfMessagesRef} />
+            </div>
           </div>
 
           {/* Input Area - Fixed at bottom when there are messages */}
           {showConversation && (
-            <div className="shrink-0 border-t border-border/50 bg-background/80 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 backdrop-blur-md">
+            <div className="sticky bottom-0 z-20 shrink-0 border-t border-border/50 bg-background/80 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 backdrop-blur-md">
               {inputForm}
             </div>
           )}
@@ -2079,7 +2076,7 @@ export default function ChatPage() {
               animate={{ opacity: 1, width: "42%" }}
               exit={{ opacity: 0, width: 0 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
-              className="hidden md:flex flex-col shrink-0 overflow-hidden"
+              className="sticky top-[57px] hidden h-[calc(100vh-57px)] shrink-0 flex-col overflow-hidden md:flex"
             >
               <ArtifactPanel
                 artifact={artifactContent}
