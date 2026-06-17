@@ -181,7 +181,7 @@ function buildFallbackToolPool(context: ToolContext): AgentTool[] {
     createSaveMemoryTool(context),
     createRecallMemoryTool(context),
     createScheduleTaskTool(context),
-    createWebSearchTool(),
+    createWebSearchTool(context),
     createWebFetchTool(),
     ...createGoogleCalendarTools(context),
   ];

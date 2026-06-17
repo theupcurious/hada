@@ -32,9 +32,23 @@ describe("buildSystemPrompt language guidance", () => {
     expect(prompt.responseLocaleSource).toBe("message");
     expect(prompt.prompt).toContain("Current turn override: reply in Chinese");
   });
+
+  it("includes the current date/time in user context", async () => {
+    const prompt = await buildSystemPrompt({
+      supabase: createSupabaseStub({ locale: "en", timezone: "Asia/Singapore" }),
+      userId: "user-1",
+      source: "web",
+      tools: [],
+      connectedIntegrations: [],
+      userMessage: "where is the us market going?",
+    });
+
+    expect(prompt.prompt).toContain("- Current date/time:");
+    expect(prompt.prompt).toContain("- Timezone: Asia/Singapore");
+  });
 });
 
-function createSupabaseStub(settings: { locale?: string }) {
+function createSupabaseStub(settings: { locale?: string; timezone?: string }) {
   const stub = {
     from(table: string) {
       if (table === "users") {
@@ -88,6 +102,24 @@ function createSupabaseStub(settings: { locale?: string }) {
                 data: [],
                 error: null,
               }),
+            };
+          },
+        };
+      }
+
+      if (table === "documents") {
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  eq: async () => ({
+                    count: 0,
+                    data: null,
+                    error: null,
+                  }),
+                };
+              },
             };
           },
         };

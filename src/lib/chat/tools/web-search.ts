@@ -1,6 +1,7 @@
 import type { AgentTool } from "@/lib/chat/agent-loop";
 
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
+import type { ToolContext } from "@/lib/chat/tools/types";
 
 interface SearchResult {
   title: string;
@@ -15,6 +16,10 @@ const CURRENT_INFO_PATTERN =
   /\b(today|current|currently|latest|recent|recently|new|news|updated|update|as of|verify|verified|tomorrow|yesterday|this week|this month|this year)\b/i;
 const FINANCE_PATTERN =
   /\b(market|markets|stock|stocks|equity|equities|bond|bonds|yield|yields|treasury|treasuries|fed|fomc|cpi|ppi|pce|inflation|jobs|payrolls|unemployment|earnings|oil|gold|bitcoin|btc|ethereum|eth|fx|forex|usd|eur|jpy|nasdaq|dow|s&p|spx|rates?)\b/i;
+const DIRECTIONAL_CURRENT_PATTERN =
+  /\b(where|going|headed|outlook|forecast|trend|direction|position|positioning|near term|short term|next|watch|expect|risk|risks|catalyst|catalysts)\b/i;
+const MODERN_CHANGING_DOMAIN_PATTERN =
+  /\b(ai|software|technology|tech|product|products|company|companies|startup|startups|market|markets|macro|economy|economic|politics|policy|law|legal|regulation|sports?|travel|weather|prices?)\b/i;
 const EXPLICIT_DATE_PATTERN =
   /\b(20\d{2}|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|q[1-4])\b/i;
 
@@ -40,7 +45,7 @@ export const webSearchManifest: ToolManifest = {
   },
 };
 
-export function createWebSearchTool(): AgentTool {
+export function createWebSearchTool(context?: Pick<ToolContext, "timezone">): AgentTool {
   return {
     name: webSearchManifest.name,
     description: webSearchManifest.description,
@@ -56,7 +61,7 @@ export function createWebSearchTool(): AgentTool {
         return JSON.stringify({ success: false, error: "query is required" });
       }
 
-      const searchContext = buildSearchContext(query, new Date());
+      const searchContext = buildSearchContext(query, new Date(), context?.timezone);
       const provider = (process.env.SEARCH_PROVIDER || "tavily").toLowerCase();
       const apiKey = resolveSearchApiKey(provider);
 
@@ -273,13 +278,17 @@ interface SearchContext {
   freshnessSensitive: boolean;
 }
 
-export function buildSearchContext(query: string, now: Date): SearchContext {
+export function buildSearchContext(
+  query: string,
+  now: Date,
+  timezone?: string | null,
+): SearchContext {
   const trimmedQuery = query.trim();
   const freshnessSensitive = isFreshnessSensitiveQuery(trimmedQuery);
 
   return {
     originalQuery: trimmedQuery,
-    effectiveQuery: freshnessSensitive ? applyFreshnessBias(trimmedQuery, now) : trimmedQuery,
+    effectiveQuery: freshnessSensitive ? applyFreshnessBias(trimmedQuery, now, timezone) : trimmedQuery,
     freshnessSensitive,
   };
 }
@@ -290,24 +299,35 @@ export function isFreshnessSensitiveQuery(query: string): boolean {
     return false;
   }
 
-  return CURRENT_INFO_PATTERN.test(normalized) || FINANCE_PATTERN.test(normalized);
+  return (
+    CURRENT_INFO_PATTERN.test(normalized) ||
+    FINANCE_PATTERN.test(normalized) ||
+    (DIRECTIONAL_CURRENT_PATTERN.test(normalized) &&
+      MODERN_CHANGING_DOMAIN_PATTERN.test(normalized))
+  );
 }
 
-function applyFreshnessBias(query: string, now: Date): string {
+function applyFreshnessBias(query: string, now: Date, timezone?: string | null): string {
   if (EXPLICIT_DATE_PATTERN.test(query)) {
     return query;
   }
 
-  return `${query} ${formatSearchDate(now)} latest`;
+  return `${query} ${formatSearchDate(now, timezone)} latest`;
 }
 
-function formatSearchDate(now: Date): string {
-  return now.toLocaleDateString("en-US", {
+function formatSearchDate(now: Date, timezone?: string | null): string {
+  const options: Intl.DateTimeFormatOptions = {
     month: "long",
     day: "numeric",
     year: "numeric",
-    timeZone: "UTC",
-  });
+    timeZone: timezone || "UTC",
+  };
+
+  try {
+    return now.toLocaleDateString("en-US", options);
+  } catch {
+    return now.toLocaleDateString("en-US", { ...options, timeZone: "UTC" });
+  }
 }
 
 function firstString(record: Record<string, unknown>, fields?: string[]): string | null {

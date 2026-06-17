@@ -97,11 +97,13 @@ export async function buildSystemPrompt(options: {
     ? userTimezone.split("/").pop()!.replace(/_/g, " ")
     : userTimezone;
 
+  const currentLocalDateTime = formatCurrentLocalDateTime(new Date(), userTimezone);
   const userContextLines = [
     `- Name: ${user?.name || "Unknown"}`,
     `- Email: ${user?.email || "Unknown"}`,
     `- Tier: ${user?.tier || "free"}`,
     `- Integrations: ${connectedIntegrations.length ? connectedIntegrations.join(", ") : "none"}`,
+    `- Current date/time: ${currentLocalDateTime}`,
     `- Timezone: ${userTimezone}`,
     `- Location: ${userLocation}`,
   ];
@@ -230,6 +232,30 @@ function formatSegmentAge(lastActiveAt: string): string {
   const diffH = Math.floor(diffMin / 60);
   if (diffH < 24) return `${diffH}h ago`;
   return `${Math.floor(diffH / 24)}d ago`;
+}
+
+function formatCurrentLocalDateTime(now: Date, timezone: string): string {
+  const formatterOptions: Intl.DateTimeFormatOptions = {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  };
+
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      ...formatterOptions,
+      timeZone: timezone,
+    }).format(now);
+  } catch {
+    return new Intl.DateTimeFormat("en-US", {
+      ...formatterOptions,
+      timeZone: "UTC",
+    }).format(now);
+  }
 }
 
 

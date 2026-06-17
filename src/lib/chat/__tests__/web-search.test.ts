@@ -3,6 +3,7 @@ import { buildSearchContext, isFreshnessSensitiveQuery } from "@/lib/chat/tools/
 
 describe("web-search freshness", () => {
   it("treats market and macro queries as freshness-sensitive", () => {
+    expect(isFreshnessSensitiveQuery("where is the us market going?")).toBe(true);
     expect(isFreshnessSensitiveQuery("how should one position for the market with pce today and cpi tomorrow")).toBe(true);
     expect(isFreshnessSensitiveQuery("latest BTC price and Fed reaction function")).toBe(true);
   });
@@ -27,10 +28,26 @@ describe("web-search freshness", () => {
     expect(context.effectiveQuery).toBe("cpi april 9 2026 latest release");
   });
 
+  it("uses the user's timezone when adding the current date", () => {
+    const context = buildSearchContext(
+      "where is the us market going?",
+      new Date("2026-06-16T18:00:00.000Z"),
+      "Asia/Singapore",
+    );
+
+    expect(context.effectiveQuery).toContain("June 17, 2026");
+  });
+
   it("leaves evergreen queries unchanged", () => {
     const context = buildSearchContext("what is a discounted cash flow model", new Date("2026-04-09T03:00:00.000Z"));
 
     expect(context.freshnessSensitive).toBe(false);
     expect(context.effectiveQuery).toBe("what is a discounted cash flow model");
+  });
+
+  it("does not treat generic directional language as freshness-sensitive", () => {
+    const context = buildSearchContext("what are the main risks in a discounted cash flow model", new Date("2026-04-09T03:00:00.000Z"));
+
+    expect(context.freshnessSensitive).toBe(false);
   });
 });
