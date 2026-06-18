@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { PERSONAS } from "@/lib/chat/personas";
 import {
@@ -85,6 +86,7 @@ export function AccountTab() {
   const [resettingOnboarding, setResettingOnboarding] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
   const [clearChatMessage, setClearChatMessage] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<"clear-chat" | "reset-onboarding" | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -385,9 +387,6 @@ export function AccountTab() {
 
   async function clearChat() {
     if (clearingChat) return;
-    if (!window.confirm("Clear your current chat history? This removes the current conversation and its messages.")) {
-      return;
-    }
 
     setClearingChat(true);
     setClearChatMessage(null);
@@ -410,6 +409,7 @@ export function AccountTab() {
       setClearChatMessage(
         data.cleared ? "Chat cleared. Your next message will start a new conversation." : "No chat history to clear.",
       );
+      setPendingConfirmation(null);
     } catch (error) {
       setClearChatMessage(error instanceof Error ? error.message : "Failed to clear chat.");
     } finally {
@@ -419,10 +419,6 @@ export function AccountTab() {
 
   async function resetOnboarding() {
     if (!profile || resettingOnboarding || isSavingPreferences) {
-      return;
-    }
-
-    if (!window.confirm("Reset onboarding? This will clear your saved working style, welcome state, and show first-run setup again in chat.")) {
       return;
     }
 
@@ -454,6 +450,7 @@ export function AccountTab() {
     setCalendarHabits("");
     setCurrentProjects("");
     setAssistantSaveMessage("Onboarding reset. You will see setup again in chat.");
+    setPendingConfirmation(null);
     setResettingOnboarding(false);
   }
 
@@ -969,7 +966,7 @@ export function AccountTab() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void resetOnboarding()}
+              onClick={() => setPendingConfirmation("reset-onboarding")}
               disabled={resettingOnboarding || isSavingPreferences}
               className="shrink-0"
             >
@@ -1003,7 +1000,7 @@ export function AccountTab() {
               size="sm"
               variant="outline"
               className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
-              onClick={() => void clearChat()}
+              onClick={() => setPendingConfirmation("clear-chat")}
               disabled={clearingChat}
             >
               {clearingChat ? "Clearing..." : "Clear chat"}
@@ -1011,6 +1008,21 @@ export function AccountTab() {
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={pendingConfirmation !== null}
+        title={pendingConfirmation === "reset-onboarding" ? "Reset onboarding?" : "Clear chat history?"}
+        description={
+          pendingConfirmation === "reset-onboarding"
+            ? "This clears your saved working style and welcome state, then shows first-run setup again in chat."
+            : "This permanently removes the current conversation and all of its messages."
+        }
+        confirmLabel={pendingConfirmation === "reset-onboarding" ? "Reset onboarding" : "Clear chat"}
+        destructive
+        busy={resettingOnboarding || clearingChat}
+        onOpenChange={(open) => !open && setPendingConfirmation(null)}
+        onConfirm={pendingConfirmation === "reset-onboarding" ? resetOnboarding : clearChat}
+      />
     </div>
   );
 }

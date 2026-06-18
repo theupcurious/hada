@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import { toLocaleLanguageTag, type AppLocale } from "@/lib/i18n";
 import type { UserMemory } from "@/lib/types/database";
@@ -39,6 +40,7 @@ export function MemoryTab() {
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<MemoryDraft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [memoryToDelete, setMemoryToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     void loadMemories();
@@ -151,7 +153,6 @@ export function MemoryTab() {
 
   async function handleDeleteMemory(memoryId: string) {
     if (isSaving) return;
-    if (!window.confirm(copy.confirmDeleteMemory)) return;
 
     setIsSaving(true);
     setMessage(null);
@@ -167,6 +168,7 @@ export function MemoryTab() {
       }
 
       setMemories((prev) => prev.filter((memory) => memory.id !== memoryId));
+      setMemoryToDelete(null);
       if (editingMemoryId === memoryId) {
         setEditingMemoryId(null);
         setMemoryDraft(null);
@@ -332,7 +334,7 @@ export function MemoryTab() {
                             size="sm"
                             variant="outline"
                             className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
-                            onClick={() => void handleDeleteMemory(memory.id)}
+                            onClick={() => setMemoryToDelete(memory.id)}
                             disabled={isSaving}
                           >
                             {copy.delete}
@@ -347,6 +349,19 @@ export function MemoryTab() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={memoryToDelete !== null}
+        title={copy.confirmDeleteMemory}
+        confirmLabel={copy.delete}
+        cancelLabel={copy.cancel}
+        destructive
+        busy={isSaving}
+        onOpenChange={(open) => !open && setMemoryToDelete(null)}
+        onConfirm={() => {
+          if (memoryToDelete) return handleDeleteMemory(memoryToDelete);
+        }}
+      />
     </div>
   );
 }

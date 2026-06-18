@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import type { AppLocale } from "@/lib/i18n";
 import type { ScheduledTask } from "@/lib/types/database";
@@ -37,6 +38,7 @@ export function TasksTab() {
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -71,9 +73,13 @@ export function TasksTab() {
   };
 
   const handleDelete = async (taskId: string) => {
-    if (!window.confirm(copy.confirmDeleteTask)) return;
     const response = await fetch(`/api/dashboard/tasks/${taskId}`, { method: "DELETE" });
-    if (response.ok) void loadTasks();
+    if (response.ok) {
+      setTaskToDelete(null);
+      void loadTasks();
+    } else {
+      setError(copy.failedToLoadTasks);
+    }
   };
 
   const handleRunNow = async (taskId: string) => {
@@ -81,7 +87,7 @@ export function TasksTab() {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     void loadTasks();
     if (!response.ok) {
-      window.alert(payload?.message || copy.runFailedWithStatus(response.status));
+      setError(payload?.message || copy.runFailedWithStatus(response.status));
     }
   };
 
@@ -161,7 +167,7 @@ export function TasksTab() {
                   variant="ghost"
                   size="sm"
                   className="text-red-500 hover:text-red-600 dark:text-red-400"
-                  onClick={() => void handleDelete(task.id)}
+                  onClick={() => setTaskToDelete(task.id)}
                 >
                   {copy.delete}
                 </Button>
@@ -178,6 +184,18 @@ export function TasksTab() {
           </Button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={taskToDelete !== null}
+        title={copy.confirmDeleteTask}
+        confirmLabel={copy.delete}
+        cancelLabel={copy.cancel}
+        destructive
+        onOpenChange={(open) => !open && setTaskToDelete(null)}
+        onConfirm={() => {
+          if (taskToDelete) return handleDelete(taskToDelete);
+        }}
+      />
     </div>
   );
 }
@@ -199,6 +217,7 @@ type TasksCopy = {
   pause: string;
   resume: string;
   delete: string;
+  cancel: string;
   refresh: string;
   refreshing: string;
   overdue: string;
@@ -226,6 +245,7 @@ const TASKS_COPY: Record<AppLocale, TasksCopy> = {
     pause: "Pause",
     resume: "Resume",
     delete: "Delete",
+    cancel: "Cancel",
     refresh: "Refresh",
     refreshing: "Refreshing...",
     overdue: "overdue",
@@ -251,6 +271,7 @@ const TASKS_COPY: Record<AppLocale, TasksCopy> = {
     pause: "일시중지",
     resume: "재개",
     delete: "삭제",
+    cancel: "취소",
     refresh: "새로고침",
     refreshing: "새로고침 중...",
     overdue: "기한 지남",
@@ -276,6 +297,7 @@ const TASKS_COPY: Record<AppLocale, TasksCopy> = {
     pause: "一時停止",
     resume: "再開",
     delete: "削除",
+    cancel: "キャンセル",
     refresh: "更新",
     refreshing: "更新中...",
     overdue: "期限切れ",
@@ -301,6 +323,7 @@ const TASKS_COPY: Record<AppLocale, TasksCopy> = {
     pause: "暂停",
     resume: "继续",
     delete: "删除",
+    cancel: "取消",
     refresh: "刷新",
     refreshing: "刷新中...",
     overdue: "已过期",

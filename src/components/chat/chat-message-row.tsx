@@ -227,11 +227,6 @@ export function ChatMessageRow({
 
   const isLong = message.content.length > 900;
 
-  const showActions =
-    message.role === "assistant" &&
-    !message.isStreaming &&
-    message.content.trim().length > 0;
-
   return (
     <div className="group flex min-w-0 gap-2 sm:gap-3">
       {/* Avatar */}
@@ -395,14 +390,14 @@ export function ChatMessageRow({
           </div>
         )}
 
-        {/* Message actions hover toolbar */}
+        {/* Message actions */}
         {message.role === "assistant" && message.content.trim().length > 0 && (
-          <div className="min-h-[32px] mt-2 relative">
+          <div className="mt-2 min-h-[32px]">
             <div
-              className={`absolute top-0 left-0 inline-flex items-center gap-2 transition-opacity duration-150 ${
+              className={`inline-flex items-center gap-2 transition-opacity duration-150 ${
                 message.isStreaming
                   ? "opacity-0 pointer-events-none"
-                  : "opacity-0 group-hover:opacity-100 pointer-events-auto"
+                  : "opacity-100 pointer-events-auto"
               }`}
             >
               <MessageActions
