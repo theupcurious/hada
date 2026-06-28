@@ -11,6 +11,7 @@ import { ChatMessageRow } from "@/components/chat/chat-message-row";
 import { ArtifactPanel, type ArtifactData } from "@/components/chat/artifact-panel";
 import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
 import { DocAttachPicker, AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
+import { FileUploadButton } from "@/components/chat/file-upload-button";
 import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first-run-setup";
 import { WelcomeHome } from "@/components/chat/welcome-home";
 import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
@@ -26,7 +27,7 @@ import {
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Calendar, FileText, Lightbulb, LayoutDashboard, LogOut, Octagon, Search, Settings2 } from "lucide-react";
+import { Calendar, FolderKanban, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
@@ -176,6 +177,8 @@ interface ChatLocaleCopy {
   statusOffline: string;
   openDocsAria: string;
   docsLabel: string;
+  openProjectsAria: string;
+  projectsLabel: string;
   openSettingsAria: string;
   settingsLabel: string;
   signOutAria: string;
@@ -185,14 +188,17 @@ interface ChatLocaleCopy {
   connectionErrorMessage: string;
   interruptedMessage: string;
   stopResponseLabel: string;
+  attachFileLabel: string;
+  projectActivePrefix: string;
+  projectExit: string;
   starterPlanMyDayLabel: string;
   starterPlanMyDayPrompt: string;
+  starterSummarizeEmailLabel: string;
+  starterSummarizeEmailPrompt: string;
+  starterDraftEmailLabel: string;
+  starterDraftEmailPrompt: string;
   starterResearchTopicLabel: string;
   starterResearchTopicPrompt: string;
-  starterCreateRoadmapLabel: string;
-  starterCreateRoadmapPrompt: string;
-  starterThinkItThroughLabel: string;
-  starterThinkItThroughPrompt: string;
 }
 
 const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
@@ -228,6 +234,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     statusOffline: "Offline",
     openDocsAria: "Open docs",
     docsLabel: "Docs",
+    openProjectsAria: "Open projects",
+    projectsLabel: "Projects",
     openSettingsAria: "Open settings",
     settingsLabel: "Settings",
     signOutAria: "Sign out",
@@ -237,18 +245,21 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     connectionErrorMessage: "Sorry, I'm having trouble connecting. Please try again.",
     interruptedMessage: "Response interrupted before completion. Please try again.",
     stopResponseLabel: "Stop",
-    starterPlanMyDayLabel: "Plan My Day",
+    attachFileLabel: "Attach a PDF, Word, Excel/CSV, or text file",
+    projectActivePrefix: "Project:",
+    projectExit: "Exit",
+    starterPlanMyDayLabel: "Plan my day",
     starterPlanMyDayPrompt:
       "Review my calendar and tasks for today. Give me a practical day plan with top priorities, conflict warnings, and the best deep-work block to protect before 3 PM.",
-    starterResearchTopicLabel: "Research A Topic",
+    starterSummarizeEmailLabel: "Summarize my email",
+    starterSummarizeEmailPrompt:
+      "Summarize my unread email from the last day. Group it by sender or topic, flag anything urgent or that needs a reply from me, and keep it skimmable.",
+    starterDraftEmailLabel: "Draft an email",
+    starterDraftEmailPrompt:
+      "Help me write an email. Ask who it's for and what it's about, then draft it in my voice for me to review. Don't send anything until I approve it.",
+    starterResearchTopicLabel: "Research a topic",
     starterResearchTopicPrompt:
       "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
-    starterCreateRoadmapLabel: "Create Roadmap",
-    starterCreateRoadmapPrompt:
-      "Help me create a project roadmap. First ask what project I want to start, then research the space, create a roadmap document in the workspace, and give me a short execution summary in chat.",
-    starterThinkItThroughLabel: "Think It Through",
-    starterThinkItThroughPrompt:
-      "I have something I need to think through. Ask me what's on my mind, then help me examine it from multiple angles — assumptions, risks, and what a good decision actually looks like — and land on a clear next step.",
   },
   ko: {
     greetingMorning: "좋은 아침입니다",
@@ -282,6 +293,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     statusOffline: "오프라인",
     openDocsAria: "문서 열기",
     docsLabel: "문서",
+    openProjectsAria: "프로젝트 열기",
+    projectsLabel: "프로젝트",
     openSettingsAria: "설정 열기",
     settingsLabel: "설정",
     signOutAria: "로그아웃",
@@ -291,18 +304,21 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     connectionErrorMessage: "죄송합니다. 연결에 문제가 있습니다. 다시 시도해 주세요.",
     interruptedMessage: "응답이 완료되기 전에 중단되었습니다. 다시 시도해 주세요.",
     stopResponseLabel: "중단",
+    attachFileLabel: "PDF, Word, Excel/CSV, 텍스트 파일 첨부",
+    projectActivePrefix: "프로젝트:",
+    projectExit: "나가기",
     starterPlanMyDayLabel: "오늘 일정 계획",
     starterPlanMyDayPrompt:
       "오늘의 일정과 작업을 검토해 주세요. 최우선 순위, 충돌 가능성, 그리고 오후 3시 이전에 보호할 최적의 집중 업무 시간을 포함한 실용적인 하루 계획을 만들어 주세요.",
+    starterSummarizeEmailLabel: "이메일 요약",
+    starterSummarizeEmailPrompt:
+      "지난 하루 동안의 읽지 않은 이메일을 요약해 주세요. 보낸 사람이나 주제별로 묶고, 급하거나 제 답장이 필요한 항목을 표시하며, 한눈에 보기 쉽게 정리해 주세요.",
+    starterDraftEmailLabel: "이메일 초안 작성",
+    starterDraftEmailPrompt:
+      "이메일 작성을 도와주세요. 받는 사람과 내용을 먼저 물어본 뒤, 제 말투로 초안을 작성해 검토할 수 있게 해 주세요. 제가 승인하기 전에는 보내지 마세요.",
     starterResearchTopicLabel: "주제 리서치",
     starterResearchTopicPrompt:
       "특정 주제를 리서치하고 싶어요. 먼저 어떤 주제를 조사할지 물어보고, 최신 소스를 활용해 핵심만 담긴 간결한 근거 기반 브리프를 만들어 주세요.",
-    starterCreateRoadmapLabel: "로드맵 만들기",
-    starterCreateRoadmapPrompt:
-      "프로젝트 로드맵을 만들고 싶어요. 먼저 어떤 프로젝트를 시작할지 물어본 뒤, 관련 내용을 조사하고 워크스페이스에 로드맵 문서를 생성한 다음, 채팅에 짧은 실행 요약을 남겨 주세요.",
-    starterThinkItThroughLabel: "생각 정리하기",
-    starterThinkItThroughPrompt:
-      "정리하고 싶은 고민이 있어요. 먼저 무엇을 고민 중인지 물어보고, 가정과 리스크, 좋은 결정의 기준 등 여러 관점에서 함께 검토한 뒤 명확한 다음 단계까지 도출해 주세요.",
   },
   ja: {
     greetingMorning: "おはようございます",
@@ -336,6 +352,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     statusOffline: "オフライン",
     openDocsAria: "ドキュメントを開く",
     docsLabel: "ドキュメント",
+    openProjectsAria: "プロジェクトを開く",
+    projectsLabel: "プロジェクト",
     openSettingsAria: "設定を開く",
     settingsLabel: "設定",
     signOutAria: "サインアウト",
@@ -345,18 +363,21 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     connectionErrorMessage: "接続に問題があります。もう一度お試しください。",
     interruptedMessage: "応答が完了前に中断されました。もう一度お試しください。",
     stopResponseLabel: "停止",
+    attachFileLabel: "PDF・Word・Excel/CSV・テキストファイルを添付",
+    projectActivePrefix: "プロジェクト:",
+    projectExit: "終了",
     starterPlanMyDayLabel: "今日の計画",
     starterPlanMyDayPrompt:
       "今日のカレンダーとタスクを確認してください。優先順位、競合リスク、15時までに確保すべき最適な集中時間を含む実用的な1日の計画を作ってください。",
     starterResearchTopicLabel: "トピック調査",
     starterResearchTopicPrompt:
       "あるテーマを調査したいです。まず何を調べるか確認し、最新ソースを使って重要点を押さえた簡潔な根拠付きブリーフを作成してください。",
-    starterCreateRoadmapLabel: "ロードマップ作成",
-    starterCreateRoadmapPrompt:
-      "プロジェクトのロードマップを作りたいです。まず開始したいプロジェクトを確認し、関連情報を調査してワークスペースにロードマップ文書を作成し、チャットで短い実行サマリーをください。",
-    starterThinkItThroughLabel: "考えを整理",
-    starterThinkItThroughPrompt:
-      "考えを整理したいテーマがあります。まず何について考えているかを聞き、前提・リスク・良い意思決定の基準など複数の観点で整理して、次の一手を明確にしてください。",
+    starterSummarizeEmailLabel: "メールを要約",
+    starterSummarizeEmailPrompt:
+      "直近1日の未読メールを要約してください。送信者やトピックごとにまとめ、急ぎのものや私の返信が必要なものを示し、ひと目で分かるようにしてください。",
+    starterDraftEmailLabel: "メールの下書き",
+    starterDraftEmailPrompt:
+      "メール作成を手伝ってください。宛先と内容をまず確認し、私の口調で下書きを作って確認できるようにしてください。私が承認するまで送信しないでください。",
   },
   zh: {
     greetingMorning: "早上好",
@@ -390,6 +411,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     statusOffline: "离线",
     openDocsAria: "打开文档",
     docsLabel: "文档",
+    openProjectsAria: "打开项目",
+    projectsLabel: "项目",
     openSettingsAria: "打开设置",
     settingsLabel: "设置",
     signOutAria: "退出登录",
@@ -399,18 +422,21 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     connectionErrorMessage: "抱歉，连接出现问题。请再试一次。",
     interruptedMessage: "回复在完成前被中断了。请再试一次。",
     stopResponseLabel: "停止",
+    attachFileLabel: "附加 PDF、Word、Excel/CSV 或文本文件",
+    projectActivePrefix: "项目:",
+    projectExit: "退出",
     starterPlanMyDayLabel: "规划今天",
     starterPlanMyDayPrompt:
       "查看我今天的日历和任务。给我一个务实的日程安排，包含最高优先级、冲突提醒，以及下午 3 点前最值得保护的深度工作时段。",
     starterResearchTopicLabel: "研究一个主题",
     starterResearchTopicPrompt:
       "帮我研究一个主题。先问我想研究什么，然后使用最新资料，整理一份简洁、带来源依据的重点摘要。",
-    starterCreateRoadmapLabel: "创建路线图",
-    starterCreateRoadmapPrompt:
-      "帮我制定一个项目路线图。先问我想启动什么项目，然后调研相关领域，在工作区创建路线图文档，并在聊天里给我一个简短执行摘要。",
-    starterThinkItThroughLabel: "理清思路",
-    starterThinkItThroughPrompt:
-      "我有件事想想清楚。先问我在思考什么，然后从假设、风险、以及怎样才算好决策等多个角度帮我梳理，最后收敛到一个明确的下一步。",
+    starterSummarizeEmailLabel: "总结我的邮件",
+    starterSummarizeEmailPrompt:
+      "总结我过去一天的未读邮件。按发件人或主题分组，标出紧急或需要我回复的内容，保持简洁易读。",
+    starterDraftEmailLabel: "起草一封邮件",
+    starterDraftEmailPrompt:
+      "帮我写一封邮件。先问我收件人和内容，然后用我的语气起草，让我审阅。在我确认之前不要发送。",
   },
 };
 
@@ -428,6 +454,7 @@ export default function ChatPage() {
   const [greetingText, setGreetingText] = useState("Hello");
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [recentRuns, setRecentRuns] = useState<RecentRunSummary[]>([]);
+  const [activeProject, setActiveProject] = useState<{ id: string; name: string } | null>(null);
   const [recentDocuments, setRecentDocuments] = useState<HomeDocumentSummary[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<HomeTaskSummary[]>([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -1245,6 +1272,23 @@ export default function ChatPage() {
         const realAssistantId = String(event.id ?? currentAssistantId);
         const terminalResponse =
           typeof event.response === "string" ? event.response : null;
+        const confRaw = event.confirmation as
+          | { pending?: boolean; function?: { name?: string; arguments?: Record<string, unknown> } }
+          | undefined;
+        const liveConfirmation = confRaw?.pending
+          ? {
+              pending: true,
+              function: confRaw.function
+                ? {
+                    name: typeof confRaw.function.name === "string" ? confRaw.function.name : "",
+                    arguments:
+                      confRaw.function.arguments && typeof confRaw.function.arguments === "object"
+                        ? confRaw.function.arguments
+                        : {},
+                  }
+                : undefined,
+            }
+          : undefined;
         setMessages((prev) =>
           prev.map((msg) => {
             if (userMessageId && msg.id === userMessageId) {
@@ -1259,6 +1303,7 @@ export default function ChatPage() {
                 followUpSuggestions: Array.isArray(event.followUpSuggestions)
                   ? (event.followUpSuggestions as string[]).filter((v): v is string => typeof v === "string")
                   : msg.followUpSuggestions,
+                confirmation: liveConfirmation,
                 isStreaming: false,
                 isError: !!event.isError,
                 backgroundJob: undefined,
@@ -1416,6 +1461,15 @@ export default function ChatPage() {
     void sendMessage(`Ingest this into my wiki:\n\n${content}`);
   };
 
+  const exitProject = () => {
+    setActiveProject(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("project");
+      window.history.replaceState({}, document.title, url.toString());
+    }
+  };
+
   const handleAttachDoc = (doc: AttachedDoc) => {
     setAttachedDocs((prev) => [...prev, doc]);
   };
@@ -1500,7 +1554,10 @@ export default function ChatPage() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: fullMessage }),
+        body: JSON.stringify({
+          message: fullMessage,
+          ...(activeProject ? { projectId: activeProject.id } : {}),
+        }),
         signal: requestController.signal,
       });
 
@@ -1654,6 +1711,59 @@ export default function ChatPage() {
     }
   };
 
+  const handleConfirmAction = async (
+    messageId: string,
+    decision: "approve" | "reject",
+  ) => {
+    // Optimistically resolve the card so it stops accepting input.
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId && m.confirmation
+          ? { ...m, confirmation: { ...m.confirmation, pending: false } }
+          : m,
+      ),
+    );
+
+    try {
+      const response = await fetch("/api/chat/confirm-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, decision }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        status?: string;
+        message?: { id?: string; content?: string; created_at?: string };
+      };
+
+      if (data.message?.id) {
+        const appended: Message = {
+          id: data.message.id,
+          role: "assistant",
+          content: typeof data.message.content === "string" ? data.message.content : "",
+          isError: data.status === "error",
+          created_at: data.message.created_at ?? new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, appended]);
+        requestAnimationFrame(() => scrollToBottom("smooth"));
+      }
+    } catch (error) {
+      console.error("Confirm action error:", error);
+      // Re-open the card so the user can retry.
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId && m.confirmation
+            ? { ...m, confirmation: { ...m.confirmation, pending: true } }
+            : m,
+        ),
+      );
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     void sendMessage();
@@ -1777,22 +1887,22 @@ export default function ChatPage() {
       onClick: () => handleStarterAction(copy.starterPlanMyDayPrompt),
     },
     {
+      id: "summarize-email",
+      label: copy.starterSummarizeEmailLabel,
+      icon: <Mail className="h-4 w-4" />,
+      onClick: () => handleStarterAction(copy.starterSummarizeEmailPrompt),
+    },
+    {
+      id: "draft-email",
+      label: copy.starterDraftEmailLabel,
+      icon: <PenLine className="h-4 w-4" />,
+      onClick: () => handleStarterAction(copy.starterDraftEmailPrompt),
+    },
+    {
       id: "research-topic",
       label: copy.starterResearchTopicLabel,
       icon: <Search className="h-4 w-4" />,
       onClick: () => handleStarterAction(copy.starterResearchTopicPrompt),
-    },
-    {
-      id: "create-roadmap",
-      label: copy.starterCreateRoadmapLabel,
-      icon: <FileText className="h-4 w-4" />,
-      onClick: () => handleStarterAction(copy.starterCreateRoadmapPrompt),
-    },
-    {
-      id: "think-it-through",
-      label: copy.starterThinkItThroughLabel,
-      icon: <Lightbulb className="h-4 w-4" />,
-      onClick: () => handleStarterAction(copy.starterThinkItThroughPrompt),
     },
   ];
   const welcomeContinueRow = latestDocument && !hasLastChat
@@ -1818,6 +1928,20 @@ export default function ChatPage() {
 
   const inputForm = (
     <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
+      {activeProject ? (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-1.5 text-xs">
+          <span className="min-w-0 truncate text-teal-700 dark:text-teal-300">
+            <span className="font-medium">{copy.projectActivePrefix}</span> {activeProject.name}
+          </span>
+          <button
+            type="button"
+            onClick={exitProject}
+            className="shrink-0 text-teal-700/70 hover:text-teal-700 dark:text-teal-300/70 dark:hover:text-teal-300"
+          >
+            {copy.projectExit}
+          </button>
+        </div>
+      ) : null}
       <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden">
         {/* Attached doc chips */}
         <AttachedDocChips attachedDocs={attachedDocs} onDetach={handleDetachDoc} />
@@ -1845,6 +1969,7 @@ export default function ChatPage() {
             onAttach={handleAttachDoc}
             onDetach={handleDetachDoc}
           />
+          <FileUploadButton onAttach={handleAttachDoc} disabled={isLoading} title={copy.attachFileLabel} />
           <div className="flex-1" />
           {isLoading ? (
             <Button
@@ -1882,6 +2007,30 @@ export default function ChatPage() {
       </p>
     </form>
   );
+
+  // Load the active project (from ?project=<id>) so chat is project-scoped.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const projectId = new URL(window.location.href).searchParams.get("project");
+    if (!projectId) {
+      setActiveProject(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch(`/api/projects/${projectId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { project?: { id: string; name: string } } | null) => {
+        if (!cancelled && data?.project) {
+          setActiveProject({ id: data.project.id, name: data.project.name });
+        }
+      })
+      .catch(() => {
+        /* ignore — chat still works without project context */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const hasProcessedQuery = useRef(false);
   useEffect(() => {
@@ -1961,6 +2110,19 @@ export default function ChatPage() {
               <Button variant="ghost" size="sm" className="px-2.5">
                 <LayoutDashboard className="mr-2 h-4 w-4" />
                 {copy.docsLabel}
+              </Button>
+            </Link>
+
+            <Link href="/projects" className="sm:hidden">
+              <Button variant="ghost" size="icon" aria-label={copy.openProjectsAria}>
+                <FolderKanban className="h-4 w-4" />
+              </Button>
+            </Link>
+
+            <Link href="/projects" className="hidden sm:block">
+              <Button variant="ghost" size="sm" className="px-2.5">
+                <FolderKanban className="mr-2 h-4 w-4" />
+                {copy.projectsLabel}
               </Button>
             </Link>
 
@@ -2076,6 +2238,7 @@ export default function ChatPage() {
                         onSaveToDoc={handleSaveToDoc}
                         onOpenArtifact={handleOpenArtifact}
                         onDelete={handleDeleteMessage}
+                        onConfirmAction={handleConfirmAction}
                       />
                     </motion.div>
                   ))}

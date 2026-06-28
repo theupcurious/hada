@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { CalendarEventCard } from "@/components/chat/calendar-event-card";
 import { DataTableCard } from "@/components/chat/data-table-card";
 import { SmartCard } from "@/components/chat/smart-cards";
@@ -15,6 +14,7 @@ import { ScheduleViewCard } from "@/components/chat/schedule-view-card";
 import { TaskPlanCard } from "@/components/chat/task-plan-card";
 import { MessageActions } from "@/components/chat/message-actions";
 import { FollowUpChips } from "@/components/chat/follow-up-chips";
+import { ActionApprovalCard } from "@/components/chat/action-approval-card";
 import type { TaskPlan } from "@/lib/types/database";
 import type {
   CalendarEventCardData,
@@ -74,6 +74,7 @@ interface ChatMessageRowProps {
   onSaveToDoc: (messageId: string, content: string) => void;
   onOpenArtifact: (messageId: string, content: string) => void;
   onDelete: (messageId: string) => void;
+  onConfirmAction: (messageId: string, decision: "approve" | "reject") => Promise<void>;
 }
 
 function isCalendarEventData(value: unknown): value is CalendarEventCardData {
@@ -190,6 +191,7 @@ export function ChatMessageRow({
   onSaveToDoc,
   onOpenArtifact,
   onDelete,
+  onConfirmAction,
 }: ChatMessageRowProps) {
   const [copied, setCopied] = useState(false);
 
@@ -226,11 +228,6 @@ export function ChatMessageRow({
   const handleDelete = () => onDelete(message.id);
 
   const isLong = message.content.length > 900;
-
-  const showActions =
-    message.role === "assistant" &&
-    !message.isStreaming &&
-    message.content.trim().length > 0;
 
   return (
     <div className="group flex min-w-0 gap-2 sm:gap-3">
@@ -370,39 +367,26 @@ export function ChatMessageRow({
           return null;
         })}
 
-        {/* Confirmation buttons */}
-        {message.role === "assistant" && message.confirmation?.pending && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              className="rounded-full"
-              onClick={() => onQuickReply("confirm")}
+        {/* Action approval card (human-in-the-loop) */}
+        {message.role === "assistant" &&
+          message.confirmation?.pending &&
+          message.confirmation.function?.name && (
+            <ActionApprovalCard
+              functionName={message.confirmation.function.name}
+              args={message.confirmation.function.arguments ?? {}}
               disabled={isLoading}
-            >
-              Confirm
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-full"
-              onClick={() => onQuickReply("cancel")}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-          </div>
-        )}
+              onDecision={(decision) => onConfirmAction(message.id, decision)}
+            />
+          )}
 
-        {/* Message actions hover toolbar */}
+        {/* Message actions */}
         {message.role === "assistant" && message.content.trim().length > 0 && (
-          <div className="min-h-[32px] mt-2 relative">
+          <div className="mt-2 min-h-[32px]">
             <div
-              className={`absolute top-0 left-0 inline-flex items-center gap-2 transition-opacity duration-150 ${
+              className={`inline-flex items-center gap-2 transition-opacity duration-150 ${
                 message.isStreaming
                   ? "opacity-0 pointer-events-none"
-                  : "opacity-0 group-hover:opacity-100 pointer-events-auto"
+                  : "opacity-100 pointer-events-auto"
               }`}
             >
               <MessageActions

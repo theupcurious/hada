@@ -149,7 +149,7 @@ Default policy:
 
 - Risk defaults: `low=allow`, `medium=allow`, `high=confirm`
 - Rate limit: `delegate_task` max 3 calls/run
-- `confirm` currently executes (with event plumbing for a future UI confirmation flow)
+- `confirm` pauses the run (human-in-the-loop): the loop emits a `permission_request`, ends the turn, and persists the proposed action to `messages.metadata.confirmation`. The UI renders an approval card; on approval `POST /api/chat/confirm-action` executes the tool server-side and appends the outcome. High-risk tools (`delete_*`, `gmail_send`) flow through this path.
 
 Current registered tools:
 
@@ -160,6 +160,10 @@ Current registered tools:
 - Structured output: `render_card`
 - Integration bridge: `mcp_call`
 - Google Calendar: `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`
+- Gmail: `gmail_search`, `gmail_read`, `gmail_draft`, `gmail_send` (`gmail_send` is `high` risk → routes through the approval flow)
+- Google Drive (read-only): `drive_search`, `drive_read`
+
+File attachments (multimodal text ingest): users can upload PDF / Word / Excel / CSV / text files in chat. `POST /api/attachments/extract` parses them to text server-side (`src/lib/attachments/extract.ts`, via `pdf-parse`/`mammoth`/`xlsx`); the extracted text is attached to the next message using the existing attached-context path (no chat API change). Image/vision ingest is not supported (the provider message layer is text-only).
 
 ### 4. Prompt Assembly
 
@@ -224,6 +228,15 @@ Embeddings are optional:
 - `maybeCompactConversation()` is segment-aware: it prefers compacting runs of messages within the same `segment_id` boundary instead of mixing unrelated topics.
 - Long-form outputs can be persisted to `segment_artifacts` so future turns can recall the artifact summary instead of replaying the full research transcript.
 
+### 8. Projects
+
+Projects are user-visible workspaces that bundle a documents folder, chat history, and artifacts under one name.
+
+- `projects` table (migration `016_projects.sql`); RLS owner-scoped. A project's `folder` binds it to `documents` with the same folder value.
+- Chat is project-scoped via `?project=<id>` on `/chat`, which sends `projectId` to `POST /api/chat`. `processMessage` then (a) injects an "Active Project" section (name, description, document list) into the system prompt, and (b) tags the turn's `conversation_segment` with `metadata.project_id` — so the project transitively owns its segments and their `segment_artifacts`.
+- No change to the "one conversation per user" invariant: projects group **segments** within that single conversation, not separate threads.
+- Surfaces: `/projects` (list/create/delete + "Open in chat"), a project banner in `/chat`, and `GET /api/projects/[id]` returns the project with its documents and segments.
+
 ## UI Architecture
 
 ### `/chat`
@@ -260,7 +273,7 @@ Tab surfaces:
 - Integrations
 - Account/profile + provider/persona/preferences
 - Memory management
-- Scheduled task management
+- Workflows (templated scheduled automations + active workflow management)
 - Runtime status
 
 ### `/` (home)
@@ -292,7 +305,7 @@ Live-only state (not relationally normalized):
 
 ## Current Constraints / Intentional Gaps
 
-- `POST /api/dashboard/tasks/[id]/run` intentionally returns `501` (manual immediate task run is not wired yet).
+- `POST /api/dashboard/tasks/[id]/run` runs a workflow immediately via `processMessage` (source `scheduled`), delivering to Telegram if linked and stamping `last_run_at`.
 - Schedule/table cards only render when card payloads are present in `messages.metadata.cards`; `web_search` does not auto-emit those payloads today.
 - User-level provider/model overrides are admin-only by design.
 - The memory schema supports classes (`profile`, `project`, `preference`, `archive`), but not every write path classifies memories automatically yet.

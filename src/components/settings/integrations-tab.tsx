@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import type { AppLocale } from "@/lib/i18n";
 
@@ -22,6 +23,7 @@ export function IntegrationsTab() {
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [loadingTelegram, setLoadingTelegram] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showGoogleDisconnectConfirm, setShowGoogleDisconnectConfirm] = useState(false);
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -95,8 +97,6 @@ export function IntegrationsTab() {
   }
 
   async function handleGoogleDisconnect() {
-    if (!confirm(copy.confirmGoogleDisconnect)) return;
-
     setLoadingGoogle(true);
     try {
       const response = await fetch("/api/integrations/google", { method: "DELETE" });
@@ -105,6 +105,7 @@ export function IntegrationsTab() {
         return;
       }
       setGoogleStatus({ connected: false });
+      setShowGoogleDisconnectConfirm(false);
       setMessage({ type: "success", text: copy.googleDisconnected });
     } catch (error) {
       console.error("Error disconnecting Google:", error);
@@ -173,7 +174,7 @@ export function IntegrationsTab() {
                 size="sm"
                 variant={googleStatus.connected ? "outline" : "default"}
                 className="w-full sm:w-auto"
-                onClick={googleStatus.connected ? handleGoogleDisconnect : handleGoogleConnect}
+                onClick={googleStatus.connected ? () => setShowGoogleDisconnectConfirm(true) : handleGoogleConnect}
                 disabled={loadingGoogle}
               >
                 {loadingGoogle ? "..." : googleStatus.connected ? copy.disconnect : copy.connect}
@@ -250,6 +251,17 @@ export function IntegrationsTab() {
           </CardHeader>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={showGoogleDisconnectConfirm}
+        title={copy.confirmGoogleDisconnect}
+        confirmLabel={copy.disconnect}
+        cancelLabel={copy.cancel}
+        destructive
+        busy={loadingGoogle}
+        onOpenChange={setShowGoogleDisconnectConfirm}
+        onConfirm={handleGoogleDisconnect}
+      />
     </div>
   );
 }
@@ -262,6 +274,7 @@ const INTEGRATIONS_COPY: Record<
     connected: string;
     connect: string;
     disconnect: string;
+    cancel: string;
     googleDescription: string;
     telegramDescription: string;
     lastSynced: string;
@@ -285,7 +298,8 @@ const INTEGRATIONS_COPY: Record<
     connected: "Connected",
     connect: "Connect",
     disconnect: "Disconnect",
-    googleDescription: "Connect Google Calendar tools for scheduling and availability checks.",
+    cancel: "Cancel",
+    googleDescription: "Connect Google for Calendar, Gmail (read, draft & send), and Drive document access.",
     telegramDescription: "Link Telegram to chat with Hada from your phone and receive scheduled updates.",
     lastSynced: "Last synced",
     plannedIntegration: "Planned integration.",
@@ -316,7 +330,8 @@ const INTEGRATIONS_COPY: Record<
     connected: "연결됨",
     connect: "연결",
     disconnect: "연결 해제",
-    googleDescription: "일정 관리와 가능 시간 확인을 위해 Google Calendar를 연결합니다.",
+    cancel: "취소",
+    googleDescription: "캘린더, Gmail(읽기·초안·보내기), Drive 문서 접근을 위해 Google을 연결합니다.",
     telegramDescription: "Telegram을 연결해 휴대폰에서도 Hada와 대화하고 예약 업데이트를 받으세요.",
     lastSynced: "마지막 동기화",
     plannedIntegration: "추후 연동 예정입니다.",
@@ -347,7 +362,8 @@ const INTEGRATIONS_COPY: Record<
     connected: "接続済み",
     connect: "接続",
     disconnect: "切断",
-    googleDescription: "スケジュール調整と空き時間確認のために Google Calendar を連携します。",
+    cancel: "キャンセル",
+    googleDescription: "カレンダー、Gmail（閲覧・下書き・送信）、Drive のドキュメント連携のために Google を連携します。",
     telegramDescription: "Telegram を連携して、スマホから Hada と会話し、定期更新を受け取れます。",
     lastSynced: "最終同期",
     plannedIntegration: "今後対応予定です。",
@@ -378,7 +394,8 @@ const INTEGRATIONS_COPY: Record<
     connected: "已连接",
     connect: "连接",
     disconnect: "断开连接",
-    googleDescription: "连接 Google Calendar 工具以进行排程和空档检查。",
+    cancel: "取消",
+    googleDescription: "连接 Google 以使用日历、Gmail（阅读、草稿和发送）和云端硬盘文档访问。",
     telegramDescription: "连接 Telegram，这样你可以在手机上和 Hada 聊天并接收定时更新。",
     lastSynced: "上次同步",
     plannedIntegration: "计划中的集成。",

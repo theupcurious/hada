@@ -294,6 +294,17 @@ export interface Document {
   updated_at: string;
 }
 
+export interface Project {
+  id: string;
+  user_id: string;
+  name: string;
+  folder: string;
+  description: string | null;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DocumentShare {
   document_id: string;
   user_id: string;

@@ -311,6 +311,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
 
         const allowedCalls: LLMToolCall[] = [];
         const deniedCalls: Array<{ call: LLMToolCall; reason: string }> = [];
+        const confirmCalls: LLMToolCall[] = [];
 
         for (const call of regularCalls) {
           const tool = toolMap.get(call.name);
@@ -323,6 +324,8 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
               call,
               reason: `Permission denied: tool "${call.name}" is not allowed by the current policy.`,
             });
+          } else if (decision === "confirm") {
+            confirmCalls.push(call);
           } else {
             allowedCalls.push(call);
           }
@@ -394,6 +397,30 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           markProgress();
           yield { type: "tool_result", name: call.name, result: reason, callId: call.id, durationMs: 0, truncated: false };
           llmMessages.push({ role: "tool", name: call.name, tool_call_id: call.id, content: reason });
+        }
+
+        // Human-in-the-loop: if a high-risk tool requires confirmation, pause the
+        // run and surface the proposed action instead of executing it. Actual
+        // execution happens later via the confirm-action endpoint once the user
+        // approves. We present a single pending action per turn (the common case).
+        if (confirmCalls.length > 0) {
+          const pending = confirmCalls[0];
+          markProgress();
+          yield { type: "tool_call", name: pending.name, args: pending.arguments, callId: pending.id };
+          markProgress();
+          yield { type: "permission_request", callId: pending.id, toolName: pending.name, args: pending.arguments };
+
+          // Guarantee a user-visible message even when the model gave no preamble.
+          if (!iterationText.trim()) {
+            const preamble =
+              "I've prepared an action that needs your approval before I run it. Review the details below.";
+            iterationText += preamble;
+            markProgress();
+            yield { type: "text_delta", content: preamble };
+          }
+          finalText += iterationText;
+          yield { type: "done", content: finalText.trim(), rawContent: rawContent.trim() };
+          return;
         }
 
         trimRunContext(llmMessages, initialMessageCount, options.maxRunContextTokens ?? MAX_RUN_CONTEXT_TOKENS);

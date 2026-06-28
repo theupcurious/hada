@@ -64,6 +64,64 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { user, error: authError } = await getAuthenticatedUser(supabase);
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const description = typeof body?.description === "string" ? body.description.trim() : "";
+    const type = body?.type === "once" ? "once" : "recurring";
+    const cronExpression =
+      typeof body?.cron_expression === "string" ? body.cron_expression.trim() : "";
+    const runAt = typeof body?.run_at === "string" ? body.run_at : "";
+
+    if (!description) {
+      return NextResponse.json({ error: "description is required" }, { status: 400 });
+    }
+    if (type === "recurring" && !isValidCron(cronExpression)) {
+      return NextResponse.json({ error: "A valid 5-field cron_expression is required" }, { status: 400 });
+    }
+    if (type === "once" && !runAt) {
+      return NextResponse.json({ error: "run_at is required for one-time tasks" }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from("scheduled_tasks")
+      .insert({
+        user_id: user.id,
+        type,
+        description,
+        run_at: type === "once" ? runAt : null,
+        cron_expression: type === "recurring" ? cronExpression : null,
+        enabled: true,
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      return NextResponse.json(
+        { error: error.message || "Failed to create task" },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ task: data }, { status: 201 });
+  } catch (error) {
+    console.error("Dashboard task create API error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+function isValidCron(cron: string): boolean {
+  const parts = cron.trim().split(/\s+/);
+  return parts.length === 5 && parts.every((p) => /^[\d*,/-]+$/.test(p));
+}
+
 function estimateNextRunAt(task: TaskRow, now: Date): string | null {
   if (!task.enabled) {
     return null;
