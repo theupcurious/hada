@@ -17,6 +17,7 @@ import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getOrCreateConversation, saveMessage, updateMessageById } from "@/lib/db/conversations";
+import { getProject, getProjectDocuments } from "@/lib/db/projects";
 import {
   getOpenRouterReasoningCapabilities,
   normalizeOpenRouterReasoningEffort,
@@ -41,6 +42,7 @@ export interface ProcessMessageOptions {
   userMessageId?: string;
   assistantMessageId?: string;
   backgroundJobId?: string;
+  projectId?: string;
 }
 
 export interface ProcessMessageResult {
@@ -157,11 +159,18 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   );
   const reasoning = resolveOpenRouterReasoningConfig(provider, builtPrompt.userSettings);
   const runtimeSection = buildRuntimeIdentitySection(provider);
-  const systemPrompt = builtPrompt.prompt + "\n\n" + runtimeSection;
+  const projectSection = options.projectId
+    ? await buildProjectContextSection(supabase, options.userId, options.projectId)
+    : null;
+  const systemPrompt =
+    builtPrompt.prompt + "\n\n" + runtimeSection + (projectSection ? "\n\n" + projectSection : "");
 
   let assembled = "";
   let rawContentFromDone = "";
   let fatalError: string | null = null;
+  let pendingConfirmation:
+    | { callId: string; toolName: string; args: Record<string, unknown> }
+    | null = null;
   let extractedSegmentSignal: ReturnType<typeof extractSegmentSignal>["signal"] = null;
   const runBudget = resolveRunBudget(options.message);
 
@@ -171,7 +180,11 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       systemPrompt,
       systemPromptParts: {
         stable: builtPrompt.stablePrompt,
-        dynamic: builtPrompt.dynamicPrompt + "\n\n" + runtimeSection,
+        dynamic:
+          builtPrompt.dynamicPrompt +
+          "\n\n" +
+          runtimeSection +
+          (projectSection ? "\n\n" + projectSection : ""),
       },
       tools,
       provider,
@@ -202,6 +215,16 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
           result: event.result,
           args: toolCallArgs.get(event.callId),
         });
+      } else if (event.type === "permission_request") {
+        // First high-risk action requiring approval pauses the run; capture it
+        // so it can be persisted to message metadata and rendered as a card.
+        if (!pendingConfirmation) {
+          pendingConfirmation = {
+            callId: event.callId,
+            toolName: event.toolName,
+            args: event.args,
+          };
+        }
       } else if (event.type === "error") {
         fatalError = event.message;
       }
@@ -242,6 +265,18 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       runId,
       retrieval: retrievalMetadata,
       ...(cards.length ? { cards } : {}),
+      ...(pendingConfirmation
+        ? {
+            confirmation: {
+              pending: true,
+              function: {
+                name: pendingConfirmation.toolName,
+                arguments: pendingConfirmation.args,
+              },
+              created_at: new Date().toISOString(),
+            },
+          }
+        : {}),
       ...(extractedSegmentSignal ? { segmentSignal: extractedSegmentSignal } : {}),
       ...(options.backgroundJobId
         ? {
@@ -258,7 +293,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     // Start follow-up suggestions in parallel with saving the message — it only
     // needs responseText, not the saved message ID, so there is no data dependency.
     const followUpPromise =
-      fatalError || options.source !== "web"
+      fatalError || pendingConfirmation || options.source !== "web"
         ? Promise.resolve([] as string[])
         : generateFollowUpSuggestions({
             provider,
@@ -322,6 +357,15 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
           signal: extractedSegmentSignal ?? null,
           contextHint,
         });
+
+        // Bind the segment this turn landed on to the active project so the
+        // project "owns" its chat history and artifacts (artifacts are tied to
+        // segments). Fire-and-forget; non-critical to the response.
+        if (options.projectId && segmentDecision.segmentId) {
+          void tagSegmentWithProject(supabase, segmentDecision.segmentId, options.projectId).catch(
+            (error) => console.error("Failed to tag segment with project", error),
+          );
+        }
 
         void (async () => {
           const postResponseTasks: Array<Promise<unknown>> = [];
@@ -632,6 +676,73 @@ function isToolResultError(result: string): boolean {
   } catch {
     return false;
   }
+}
+
+async function buildProjectContextSection(
+  supabase: SupabaseClient,
+  userId: string,
+  projectId: string,
+): Promise<string | null> {
+  try {
+    const project = await getProject(supabase, userId, projectId);
+    if (!project) {
+      return null;
+    }
+
+    const documents = await getProjectDocuments(supabase, userId, project.folder).catch(() => []);
+    const lines = [
+      "## Active Project",
+      `The user is working inside the project "${project.name}". Keep responses focused on this project.`,
+    ];
+    if (project.description?.trim()) {
+      lines.push(`Project context: ${project.description.trim()}`);
+    }
+    if (documents.length) {
+      const docList = documents
+        .slice(0, 20)
+        .map((doc) => `- ${doc.title}`)
+        .join("\n");
+      lines.push(
+        `This project has ${documents.length} document(s) in its workspace folder "${project.folder}". ` +
+          "Use read_document / search_documents to open them when relevant:",
+        docList,
+      );
+    } else {
+      lines.push(
+        `New documents you create for this work should use the folder "${project.folder}" so they stay in this project.`,
+      );
+    }
+    return lines.join("\n");
+  } catch (error) {
+    console.error("Failed to build project context section", error);
+    return null;
+  }
+}
+
+async function tagSegmentWithProject(
+  supabase: SupabaseClient,
+  segmentId: string,
+  projectId: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("conversation_segments")
+    .select("metadata")
+    .eq("id", segmentId)
+    .maybeSingle();
+
+  const existing =
+    data && typeof (data as { metadata?: unknown }).metadata === "object"
+      ? ((data as { metadata?: Record<string, unknown> }).metadata ?? {})
+      : {};
+
+  if (existing.project_id === projectId) {
+    return;
+  }
+
+  await supabase
+    .from("conversation_segments")
+    .update({ metadata: { ...existing, project_id: projectId } })
+    .eq("id", segmentId);
 }
 
 function buildRuntimeIdentitySection(

@@ -16,7 +16,8 @@ export const GOOGLE_OAUTH_CONFIG = {
     : "http://localhost:3000/api/auth/google/callback",
   scopes: [
     "https://www.googleapis.com/auth/calendar", // Full calendar access
-    "https://www.googleapis.com/auth/gmail.modify", // Read/send/delete emails
+    "https://www.googleapis.com/auth/gmail.modify", // Read/send/draft emails
+    "https://www.googleapis.com/auth/drive.readonly", // Read Drive files & Docs
     "https://www.googleapis.com/auth/userinfo.email", // User email address
   ],
   authUrl: "https://accounts.google.com/o/oauth2/v2/auth",

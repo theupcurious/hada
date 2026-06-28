@@ -21,6 +21,7 @@ describe("ChatMessageRow", () => {
         onSaveToDoc={vi.fn()}
         onOpenArtifact={vi.fn()}
         onDelete={vi.fn()}
+        onConfirmAction={vi.fn(async () => undefined)}
       />,
     );
 

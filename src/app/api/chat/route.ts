@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
     typeof body?.regenerateAssistantMessageId === "string"
       ? body.regenerateAssistantMessageId
       : null;
+  const projectId = typeof body?.projectId === "string" && body.projectId ? body.projectId : undefined;
 
   if (!message && !regenerateAssistantMessageId) {
     return new Response(JSON.stringify({ error: "Message is required" }), {
@@ -82,6 +83,9 @@ export async function POST(request: NextRequest) {
               followUpSuggestions: Array.isArray(result.metadata.followUpSuggestions)
                 ? result.metadata.followUpSuggestions
                 : undefined,
+              confirmation: result.metadata.confirmation?.pending
+                ? result.metadata.confirmation
+                : undefined,
               isError: !!result.metadata.gatewayError,
               errorMessage: result.metadata.gatewayError?.message,
             });
@@ -108,6 +112,7 @@ export async function POST(request: NextRequest) {
           message,
           source: "web",
           supabase: admin,
+          projectId,
           onEvent: (event: AgentEvent) => {
             emit(event);
           },
@@ -122,6 +127,9 @@ export async function POST(request: NextRequest) {
               cards: Array.isArray(result.metadata.cards) ? result.metadata.cards : undefined,
               followUpSuggestions: Array.isArray(result.metadata.followUpSuggestions)
                 ? result.metadata.followUpSuggestions
+                : undefined,
+              confirmation: result.metadata.confirmation?.pending
+                ? result.metadata.confirmation
                 : undefined,
               isError: !!result.metadata.gatewayError,
               errorMessage: result.metadata.gatewayError?.message,

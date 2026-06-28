@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { WorkflowGallery } from "@/components/settings/workflow-gallery";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import type { AppLocale } from "@/lib/i18n";
 import type { ScheduledTask } from "@/lib/types/database";
@@ -99,6 +100,20 @@ export function TasksTab() {
           {copy.subtitle}
         </p>
       </div>
+
+      <div>
+        <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{copy.startWorkflow}</h3>
+        <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{copy.startWorkflowHint}</p>
+        <div className="mt-3">
+          <WorkflowGallery onCreated={loadTasks} />
+        </div>
+      </div>
+
+      {(loading || tasks.length > 0) && (
+        <h3 className="pt-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          {copy.activeWorkflows}
+        </h3>
+      )}
 
       {loading && (
         <p className="text-sm text-zinc-400">{copy.loadingTasks}</p>
@@ -203,6 +218,9 @@ export function TasksTab() {
 type TasksCopy = {
   title: string;
   subtitle: string;
+  startWorkflow: string;
+  startWorkflowHint: string;
+  activeWorkflows: string;
   loadingTasks: string;
   failedToLoadTasks: string;
   confirmDeleteTask: string;
@@ -229,8 +247,11 @@ type TasksCopy = {
 
 const TASKS_COPY: Record<AppLocale, TasksCopy> = {
   en: {
-    title: "Scheduled Tasks",
-    subtitle: "Tasks Hada runs automatically on your behalf. Ask Hada in chat to create new ones.",
+    title: "Workflows",
+    subtitle: "Set Hada to run jobs for you automatically — build it once, it runs on schedule.",
+    startWorkflow: "Start a workflow",
+    startWorkflowHint: "Pick a template, choose when it runs, and Hada handles it for you.",
+    activeWorkflows: "Active workflows",
     loadingTasks: "Loading tasks...",
     failedToLoadTasks: "Failed to load tasks.",
     confirmDeleteTask: "Delete this task?",
@@ -255,8 +276,11 @@ const TASKS_COPY: Record<AppLocale, TasksCopy> = {
     tomorrow: "tomorrow",
   },
   ko: {
-    title: "예약 작업",
-    subtitle: "Hada가 자동으로 실행하는 작업입니다. 새 작업은 채팅에서 만들어 달라고 요청하세요.",
+    title: "워크플로우",
+    subtitle: "Hada가 자동으로 작업을 실행하도록 설정하세요 — 한 번 만들면 일정에 따라 실행됩니다.",
+    startWorkflow: "워크플로우 시작",
+    startWorkflowHint: "템플릿을 고르고 실행 시점을 정하면 Hada가 알아서 처리합니다.",
+    activeWorkflows: "활성 워크플로우",
     loadingTasks: "작업을 불러오는 중...",
     failedToLoadTasks: "작업을 불러오지 못했습니다.",
     confirmDeleteTask: "이 작업을 삭제할까요?",
@@ -281,8 +305,11 @@ const TASKS_COPY: Record<AppLocale, TasksCopy> = {
     tomorrow: "내일",
   },
   ja: {
-    title: "スケジュールタスク",
-    subtitle: "Hada が自動実行するタスクです。新規作成はチャットで依頼してください。",
+    title: "ワークフロー",
+    subtitle: "Hada に作業を自動実行させましょう — 一度設定すれば、スケジュール通りに実行されます。",
+    startWorkflow: "ワークフローを開始",
+    startWorkflowHint: "テンプレートを選び、実行タイミングを決めれば Hada が処理します。",
+    activeWorkflows: "実行中のワークフロー",
     loadingTasks: "タスクを読み込み中...",
     failedToLoadTasks: "タスクの読み込みに失敗しました。",
     confirmDeleteTask: "このタスクを削除しますか？",
@@ -307,8 +334,11 @@ const TASKS_COPY: Record<AppLocale, TasksCopy> = {
     tomorrow: "明日",
   },
   zh: {
-    title: "定时任务",
-    subtitle: "Hada 会自动替你执行这些任务。想创建新任务，直接在聊天里告诉 Hada。",
+    title: "工作流",
+    subtitle: "让 Hada 自动替你执行任务 —— 设置一次，按计划自动运行。",
+    startWorkflow: "启动工作流",
+    startWorkflowHint: "选择模板、设定运行时间，Hada 会自动帮你处理。",
+    activeWorkflows: "运行中的工作流",
     loadingTasks: "正在加载任务...",
     failedToLoadTasks: "加载任务失败。",
     confirmDeleteTask: "要删除这个任务吗？",

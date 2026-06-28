@@ -124,13 +124,16 @@ html[data-theme="light"] {
   html {
     width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
+    /* `clip` prevents horizontal scroll without establishing a scroll container,
+       which would otherwise break `position: sticky` on descendants (e.g. the
+       chat header). Do not change back to `hidden`. */
+    overflow-x: clip;
   }
   body {
     @apply bg-background text-foreground;
     width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
   /* Prevent Radix ScrollArea viewport from allowing horizontal scroll.
      Radix sets overflow:scroll as an inline style, so !important is required. */

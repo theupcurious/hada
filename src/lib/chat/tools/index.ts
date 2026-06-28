@@ -22,6 +22,14 @@ import { createUpdateDocumentTool, updateDocumentManifest } from "@/lib/chat/too
 import { createMcpCallTool, mcpCallManifest } from "@/lib/chat/tools/mcp-call";
 import { createSearchDocumentsTool, searchDocumentsManifest } from "@/lib/chat/tools/search-documents";
 import { createDeleteDocumentTool, deleteDocumentManifest } from "@/lib/chat/tools/delete-document";
+import {
+  createGmailTools,
+  gmailSearchManifest,
+  gmailReadManifest,
+  gmailDraftManifest,
+  gmailSendManifest,
+} from "@/lib/chat/tools/gmail";
+import { createDriveTools, driveSearchManifest, driveReadManifest } from "@/lib/chat/tools/drive";
 import { registry } from "@/lib/chat/tools/tool-registry";
 
 export interface CreateToolsOptions {
@@ -44,6 +52,34 @@ registry.register({ manifest: updateDocumentManifest, create: createUpdateDocume
 registry.register({ manifest: mcpCallManifest, create: createMcpCallTool });
 registry.register({ manifest: searchDocumentsManifest, create: createSearchDocumentsTool });
 registry.register({ manifest: deleteDocumentManifest, create: createDeleteDocumentTool });
+
+// Register Gmail tools (share the google integration + OAuth token)
+registry.register({
+  manifest: gmailSearchManifest,
+  create: (ctx) => createGmailTools(ctx).find((t) => t.name === gmailSearchManifest.name)!,
+});
+registry.register({
+  manifest: gmailReadManifest,
+  create: (ctx) => createGmailTools(ctx).find((t) => t.name === gmailReadManifest.name)!,
+});
+registry.register({
+  manifest: gmailDraftManifest,
+  create: (ctx) => createGmailTools(ctx).find((t) => t.name === gmailDraftManifest.name)!,
+});
+registry.register({
+  manifest: gmailSendManifest,
+  create: (ctx) => createGmailTools(ctx).find((t) => t.name === gmailSendManifest.name)!,
+});
+
+// Register Google Drive tools (read-only)
+registry.register({
+  manifest: driveSearchManifest,
+  create: (ctx) => createDriveTools(ctx).find((t) => t.name === driveSearchManifest.name)!,
+});
+registry.register({
+  manifest: driveReadManifest,
+  create: (ctx) => createDriveTools(ctx).find((t) => t.name === driveReadManifest.name)!,
+});
 
 // Register Google Calendar tools
 registry.register({

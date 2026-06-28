@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { CalendarEventCard } from "@/components/chat/calendar-event-card";
 import { DataTableCard } from "@/components/chat/data-table-card";
 import { SmartCard } from "@/components/chat/smart-cards";
@@ -15,6 +14,7 @@ import { ScheduleViewCard } from "@/components/chat/schedule-view-card";
 import { TaskPlanCard } from "@/components/chat/task-plan-card";
 import { MessageActions } from "@/components/chat/message-actions";
 import { FollowUpChips } from "@/components/chat/follow-up-chips";
+import { ActionApprovalCard } from "@/components/chat/action-approval-card";
 import type { TaskPlan } from "@/lib/types/database";
 import type {
   CalendarEventCardData,
@@ -74,6 +74,7 @@ interface ChatMessageRowProps {
   onSaveToDoc: (messageId: string, content: string) => void;
   onOpenArtifact: (messageId: string, content: string) => void;
   onDelete: (messageId: string) => void;
+  onConfirmAction: (messageId: string, decision: "approve" | "reject") => Promise<void>;
 }
 
 function isCalendarEventData(value: unknown): value is CalendarEventCardData {
@@ -190,6 +191,7 @@ export function ChatMessageRow({
   onSaveToDoc,
   onOpenArtifact,
   onDelete,
+  onConfirmAction,
 }: ChatMessageRowProps) {
   const [copied, setCopied] = useState(false);
 
@@ -365,30 +367,17 @@ export function ChatMessageRow({
           return null;
         })}
 
-        {/* Confirmation buttons */}
-        {message.role === "assistant" && message.confirmation?.pending && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              className="rounded-full"
-              onClick={() => onQuickReply("confirm")}
+        {/* Action approval card (human-in-the-loop) */}
+        {message.role === "assistant" &&
+          message.confirmation?.pending &&
+          message.confirmation.function?.name && (
+            <ActionApprovalCard
+              functionName={message.confirmation.function.name}
+              args={message.confirmation.function.arguments ?? {}}
               disabled={isLoading}
-            >
-              Confirm
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-full"
-              onClick={() => onQuickReply("cancel")}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-          </div>
-        )}
+              onDecision={(decision) => onConfirmAction(message.id, decision)}
+            />
+          )}
 
         {/* Message actions */}
         {message.role === "assistant" && message.content.trim().length > 0 && (

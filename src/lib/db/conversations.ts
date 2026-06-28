@@ -179,6 +179,33 @@ export async function getRecentMessages(
 }
 
 /**
+ * Load all messages belonging to a single segment, in chronological order.
+ * Scoped to the given conversation so callers can't read across users.
+ * Filters out internal compaction rows, matching getRecentMessages.
+ */
+export async function getSegmentMessages(
+  supabase: SupabaseClient,
+  conversationId: string,
+  segmentId: string,
+): Promise<Message[]> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .eq("segment_id", segmentId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch segment messages: ${error.message}`);
+  }
+
+  return ((data || []) as Message[]).filter((message) => {
+    const metadata = message.metadata as MessageMetadata | null;
+    return metadata?.type !== "compaction";
+  });
+}
+
+/**
  * Get a user's conversation ID if it exists.
  */
 export async function getConversationId(
