@@ -12,6 +12,8 @@ import { ArtifactPanel, type ArtifactData } from "@/components/chat/artifact-pan
 import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
 import { DocAttachPicker, AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
 import { FileUploadButton } from "@/components/chat/file-upload-button";
+import { HistoryPanel } from "@/components/chat/history-panel";
+import type { SegmentListItem } from "@/lib/db/segments";
 import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first-run-setup";
 import { WelcomeHome } from "@/components/chat/welcome-home";
 import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
@@ -27,7 +29,7 @@ import {
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Calendar, FolderKanban, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2 } from "lucide-react";
+import { Calendar, FolderKanban, History, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
@@ -199,6 +201,18 @@ interface ChatLocaleCopy {
   starterDraftEmailPrompt: string;
   starterResearchTopicLabel: string;
   starterResearchTopicPrompt: string;
+  historyLabel: string;
+  historyAria: string;
+  historySearchPlaceholder: string;
+  historyLoading: string;
+  historyEmpty: string;
+  historyNoMatches: string;
+  historyCurrent: string;
+  historyMessageSuffix: string;
+  historyClose: string;
+  historyUntitled: string;
+  viewingTopicPrefix: string;
+  returnToLatest: string;
 }
 
 const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
@@ -260,6 +274,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterResearchTopicLabel: "Research a topic",
     starterResearchTopicPrompt:
       "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
+    historyLabel: "History",
+    historyAria: "Browse chat history",
+    historySearchPlaceholder: "Search topics…",
+    historyLoading: "Loading history…",
+    historyEmpty: "No past topics yet.",
+    historyNoMatches: "No topics match your search.",
+    historyCurrent: "Viewing",
+    historyMessageSuffix: "messages",
+    historyClose: "Close history",
+    historyUntitled: "Untitled topic",
+    viewingTopicPrefix: "Viewing topic:",
+    returnToLatest: "Return to latest",
   },
   ko: {
     greetingMorning: "좋은 아침입니다",
@@ -319,6 +345,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterResearchTopicLabel: "주제 리서치",
     starterResearchTopicPrompt:
       "특정 주제를 리서치하고 싶어요. 먼저 어떤 주제를 조사할지 물어보고, 최신 소스를 활용해 핵심만 담긴 간결한 근거 기반 브리프를 만들어 주세요.",
+    historyLabel: "기록",
+    historyAria: "대화 기록 보기",
+    historySearchPlaceholder: "주제 검색…",
+    historyLoading: "기록 불러오는 중…",
+    historyEmpty: "아직 지난 주제가 없습니다.",
+    historyNoMatches: "검색과 일치하는 주제가 없습니다.",
+    historyCurrent: "보는 중",
+    historyMessageSuffix: "개 메시지",
+    historyClose: "기록 닫기",
+    historyUntitled: "제목 없는 주제",
+    viewingTopicPrefix: "보는 주제:",
+    returnToLatest: "최신으로 돌아가기",
   },
   ja: {
     greetingMorning: "おはようございます",
@@ -378,6 +416,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterDraftEmailLabel: "メールの下書き",
     starterDraftEmailPrompt:
       "メール作成を手伝ってください。宛先と内容をまず確認し、私の口調で下書きを作って確認できるようにしてください。私が承認するまで送信しないでください。",
+    historyLabel: "履歴",
+    historyAria: "チャット履歴を見る",
+    historySearchPlaceholder: "トピックを検索…",
+    historyLoading: "履歴を読み込み中…",
+    historyEmpty: "まだ過去のトピックはありません。",
+    historyNoMatches: "検索に一致するトピックがありません。",
+    historyCurrent: "表示中",
+    historyMessageSuffix: "件のメッセージ",
+    historyClose: "履歴を閉じる",
+    historyUntitled: "無題のトピック",
+    viewingTopicPrefix: "表示中のトピック:",
+    returnToLatest: "最新に戻る",
   },
   zh: {
     greetingMorning: "早上好",
@@ -437,6 +487,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterDraftEmailLabel: "起草一封邮件",
     starterDraftEmailPrompt:
       "帮我写一封邮件。先问我收件人和内容，然后用我的语气起草，让我审阅。在我确认之前不要发送。",
+    historyLabel: "历史",
+    historyAria: "浏览聊天记录",
+    historySearchPlaceholder: "搜索话题…",
+    historyLoading: "正在加载历史…",
+    historyEmpty: "暂无过往话题。",
+    historyNoMatches: "没有匹配的搜索话题。",
+    historyCurrent: "查看中",
+    historyMessageSuffix: "条消息",
+    historyClose: "关闭历史",
+    historyUntitled: "未命名话题",
+    viewingTopicPrefix: "正在查看话题：",
+    returnToLatest: "返回最新",
   },
 };
 
@@ -462,6 +524,10 @@ export default function ChatPage() {
   const [artifactContent, setArtifactContent] = useState<ArtifactData | null>(null);
   const [saveModalContent, setSaveModalContent] = useState<string | null>(null);
   const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [segments, setSegments] = useState<SegmentListItem[]>([]);
+  const [segmentsLoading, setSegmentsLoading] = useState(false);
+  const [viewingSegment, setViewingSegment] = useState<{ id: string; title: string } | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1007,7 +1073,7 @@ export default function ChatPage() {
   }, []);
 
   const loadMoreHistory = useCallback(async () => {
-    if (isLoadingMore || !hasMoreHistory || messages.length === 0) return;
+    if (isLoadingMore || !hasMoreHistory || messages.length === 0 || viewingSegment) return;
 
     setIsLoadingMore(true);
     const oldestMessage = messages[0];
@@ -1028,7 +1094,64 @@ export default function ChatPage() {
     });
 
     setIsLoadingMore(false);
-  }, [isLoadingMore, hasMoreHistory, messages, loadHistory]);
+  }, [isLoadingMore, hasMoreHistory, messages, loadHistory, viewingSegment]);
+
+  const openHistory = useCallback(async () => {
+    setHistoryOpen(true);
+    setSegmentsLoading(true);
+    try {
+      const response = await fetch("/api/conversations/segments");
+      if (!response.ok) throw new Error("Failed to load segments");
+      const data = (await response.json()) as { segments?: SegmentListItem[] };
+      setSegments(data.segments ?? []);
+    } catch (error) {
+      console.error("Failed to load history segments:", error);
+      setSegments([]);
+    } finally {
+      setSegmentsLoading(false);
+    }
+  }, []);
+
+  const handleJumpToSegment = useCallback(
+    async (segment: SegmentListItem) => {
+      setHistoryOpen(false);
+      setIsLoadingHistory(true);
+      try {
+        const url = new URL("/api/conversations/messages", window.location.origin);
+        url.searchParams.set("segment", segment.id);
+        const response = await fetch(url.toString());
+        if (!response.ok) throw new Error("Failed to load topic");
+        const data = await response.json();
+        const loaded: Message[] = data.messages.map(apiMessageToMessage);
+        setMessages(loaded);
+        setHasMoreHistory(false);
+        setViewingSegment({
+          id: segment.id,
+          title: segment.title?.trim() || segment.topic_key?.trim() || copy.historyUntitled,
+        });
+        setShowConversation(true);
+        requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+      } catch (error) {
+        console.error("Failed to jump to topic:", error);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    },
+    [copy.historyUntitled],
+  );
+
+  const handleReturnToLatest = useCallback(async () => {
+    setViewingSegment(null);
+    setIsLoadingHistory(true);
+    try {
+      await loadHistory();
+      requestAnimationFrame(() =>
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }),
+      );
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [loadHistory]);
 
   useEffect(() => {
     if (!showConversation || !hasMoreHistory) return;
@@ -1508,6 +1631,8 @@ export default function ChatPage() {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
     setShowConversation(true);
+    // Sending continues the live thread, so leave any past-topic view.
+    setViewingSegment(null);
     shouldAutoScrollRef.current = true;
 
     // Build message with attached doc context prepended
@@ -2100,6 +2225,26 @@ export default function ChatPage() {
             <span className="hidden text-sm text-muted-foreground xl:block">{user?.email}</span>
             <ThemeToggle />
 
+            <Button
+              variant="ghost"
+              size="icon"
+              className="sm:hidden"
+              aria-label={copy.historyAria}
+              onClick={() => void openHistory()}
+            >
+              <History className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden px-2.5 sm:inline-flex"
+              onClick={() => void openHistory()}
+            >
+              <History className="mr-2 h-4 w-4" />
+              {copy.historyLabel}
+            </Button>
+
             <Link href="/docs" className="sm:hidden">
               <Button variant="ghost" size="icon" aria-label={copy.openDocsAria}>
                 <LayoutDashboard className="h-4 w-4" />
@@ -2160,6 +2305,26 @@ export default function ChatPage() {
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1">
         <div className={`flex min-w-0 w-full flex-col ${artifactContent ? "md:max-w-none md:px-3 sm:px-3" : "max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
+
+          {/* Viewing-a-past-topic banner */}
+          {viewingSegment && (
+            <div className="sticky top-[57px] z-20 -mx-3 mb-1 flex items-center justify-between gap-2 border-b border-teal-500/20 bg-teal-500/5 px-4 py-2 text-xs backdrop-blur-md sm:-mx-4 md:-mx-6">
+              <span className="flex min-w-0 items-center gap-1.5 text-teal-700 dark:text-teal-300">
+                <History className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {copy.viewingTopicPrefix} <span className="font-medium">{viewingSegment.title}</span>
+                </span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 px-2 text-xs text-teal-700 hover:text-teal-800 dark:text-teal-300"
+                onClick={() => void handleReturnToLatest()}
+              >
+                {copy.returnToLatest}
+              </Button>
+            </div>
+          )}
 
           {/* Messages Area */}
           <div className="flex-1 py-4">
@@ -2282,6 +2447,28 @@ export default function ChatPage() {
           onClose={() => setSaveModalContent(null)}
         />
       )}
+
+      {/* Conversation history navigator */}
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        segments={segments}
+        loading={segmentsLoading}
+        activeSegmentId={viewingSegment?.id ?? null}
+        onSelect={(segment) => void handleJumpToSegment(segment)}
+        localeTag={localeTag}
+        copy={{
+          title: copy.historyLabel,
+          searchPlaceholder: copy.historySearchPlaceholder,
+          loading: copy.historyLoading,
+          empty: copy.historyEmpty,
+          noMatches: copy.historyNoMatches,
+          current: copy.historyCurrent,
+          messageCountSuffix: copy.historyMessageSuffix,
+          closeAria: copy.historyClose,
+          untitled: copy.historyUntitled,
+        }}
+      />
     </div>
   );
 }

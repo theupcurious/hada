@@ -1,6 +1,10 @@
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
-import { getConversationId, getRecentMessages } from '@/lib/db/conversations';
+import {
+  getConversationId,
+  getRecentMessages,
+  getSegmentMessages,
+} from '@/lib/db/conversations';
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -10,6 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
  * Query params:
  * - limit: number of messages to fetch (default 25, max 100)
  * - before: message ID to fetch messages before (for pagination)
+ * - segment: segment ID — load that topic's full message history instead
+ *   (used by the history navigator to jump to a past topic)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -28,6 +34,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 100);
     const before = searchParams.get('before') || undefined;
+    const segment = searchParams.get('segment') || undefined;
 
     // Get user's conversation
     const conversationId = await getConversationId(supabase, user.id);
@@ -38,6 +45,20 @@ export async function GET(request: NextRequest) {
         messages: [],
         hasMore: false,
         conversationId: null,
+      });
+    }
+
+    // Jump-to-topic: load a single segment's full history (no pagination).
+    if (segment) {
+      const segmentMessages = await getSegmentMessages(
+        supabase,
+        conversationId,
+        segment,
+      );
+      return NextResponse.json({
+        messages: segmentMessages,
+        hasMore: false,
+        conversationId,
       });
     }
 
