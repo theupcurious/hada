@@ -158,28 +158,40 @@ export default function SignUpPage() {
         </div>
 
         <form onSubmit={handleSignUp} className="space-y-4">
-          <div>
+          <div className="space-y-2">
+            <label htmlFor="signup-name" className="text-sm font-medium text-foreground">
+              {copy.namePlaceholder}
+            </label>
             <Input
+              id="signup-name"
               type="text"
-              placeholder={copy.namePlaceholder}
+              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
+            <label htmlFor="signup-email" className="text-sm font-medium text-foreground">
+              {copy.emailPlaceholder}
+            </label>
             <Input
+              id="signup-email"
               type="email"
-              placeholder={copy.emailPlaceholder}
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
+            <label htmlFor="signup-password" className="text-sm font-medium text-foreground">
+              {copy.passwordPlaceholder}
+            </label>
             <Input
+              id="signup-password"
               type="password"
-              placeholder={copy.passwordPlaceholder}
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

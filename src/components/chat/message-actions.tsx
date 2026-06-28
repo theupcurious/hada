@@ -15,10 +15,10 @@ export function MessageActions(props: {
   onDelete: () => void;
 }) {
   return (
-    <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-zinc-200/80 bg-white/95 p-1 shadow-lg shadow-black/5 backdrop-blur dark:border-zinc-800/80 dark:bg-zinc-950/90">
+    <div className="pointer-events-auto inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
       <Button
         type="button"
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost"
         aria-label="Copy"
         data-active={props.copied}
@@ -28,7 +28,7 @@ export function MessageActions(props: {
       </Button>
       <Button
         type="button"
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost"
         aria-label="Save to Docs"
         onClick={props.onSaveToDoc}
@@ -39,7 +39,7 @@ export function MessageActions(props: {
       {props.isLong && props.onOpenArtifact && (
         <Button
           type="button"
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
           aria-label="Ingest to wiki"
           onClick={props.onOpenArtifact}
@@ -50,7 +50,7 @@ export function MessageActions(props: {
       )}
       <Button
         type="button"
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost"
         aria-label="Regenerate"
         onClick={props.onRegenerate}
@@ -59,7 +59,7 @@ export function MessageActions(props: {
       </Button>
       <Button
         type="button"
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost"
         aria-label="Thumbs up"
         data-active={props.feedbackValue === "up"}
@@ -69,7 +69,7 @@ export function MessageActions(props: {
       </Button>
       <Button
         type="button"
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost"
         aria-label="Thumbs down"
         data-active={props.feedbackValue === "down"}
@@ -79,7 +79,7 @@ export function MessageActions(props: {
       </Button>
       <Button
         type="button"
-        size="icon-xs"
+        size="icon-sm"
         variant="ghost"
         aria-label="Delete message"
         onClick={props.onDelete}

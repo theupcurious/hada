@@ -346,19 +346,27 @@ export default function LoginForm() {
               </div>
             </div>
           )}
-          <div>
+          <div className="space-y-2">
+            <label htmlFor="login-email" className="text-sm font-medium text-foreground">
+              {copy.emailPlaceholder}
+            </label>
             <Input
+              id="login-email"
               type="email"
-              placeholder={copy.emailPlaceholder}
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
+            <label htmlFor="login-password" className="text-sm font-medium text-foreground">
+              {copy.passwordPlaceholder}
+            </label>
             <Input
+              id="login-password"
               type="password"
-              placeholder={copy.passwordPlaceholder}
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

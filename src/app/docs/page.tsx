@@ -36,6 +36,7 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
 import type { Document } from "@/lib/types/database";
@@ -55,6 +56,10 @@ type DocShareResponse = {
   share?: DocShareInfo | null;
   error?: string;
 };
+
+type PendingDeletion =
+  | { kind: "document"; id: string }
+  | { kind: "folder"; folder: string; docIds: string[] };
 
 function toMarkdownFilename(title: string) {
   const sanitized = title
@@ -185,6 +190,7 @@ function DashboardPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
 
   // 4a/4c: Wiki graph view
   const [showGraph, setShowGraph] = useState(false);
@@ -273,19 +279,16 @@ function DashboardPageContent() {
   }, [loadDocs]);
 
   const deleteDoc = useCallback(async (id: string) => {
-    if (!window.confirm("Delete this document?")) return;
-    await fetch(`/api/documents/${id}`, { method: "DELETE" });
+    const response = await fetch(`/api/documents/${id}`, { method: "DELETE" });
+    if (!response.ok) return;
     await loadDocs();
     if (activeDocId === id) { setActiveDocId(null); setActiveDoc(null); }
+    setPendingDeletion(null);
   }, [activeDocId, loadDocs]);
 
   const deleteFolder = useCallback(async (folder: string, docIds: string[]) => {
     const count = docIds.length;
     if (!count) return;
-    const confirmed = window.confirm(
-      `Delete folder "${folder}" and all ${count} document${count === 1 ? "" : "s"} inside it?`,
-    );
-    if (!confirmed) return;
 
     const response = await fetch(`/api/documents?folder=${encodeURIComponent(folder)}`, {
       method: "DELETE",
@@ -303,6 +306,7 @@ function DashboardPageContent() {
       setActiveDocId(null);
       setActiveDoc(null);
     }
+    setPendingDeletion(null);
   }, [activeDocId, loadDocs]);
 
   const startRename = useCallback((doc: DocListItem) => {
@@ -487,7 +491,7 @@ function DashboardPageContent() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      void deleteFolder(folder, folderDocs.map((doc) => doc.id));
+                      setPendingDeletion({ kind: "folder", folder, docIds: folderDocs.map((doc) => doc.id) });
                     }}
                     className="shrink-0 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-950/40"
                     title={`Delete folder ${folder}`}
@@ -501,7 +505,7 @@ function DashboardPageContent() {
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
                     <div className="ml-3 border-l border-zinc-200/70 pl-2 dark:border-zinc-800">
                       {folderDocs.map((doc) => (
-                        <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} onDelete={deleteDoc} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
+                        <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} onDelete={(id) => setPendingDeletion({ kind: "document", id })} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
                       ))}
                       <button onClick={() => void createDoc(folder)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300">
                         <Plus className="h-3 w-3" />New in {isWiki ? "wiki" : folder}
@@ -515,7 +519,7 @@ function DashboardPageContent() {
         })}
 
         {rootDocs.map((doc) => (
-          <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} onDelete={deleteDoc} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
+          <DocItem key={doc.id} doc={doc} isActive={activeDocId === doc.id} onSelect={selectDoc} onDelete={(id) => setPendingDeletion({ kind: "document", id })} isRenaming={renamingDocId === doc.id} renameValue={renameValue} onRenameStart={startRename} onRenameChange={setRenameValue} onRenameCommit={commitRename} onRenameCancel={() => setRenamingDocId(null)} />
         ))}
 
         {newFolderInput ? (
@@ -615,7 +619,7 @@ function DashboardPageContent() {
                   setIsSaving(false);
                 }
               }}
-              onDelete={() => void deleteDoc(activeDoc.id)}
+              onDelete={() => setPendingDeletion({ kind: "document", id: activeDoc.id })}
               onRefreshDocs={loadDocs}
               folders={folders}
               onNavigateToDoc={(id) => void selectDoc(id)}
@@ -626,6 +630,25 @@ function DashboardPageContent() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDeletion !== null}
+        title={pendingDeletion?.kind === "folder" ? `Delete “${pendingDeletion.folder}”?` : "Delete this document?"}
+        description={
+          pendingDeletion?.kind === "folder"
+            ? `This permanently deletes the folder and all ${pendingDeletion.docIds.length} document${pendingDeletion.docIds.length === 1 ? "" : "s"} inside it.`
+            : "This document will be permanently deleted."
+        }
+        confirmLabel="Delete"
+        destructive
+        onOpenChange={(open) => !open && setPendingDeletion(null)}
+        onConfirm={() => {
+          if (pendingDeletion?.kind === "folder") {
+            return deleteFolder(pendingDeletion.folder, pendingDeletion.docIds);
+          }
+          if (pendingDeletion?.kind === "document") return deleteDoc(pendingDeletion.id);
+        }}
+      />
     </div>
   );
 }
