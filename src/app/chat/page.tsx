@@ -530,6 +530,11 @@ export default function ChatPage() {
   const [viewingSegment, setViewingSegment] = useState<{ id: string; title: string } | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  // True only while tokens are actively streaming. We follow the bottom during
+  // this window and stop at the first terminal event, so the finalization
+  // renders (content swap, toolbar/suggestions mounting, isLoading flip) don't
+  // each trigger a scroll snap — which is what caused the end-of-response shake.
+  const streamFollowActiveRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const eventOrderRef = useRef(0);
   const backgroundJobPollersRef = useRef(new Map<string, number>());
@@ -1312,15 +1317,17 @@ export default function ChatPage() {
       return;
     }
 
-    if (!shouldAutoScrollRef.current) return;
+    // Only follow the bottom while tokens are actively streaming and the user is
+    // near the bottom. Skipping this on terminal/finalization renders is what
+    // removes the end-of-response shake.
+    if (!streamFollowActiveRef.current || !shouldAutoScrollRef.current) return;
 
-    // Follow streaming output only while the user remains near the bottom.
     requestAnimationFrame(() => {
-      if (shouldAutoScrollRef.current) {
+      if (streamFollowActiveRef.current && shouldAutoScrollRef.current) {
         scrollToBottom("auto");
       }
     });
-  }, [messages, isLoading, isThinking, showConversation]);
+  }, [messages, isThinking, showConversation]);
 
   useEffect(() => {
     autosizeTextarea();
@@ -1390,7 +1397,13 @@ export default function ChatPage() {
     const processStreamEvent = (event: Record<string, unknown>) => {
       if (event.type === "complete") {
         receivedTerminalEvent = true;
-        // Flush any buffered tokens before applying the terminal state.
+        // Stop following the bottom before applying terminal state, so the
+        // finalization render doesn't snap-scroll.
+        streamFollowActiveRef.current = false;
+        // Drain any tokens still buffered so the visible content already equals
+        // the full streamed text — then we only swap to the server's canonical
+        // text if it genuinely differs, avoiding a redundant reflow/height jump.
+        const pendingTail = pendingTokensRef.current.get(currentAssistantId) ?? "";
         pendingTokensRef.current.delete(currentAssistantId);
         const realAssistantId = String(event.id ?? currentAssistantId);
         const terminalResponse =
@@ -1418,10 +1431,20 @@ export default function ChatPage() {
               return { ...msg, id: String(event.userMessageId ?? userMessageId) };
             }
             if (msg.id === currentAssistantId) {
+              const streamed = msg.content + pendingTail;
+              // Keep the already-rendered streamed text when the server's final
+              // text matches it (ignoring trailing whitespace) so React doesn't
+              // re-render to a slightly different height at the very end.
+              const finalContent =
+                terminalResponse === null
+                  ? streamed
+                  : terminalResponse.trim() === streamed.trim()
+                    ? streamed
+                    : terminalResponse;
               return {
                 ...msg,
                 id: realAssistantId,
-                content: terminalResponse ?? msg.content,
+                content: finalContent,
                 cards: Array.isArray(event.cards) ? (event.cards as ChatCard[]) : msg.cards,
                 followUpSuggestions: Array.isArray(event.followUpSuggestions)
                   ? (event.followUpSuggestions as string[]).filter((v): v is string => typeof v === "string")
@@ -1467,6 +1490,9 @@ export default function ChatPage() {
         );
       } else if (event.type === "error") {
         receivedTerminalEvent = true;
+        // Stop following the bottom before applying terminal state, so the
+        // finalization render doesn't snap-scroll.
+        streamFollowActiveRef.current = false;
         pendingTokensRef.current.delete(currentAssistantId);
         setMessages((prev) =>
           prev.map((msg) =>
@@ -1483,6 +1509,9 @@ export default function ChatPage() {
         );
       } else if (event.type === "background_job") {
         receivedTerminalEvent = true;
+        // Stop following the bottom before applying terminal state, so the
+        // finalization render doesn't snap-scroll.
+        streamFollowActiveRef.current = false;
         const realAssistantId = String(event.assistantMessageId ?? currentAssistantId);
         const jobId = String(event.jobId ?? "");
 
@@ -1634,6 +1663,7 @@ export default function ChatPage() {
     // Sending continues the live thread, so leave any past-topic view.
     setViewingSegment(null);
     shouldAutoScrollRef.current = true;
+    streamFollowActiveRef.current = true;
 
     // Build message with attached doc context prepended
     const docsToSend = attachedDocs;
@@ -1715,6 +1745,7 @@ export default function ChatPage() {
       }
       activeAssistantMessageIdRef.current = null;
       didUserAbortRef.current = false;
+      streamFollowActiveRef.current = false;
       setIsLoading(false);
       setIsThinking(false);
     }
@@ -1752,6 +1783,8 @@ export default function ChatPage() {
     setIsLoading(true);
     setIsThinking(true);
     didUserAbortRef.current = false;
+    shouldAutoScrollRef.current = true;
+    streamFollowActiveRef.current = true;
     activeAssistantMessageIdRef.current = assistantMessageId;
     const requestController = new AbortController();
     activeRequestControllerRef.current = requestController;
@@ -1787,6 +1820,7 @@ export default function ChatPage() {
       }
       activeAssistantMessageIdRef.current = null;
       didUserAbortRef.current = false;
+      streamFollowActiveRef.current = false;
       setIsLoading(false);
       setIsThinking(false);
     }
