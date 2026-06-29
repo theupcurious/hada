@@ -125,11 +125,23 @@ export type SmartCard =
   | StepsCardPayload
   | ChecklistCardPayload;
 
+export interface IntegrationErrorCardPayload {
+  type: "integration_error";
+  data: {
+    provider: "google";
+    title: string;
+    message: string;
+    actionLabel: string;
+    actionHref: string;
+  };
+}
+
 export type RichCard =
   | SearchResultsCardPayload
   | ScheduleViewCardPayload
   | DataTableCardPayload
   | LinkPreviewCardPayload
+  | IntegrationErrorCardPayload
   | SmartCard;
 
 export type ChatCard =
