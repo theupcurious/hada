@@ -1,4 +1,5 @@
 import type { TraceEvent } from "@/lib/chat/types";
+import { getToolLabel } from "@/lib/chat/tool-labels";
 
 export interface ToolStatusInput {
   isStreaming: boolean;
@@ -19,54 +20,40 @@ export function buildToolStatusPills(input: ToolStatusInput): ToolStatusPill[] {
     return [];
   }
 
-  const searchTraces = input.traces.filter((trace) => trace.name === "web_search");
-  const fetchTraces = input.traces.filter((trace) => trace.name === "web_fetch");
-  const delegateTraces = input.traces.filter((trace) => trace.name === "delegate_task");
-  const createDocumentTraces = input.traces.filter((trace) => trace.name === "create_document");
-  const updateDocumentTraces = input.traces.filter((trace) => trace.name === "update_document");
-  const runningSearch = searchTraces.some((trace) => trace.status === "running");
-  const runningFetch = fetchTraces.some((trace) => trace.status === "running");
-  const runningDelegate = delegateTraces.some((trace) => trace.status === "running");
-  const runningCreateDocument = createDocumentTraces.some((trace) => trace.status === "running");
-  const runningUpdateDocument = updateDocumentTraces.some((trace) => trace.status === "running");
-  const hasRunningTool =
-    runningSearch ||
-    runningFetch ||
-    runningDelegate ||
-    runningCreateDocument ||
-    runningUpdateDocument;
-  const hasToolHistory =
-    searchTraces.length > 0 ||
-    fetchTraces.length > 0 ||
-    delegateTraces.length > 0 ||
-    createDocumentTraces.length > 0 ||
-    updateDocumentTraces.length > 0;
-  const fetchCount = fetchTraces.length;
+  const hasToolHistory = input.traces.length > 0;
+  const runningTraces = input.traces.filter((trace) => trace.status === "running");
+  const hasRunningTool = runningTraces.length > 0;
 
   const pills: ToolStatusPill[] = [];
 
-  if (runningSearch) {
-    pills.push({ id: "search", label: "Searching web", tone: "working" });
-  }
+  // One pill per distinct tool that is currently running, in first-seen order,
+  // with a plain-language label from the shared registry. web_fetch is special
+  // cased to show how many sources are being read.
+  const seenRunning = new Set<string>();
+  const fetchCount = input.traces.filter((trace) => trace.name === "web_fetch").length;
 
-  if (runningFetch && fetchCount > 0) {
+  for (const trace of runningTraces) {
+    if (seenRunning.has(trace.name)) {
+      continue;
+    }
+    seenRunning.add(trace.name);
+
+    if (trace.name === "web_fetch") {
+      if (fetchCount > 0) {
+        pills.push({
+          id: "web_fetch",
+          label: `Reading ${fetchCount} source${fetchCount === 1 ? "" : "s"}`,
+          tone: "working",
+        });
+      }
+      continue;
+    }
+
     pills.push({
-      id: "fetch",
-      label: `Reading ${fetchCount} source${fetchCount === 1 ? "" : "s"}`,
+      id: trace.name,
+      label: getToolLabel(trace.name).present,
       tone: "working",
     });
-  }
-
-  if (runningDelegate) {
-    pills.push({ id: "delegate", label: "Research agent working", tone: "working" });
-  }
-
-  if (runningCreateDocument) {
-    pills.push({ id: "create-document", label: "Writing document", tone: "working" });
-  }
-
-  if (runningUpdateDocument) {
-    pills.push({ id: "update-document", label: "Updating document", tone: "working" });
   }
 
   if (input.backgroundJobPending) {

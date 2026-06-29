@@ -29,7 +29,7 @@ import {
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Calendar, FolderKanban, History, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2 } from "lucide-react";
+import { Activity, Calendar, FolderKanban, History, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
@@ -213,6 +213,8 @@ interface ChatLocaleCopy {
   historyUntitled: string;
   viewingTopicPrefix: string;
   returnToLatest: string;
+  activityLabel: string;
+  openActivityAria: string;
 }
 
 const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
@@ -286,6 +288,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     historyUntitled: "Untitled topic",
     viewingTopicPrefix: "Viewing topic:",
     returnToLatest: "Return to latest",
+    activityLabel: "Activity",
+    openActivityAria: "Open activity",
   },
   ko: {
     greetingMorning: "좋은 아침입니다",
@@ -357,6 +361,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     historyUntitled: "제목 없는 주제",
     viewingTopicPrefix: "보는 주제:",
     returnToLatest: "최신으로 돌아가기",
+    activityLabel: "활동",
+    openActivityAria: "활동 열기",
   },
   ja: {
     greetingMorning: "おはようございます",
@@ -428,6 +434,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     historyUntitled: "無題のトピック",
     viewingTopicPrefix: "表示中のトピック:",
     returnToLatest: "最新に戻る",
+    activityLabel: "アクティビティ",
+    openActivityAria: "アクティビティを開く",
   },
   zh: {
     greetingMorning: "早上好",
@@ -499,6 +507,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     historyUntitled: "未命名话题",
     viewingTopicPrefix: "正在查看话题：",
     returnToLatest: "返回最新",
+    activityLabel: "活动",
+    openActivityAria: "打开活动",
   },
 };
 
@@ -2268,6 +2278,19 @@ export default function ChatPage() {
               <Button variant="ghost" size="sm" className="px-2.5">
                 <FolderKanban className="mr-2 h-4 w-4" />
                 {copy.projectsLabel}
+              </Button>
+            </Link>
+
+            <Link href="/activity" className="sm:hidden">
+              <Button variant="ghost" size="icon" aria-label={copy.openActivityAria}>
+                <Activity className="h-4 w-4" />
+              </Button>
+            </Link>
+
+            <Link href="/activity" className="hidden sm:block">
+              <Button variant="ghost" size="sm" className="px-2.5">
+                <Activity className="mr-2 h-4 w-4" />
+                {copy.activityLabel}
               </Button>
             </Link>
 

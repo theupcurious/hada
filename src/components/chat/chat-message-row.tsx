@@ -15,12 +15,14 @@ import { TaskPlanCard } from "@/components/chat/task-plan-card";
 import { MessageActions } from "@/components/chat/message-actions";
 import { FollowUpChips } from "@/components/chat/follow-up-chips";
 import { ActionApprovalCard } from "@/components/chat/action-approval-card";
+import { IntegrationErrorCard } from "@/components/chat/integration-error-card";
 import type { TaskPlan } from "@/lib/types/database";
 import type {
   CalendarEventCardData,
   CalendarEventCardPayload,
   ChatCard,
   DataTableCardPayload,
+  IntegrationErrorCardPayload,
   ScheduleBlock,
   ScheduleViewCardPayload,
 } from "@/lib/types/cards";
@@ -363,6 +365,20 @@ export function ChatMessageRow({
                 onAction={(msg) => onQuickReply(msg)}
               />
             );
+          }
+          if (card.type === "integration_error") {
+            const data = card.data as IntegrationErrorCardPayload["data"] | undefined;
+            if (data?.message && data?.actionHref) {
+              return (
+                <IntegrationErrorCard
+                  key={`${message.id}-card-${idx}`}
+                  title={data.title}
+                  message={data.message}
+                  actionLabel={data.actionLabel}
+                  actionHref={data.actionHref}
+                />
+              );
+            }
           }
           return null;
         })}

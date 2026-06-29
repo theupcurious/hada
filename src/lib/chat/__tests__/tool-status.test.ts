@@ -62,7 +62,7 @@ describe("buildToolStatusPills", () => {
       backgroundJobPending: false,
     });
 
-    expect(pills.map((pill) => pill.label)).toEqual(["Writing document"]);
+    expect(pills.map((pill) => pill.label)).toEqual(["Writing a document"]);
   });
 
   it("shows document update status while update_document is running", () => {
@@ -76,6 +76,34 @@ describe("buildToolStatusPills", () => {
       backgroundJobPending: false,
     });
 
-    expect(pills.map((pill) => pill.label)).toEqual(["Updating document"]);
+    expect(pills.map((pill) => pill.label)).toEqual(["Updating a document"]);
+  });
+
+  it("shows a plain-language label while gmail_search is running", () => {
+    const pills = buildToolStatusPills({
+      isStreaming: true,
+      traces: [
+        { callId: "1", name: "gmail_search", args: { query: "invoice" }, status: "running" },
+      ],
+      thinkingCount: 0,
+      hasVisibleContent: false,
+      backgroundJobPending: false,
+    });
+
+    expect(pills.map((pill) => pill.label)).toEqual(["Searching your email"]);
+  });
+
+  it("shows a label for a tool not in the registry via humanized fallback", () => {
+    const pills = buildToolStatusPills({
+      isStreaming: true,
+      traces: [
+        { callId: "1", name: "some_new_tool", args: {}, status: "running" },
+      ],
+      thinkingCount: 0,
+      hasVisibleContent: false,
+      backgroundJobPending: false,
+    });
+
+    expect(pills.map((pill) => pill.label)).toEqual(["Some new tool"]);
   });
 });

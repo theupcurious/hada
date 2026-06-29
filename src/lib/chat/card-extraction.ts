@@ -14,11 +14,16 @@ type ToolResultForExtraction = {
 
 export function extractCardsFromToolResults(toolResults: ToolResultForExtraction[]): RichCard[] {
   const cards: RichCard[] = [];
+  let googleIntegrationError = false;
 
   for (const toolResult of toolResults) {
     const parsed = safeJsonParse(toolResult.result);
     if (parsed == null) {
       continue;
+    }
+
+    if (isGoogleIntegrationError(toolResult.name, parsed)) {
+      googleIntegrationError = true;
     }
 
     for (const candidate of getCardCandidates(toolResult.name, parsed)) {
@@ -29,7 +34,42 @@ export function extractCardsFromToolResults(toolResults: ToolResultForExtraction
     }
   }
 
+  // Surface a single actionable recovery card when a Google-backed tool failed
+  // because the account isn't connected (or the token expired), instead of
+  // leaving the user with a vague apology in prose.
+  if (googleIntegrationError) {
+    cards.push(buildGoogleReconnectCard());
+  }
+
   return cards;
+}
+
+const GOOGLE_TOOL_PATTERN = /^(gmail_|drive_)|calendar/;
+
+function isGoogleIntegrationError(toolName: string, parsed: unknown): boolean {
+  if (!GOOGLE_TOOL_PATTERN.test(toolName)) {
+    return false;
+  }
+  const record = asRecord(parsed);
+  if (!record || record.success !== false) {
+    return false;
+  }
+  const error = typeof record.error === "string" ? record.error.toLowerCase() : "";
+  return error.includes("not connected") || error.includes("token expired");
+}
+
+function buildGoogleReconnectCard(): RichCard {
+  return {
+    type: "integration_error",
+    data: {
+      provider: "google",
+      title: "Google isn't connected",
+      message:
+        "I couldn't reach your Google account — it may be disconnected or need re-authorizing. Reconnect it to use Gmail, Calendar, and Drive.",
+      actionLabel: "Reconnect Google",
+      actionHref: "/settings?tab=integrations",
+    },
+  };
 }
 
 export function inferSmartCardFromText(options: {
