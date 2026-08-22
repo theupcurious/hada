@@ -1,32 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  detectPreferredLocale,
-  readLocaleCookie,
-  setLocaleCookie,
-  type AppLocale,
-} from "@/lib/i18n";
+import { useEffect } from "react";
+import { useLocaleContext } from "@/components/i18n/locale-provider";
+import { readLocaleCookie, setLocaleCookie, type AppLocale } from "@/lib/i18n";
 
+/**
+ * Returns the locale resolved on the server, so client and server markup match.
+ * Detecting during render (cookie / `navigator.languages`) produced a hydration
+ * mismatch that blanked and re-animated the page on every load.
+ */
 export function useResolvedLocale(): AppLocale {
-  const [locale] = useState<AppLocale>(() => {
-    const fromCookie = readLocaleCookie();
-    if (fromCookie) {
-      return fromCookie;
-    }
+  const locale = useLocaleContext();
 
-    if (typeof navigator !== "undefined") {
-      return detectPreferredLocale(navigator.languages);
-    }
-
-    return "en";
-  });
-
+  // Persist a header-derived locale so later requests resolve it from the cookie.
   useEffect(() => {
-    setLocaleCookie(locale);
-
-    if (typeof document !== "undefined") {
-      document.documentElement.lang = locale;
+    if (!readLocaleCookie()) {
+      setLocaleCookie(locale);
     }
   }, [locale]);
 

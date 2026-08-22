@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { LocaleProvider } from "@/components/i18n/locale-provider";
 import { ThemeBootstrap } from "@/components/theme/theme-bootstrap";
-import { LOCALE_COOKIE_NAME, normalizeLocale } from "@/lib/i18n";
+import { LOCALE_COOKIE_NAME, resolveRequestLocale } from "@/lib/i18n";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -27,8 +28,11 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value);
+  const [cookieStore, headerList] = await Promise.all([cookies(), headers()]);
+  const locale = resolveRequestLocale(
+    cookieStore.get(LOCALE_COOKIE_NAME)?.value,
+    headerList.get("accept-language"),
+  );
 
   return (
     <html lang={locale} className="dark">
@@ -36,7 +40,7 @@ export default async function RootLayout({
         className={`${dmSans.variable} ${plusJakarta.variable} font-sans antialiased`}
       >
         <ThemeBootstrap />
-        {children}
+        <LocaleProvider locale={locale}>{children}</LocaleProvider>
       </body>
     </html>
   );

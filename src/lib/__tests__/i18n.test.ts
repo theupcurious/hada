@@ -3,6 +3,8 @@ import {
   detectMessageLocale,
   detectPreferredLocale,
   normalizeLocale,
+  parseAcceptLanguage,
+  resolveRequestLocale,
   resolveTurnLocale,
   toLocaleLanguageTag,
 } from "@/lib/i18n";
@@ -17,6 +19,23 @@ describe("i18n locale helpers", () => {
   it("detects Chinese as a preferred browser locale", () => {
     expect(detectPreferredLocale(["en-US", "zh-CN"])).toBe("zh");
     expect(detectPreferredLocale(["zh-TW", "en-US"])).toBe("zh");
+  });
+
+  it("orders Accept-Language tags by quality", () => {
+    expect(parseAcceptLanguage("en-US,en;q=0.9,zh-CN;q=0.95")).toEqual([
+      "en-US",
+      "zh-CN",
+      "en",
+    ]);
+    expect(parseAcceptLanguage("*")).toEqual([]);
+    expect(parseAcceptLanguage(null)).toEqual([]);
+  });
+
+  it("resolves a request locale from the cookie, then Accept-Language", () => {
+    expect(resolveRequestLocale("ko", "zh-CN,zh;q=0.9")).toBe("ko");
+    expect(resolveRequestLocale(undefined, "zh-CN,zh;q=0.9,en;q=0.8")).toBe("zh");
+    expect(resolveRequestLocale("", "ja-JP")).toBe("ja");
+    expect(resolveRequestLocale(undefined, null)).toBe("en");
   });
 
   it("returns the correct language tag for Chinese", () => {

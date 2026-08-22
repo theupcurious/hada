@@ -1,6 +1,9 @@
 export const LOCALE_COOKIE_NAME = "hada_locale";
 const LOCALE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
+/** Dispatched on `window` when the locale cookie changes, so providers can resync. */
+export const LOCALE_CHANGE_EVENT = "hada:locale-change";
+
 export const APP_LOCALES = ["en", "ko", "ja", "zh"] as const;
 export type AppLocale = (typeof APP_LOCALES)[number];
 
@@ -135,6 +138,48 @@ export function setLocaleCookie(locale: AppLocale): void {
   }
 
   document.cookie = `${LOCALE_COOKIE_NAME}=${encodeURIComponent(locale)}; Path=/; Max-Age=${LOCALE_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
+  window.dispatchEvent(new Event(LOCALE_CHANGE_EVENT));
+}
+
+/**
+ * Resolves the locale from a request's cookie header, falling back to
+ * `Accept-Language`. Server-only — the result is what the client hydrates
+ * against, so it must not depend on anything browser-side.
+ */
+export function resolveRequestLocale(
+  cookieValue: string | undefined,
+  acceptLanguage: string | null | undefined,
+): AppLocale {
+  const fromCookie = typeof cookieValue === "string" ? cookieValue.trim() : "";
+  if (fromCookie) {
+    return normalizeLocale(fromCookie);
+  }
+
+  return detectPreferredLocale(parseAcceptLanguage(acceptLanguage));
+}
+
+/** Returns the languages of an `Accept-Language` header, highest quality first. */
+export function parseAcceptLanguage(header: string | null | undefined): string[] {
+  if (!header) {
+    return [];
+  }
+
+  return header
+    .split(",")
+    .map((entry) => {
+      const [tag, ...params] = entry.trim().split(";");
+      const quality = params
+        .map((param) => param.trim())
+        .find((param) => param.startsWith("q="));
+
+      return {
+        tag: tag.trim(),
+        quality: quality ? Number.parseFloat(quality.slice(2)) || 0 : 1,
+      };
+    })
+    .filter((entry) => entry.tag && entry.tag !== "*")
+    .sort((a, b) => b.quality - a.quality)
+    .map((entry) => entry.tag);
 }
 
 export function parseLocaleFromCookieHeader(cookieHeader: string): AppLocale | null {

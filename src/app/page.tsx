@@ -48,6 +48,7 @@ interface HomeCopy {
   sourcesReturned: string;
   documentDone: string;
   documentTitle: string;
+  previewLabel: string;
   askPlaceholder: string;
   saved: string;
   edit: string;
@@ -91,6 +92,8 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     sourcesReturned: "6 source links returned",
     documentDone: "Create Document — Done",
     documentTitle: "Remote work brief",
+    previewLabel:
+      "Product preview: Hada researches remote-work trends, shows each tool step it ran, and saves a brief with source links.",
     askPlaceholder: "Ask anything…",
     saved: "Saved",
     edit: "Edit",
@@ -161,6 +164,8 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     sourcesReturned: "출처 링크 6개 반환",
     documentDone: "문서 생성 — 완료",
     documentTitle: "원격 근무 브리프",
+    previewLabel:
+      "제품 미리보기: Hada가 원격 근무 동향을 조사하고, 실행한 각 도구 단계를 보여주며, 출처 링크와 함께 브리프를 저장합니다.",
     askPlaceholder: "무엇이든 물어보세요…",
     saved: "저장됨",
     edit: "편집",
@@ -222,6 +227,8 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     sourcesReturned: "情報源リンク 6 件",
     documentDone: "ドキュメント作成 — 完了",
     documentTitle: "リモートワーク概要",
+    previewLabel:
+      "製品プレビュー: Hada がリモートワークの動向を調査し、実行した各ツールのステップを表示し、出典リンク付きのブリーフを保存します。",
     askPlaceholder: "何でも聞いてください…",
     saved: "保存済み",
     edit: "編集",
@@ -283,6 +290,8 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     sourcesReturned: "返回 6 个来源链接",
     documentDone: "创建文档 — 完成",
     documentTitle: "远程办公简报",
+    previewLabel:
+      "产品预览：Hada 研究远程办公趋势，展示执行的每个工具步骤，并保存带来源链接的简报。",
     askPlaceholder: "问任何问题…",
     saved: "已保存",
     edit: "编辑",
@@ -331,10 +340,18 @@ const stepIcons: LucideIcon[] = [Search, FileText, CalendarClock];
 const builtInIcons: LucideIcon[] = [Search, BookOpen, Clock3, Database, FolderKanban];
 const integrationIcons: LucideIcon[] = [CalendarClock, Mail, FileSearch, MessageCircle];
 
+function isCjkLocale(locale: AppLocale): boolean {
+  return locale === "zh" || locale === "ja" || locale === "ko";
+}
+
 export default function Home() {
   const locale = useResolvedLocale();
   const copy = HOME_COPY[locale];
   const reduceMotion = useReducedMotion();
+
+  // Latin display tracking is far too tight for CJK, whose glyphs are already
+  // fixed-width and carry their own side bearings.
+  const headingTracking = isCjkLocale(locale) ? "tracking-normal" : "tracking-[-0.045em]";
 
   return (
     <div className="min-h-screen bg-[#f7f6f2] text-zinc-950">
@@ -355,7 +372,7 @@ export default function Home() {
           </Link>
 
           <nav className="flex items-center gap-2" aria-label="Account">
-            <Button asChild variant="ghost" className="hidden rounded-full sm:inline-flex">
+            <Button asChild variant="ghost" className="rounded-full px-3 sm:px-4">
               <Link href="/auth/login">{copy.login}</Link>
             </Button>
             <Button asChild className="h-9 rounded-lg bg-teal-700 px-4 text-white shadow-sm hover:bg-teal-800">
@@ -377,7 +394,9 @@ export default function Home() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">
                 {copy.eyebrow}
               </p>
-              <h1 className="mt-6 font-display text-5xl font-medium leading-[1.03] tracking-[-0.045em] sm:text-6xl lg:text-[4.3rem]">
+              <h1
+                className={`mt-6 font-display text-4xl font-medium leading-[1.06] sm:text-6xl sm:leading-[1.03] lg:text-[3.4rem] xl:text-[4.3rem] ${headingTracking}`}
+              >
                 {copy.heroTitle}
               </h1>
               <p className="mt-6 max-w-lg text-base leading-7 text-zinc-600">{copy.heroDescription}</p>
@@ -408,13 +427,13 @@ export default function Home() {
         </section>
 
         <section className="px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-7xl overflow-hidden rounded-xl border border-zinc-900/10 bg-white/55 md:grid-cols-3">
+          <div className="mx-auto grid max-w-7xl overflow-hidden rounded-xl border border-zinc-900/10 bg-white/55 lg:grid-cols-3">
             {copy.steps.map((step, index) => {
               const Icon = stepIcons[index];
               return (
                 <article
                   key={step.title}
-                  className="flex gap-4 border-b border-zinc-900/10 p-5 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0"
+                  className="flex items-start gap-4 border-b border-zinc-900/10 p-5 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0"
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-700/8 text-teal-700">
                     <Icon className="h-5 w-5" />
@@ -426,7 +445,10 @@ export default function Home() {
                     <p className="mt-1 text-xs leading-5 text-zinc-600">{step.description}</p>
                   </div>
                   {index < copy.steps.length - 1 ? (
-                    <ArrowRight className="ml-auto hidden h-4 w-4 shrink-0 self-center text-zinc-400 md:block" />
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="ml-auto hidden h-4 w-4 shrink-0 self-center text-zinc-400 lg:block"
+                    />
                   ) : null}
                 </article>
               );
@@ -467,7 +489,13 @@ export default function Home() {
         <section className="px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 rounded-2xl bg-zinc-950 px-6 py-8 text-white sm:px-8 md:flex-row md:items-center">
             <div>
-              <h2 className="font-display text-2xl font-medium tracking-tight">{copy.ctaTitle}</h2>
+              <h2
+                className={`font-display text-2xl font-medium ${
+                  isCjkLocale(locale) ? "tracking-normal" : "tracking-tight"
+                }`}
+              >
+                {copy.ctaTitle}
+              </h2>
               <p className="mt-2 text-sm leading-6 text-zinc-400">{copy.ctaDescription}</p>
             </div>
             <Button asChild size="lg" className="shrink-0 rounded-lg bg-teal-600 px-7 text-white hover:bg-teal-500">
@@ -496,6 +524,8 @@ function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: 
       initial={reduceMotion ? false : { opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: reduceMotion ? 0 : 0.1, ease: "easeOut" }}
+      role="img"
+      aria-label={copy.previewLabel}
       className="grid min-w-0 gap-3 sm:grid-cols-[0.78fr_1.22fr]"
     >
       <div className="flex min-w-0 flex-col rounded-xl border border-zinc-900/10 bg-white p-4 shadow-[0_18px_55px_-35px_rgba(24,24,27,0.45)]">
@@ -537,29 +567,30 @@ function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: 
           </span>
         </div>
 
-        <article className="p-4 sm:p-5">
-          <h2 className="font-display text-xl font-medium">{copy.documentTitle}</h2>
-          <h3 className="mt-4 text-[11px] font-semibold">{copy.executiveSummary}</h3>
-          <p className="mt-1 text-[10px] leading-[1.55] text-zinc-600">{copy.summaryText}</p>
+        {/* Plain elements, not headings — this is a mockup and must stay out of the page outline. */}
+        <div className="p-4 sm:p-5">
+          <p className="font-display text-xl font-medium">{copy.documentTitle}</p>
+          <p className="mt-4 text-[11px] font-semibold">{copy.executiveSummary}</p>
+          <p className="mt-1 text-[11px] leading-[1.55] text-zinc-600">{copy.summaryText}</p>
 
-          <h3 className="mt-4 text-[11px] font-semibold">{copy.keyFindings}</h3>
+          <p className="mt-4 text-[11px] font-semibold">{copy.keyFindings}</p>
           <ul className="mt-1.5 space-y-1">
             {copy.findings.map((finding) => (
-              <li key={finding} className="flex gap-2 text-[10px] leading-[1.45] text-zinc-600">
+              <li key={finding} className="flex gap-2 text-[11px] leading-[1.45] text-zinc-600">
                 <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
                 {finding}
               </li>
             ))}
           </ul>
 
-          <h3 className="mt-4 text-[11px] font-semibold">{copy.sources}</h3>
-          <div className="mt-1.5 space-y-1 text-[9px] text-teal-700">
+          <p className="mt-4 text-[11px] font-semibold">{copy.sources}</p>
+          <div className="mt-1.5 space-y-1 text-[10px] text-teal-700">
             <SourceLine index="1" domain="microsoft.com/worklab" />
             <SourceLine index="2" domain="weforum.org/future-of-work" />
             <SourceLine index="3" domain="owllabs.com/hybrid-work" />
             <SourceLine index="4" domain="gallup.com/workplace" />
           </div>
-        </article>
+        </div>
       </div>
     </motion.div>
   );
@@ -585,9 +616,9 @@ function ToolResult({ icon: Icon, title, detail }: { icon: LucideIcon; title: st
     <div className="rounded-lg border border-zinc-900/10 bg-zinc-50 px-3 py-2.5">
       <div className="flex items-center gap-2">
         <Icon className="h-3.5 w-3.5 text-teal-700" />
-        <span className="text-[10px] font-semibold text-zinc-800">{title}</span>
+        <span className="text-[10px] font-semibold text-zinc-800 xl:text-[11px]">{title}</span>
       </div>
-      <div className="mt-1 flex items-center gap-1 pl-5 text-[9px] text-zinc-500">
+      <div className="mt-1 flex items-center gap-1 pl-5 text-[10px] text-zinc-500">
         {title.toLowerCase().includes("search") ? <Link2 className="h-2.5 w-2.5" /> : null}
         {detail}
       </div>
@@ -598,7 +629,7 @@ function ToolResult({ icon: Icon, title, detail }: { icon: LucideIcon; title: st
 function SourceLine({ index, domain }: { index: string; domain: string }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-zinc-100 font-mono text-[8px] text-zinc-500">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-zinc-100 font-mono text-[9px] text-zinc-500">
         {index}
       </span>
       <span className="truncate">{domain}</span>
