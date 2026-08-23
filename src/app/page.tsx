@@ -36,6 +36,9 @@ interface HomeCopy {
   getStarted: string;
   eyebrow: string;
   heroTitle: string;
+  capabilitiesHeading: string;
+  capabilitiesLead: string;
+  trustHeading: string;
   heroDescription: string;
   integrationBoundary: string;
   startFree: string;
@@ -76,8 +79,12 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
   en: {
     login: "Log in",
     getStarted: "Get started",
-    eyebrow: "A workspace for delegated work",
+    eyebrow: "An assistant that shows its work",
     heroTitle: "Move work forward — and see how it happened.",
+    capabilitiesHeading: "Everything here works today.",
+    capabilitiesLead:
+      "No waitlists and no coming-soon labels. Sign up and the built-in tools are live; connect the rest whenever you want them.",
+    trustHeading: "Nothing happens behind your back.",
     heroDescription:
       "Research current topics, turn useful answers into documents, and schedule recurring Hada workflows. Source links and tool progress stay visible.",
     integrationBoundary:
@@ -148,8 +155,12 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
   ko: {
     login: "로그인",
     getStarted: "시작하기",
-    eyebrow: "위임한 업무를 위한 워크스페이스",
+    eyebrow: "과정을 보여주는 어시스턴트",
     heroTitle: "업무를 앞으로. 진행 과정은 투명하게.",
+    capabilitiesHeading: "여기 있는 기능은 오늘 바로 작동합니다.",
+    capabilitiesLead:
+      "대기 명단도, 출시 예정 표시도 없습니다. 가입하면 기본 기능은 바로 작동하고, 나머지는 원할 때 연결하면 됩니다.",
+    trustHeading: "당신 모르게 일어나는 일은 없습니다.",
     heroDescription:
       "최신 주제를 조사하고, 유용한 답변을 문서로 만들고, 반복 Hada 워크플로우를 예약하세요. 출처 링크와 도구 진행 상황을 확인할 수 있습니다.",
     integrationBoundary:
@@ -211,8 +222,12 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
   ja: {
     login: "ログイン",
     getStarted: "はじめる",
-    eyebrow: "任せた仕事のためのワークスペース",
+    eyebrow: "過程を見せるアシスタント",
     heroTitle: "仕事を前へ。進め方は見えるまま。",
+    capabilitiesHeading: "ここにある機能は、今日から動きます。",
+    capabilitiesLead:
+      "順番待ちも「近日公開」もありません。登録すれば標準の機能はすぐ動き、残りは必要なときに接続できます。",
+    trustHeading: "あなたの知らないところでは、何も起きません。",
     heroDescription:
       "最新トピックを調査し、有用な回答をドキュメントにして、定期 Hada ワークフローを予約できます。情報源リンクとツールの進捗も確認できます。",
     integrationBoundary:
@@ -274,8 +289,12 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
   zh: {
     login: "登录",
     getStarted: "开始使用",
-    eyebrow: "用于委派工作的工作区",
+    eyebrow: "会展示过程的助手",
     heroTitle: "推进工作，也看清它如何完成。",
+    capabilitiesHeading: "这里的每一项，今天就能用。",
+    capabilitiesLead:
+      "没有等候名单，也没有即将推出。注册后内置功能立刻可用，其余的随时连接。",
+    trustHeading: "不会有任何事在你不知情时发生。",
     heroDescription:
       "研究最新主题，把有用回答转成文档，并安排定期 Hada 工作流。来源链接和工具进度始终可见。",
     integrationBoundary:
@@ -347,11 +366,12 @@ function isCjkLocale(locale: AppLocale): boolean {
 export default function Home() {
   const locale = useResolvedLocale();
   const copy = HOME_COPY[locale];
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = !!useReducedMotion();
 
   // Latin display tracking is far too tight for CJK, whose glyphs are already
   // fixed-width and carry their own side bearings.
   const headingTracking = isCjkLocale(locale) ? "tracking-normal" : "tracking-[-0.045em]";
+  const labelTracking = isCjkLocale(locale) ? "tracking-[0.05em]" : "tracking-[0.18em]";
 
   return (
     <div className="min-h-screen bg-[#f7f6f2] text-zinc-950">
@@ -383,7 +403,7 @@ export default function Home() {
       </header>
 
       <main>
-        <section className="px-4 pb-10 pt-14 sm:px-6 sm:pb-14 sm:pt-20 lg:px-8">
+        <section className="px-4 pb-12 pt-14 sm:px-6 sm:pb-16 sm:pt-20 lg:px-8">
           <div className="mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
             <motion.div
               initial={reduceMotion ? false : { opacity: 0, y: 14 }}
@@ -391,7 +411,7 @@ export default function Home() {
               transition={{ duration: 0.45, ease: "easeOut" }}
               className="max-w-xl"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">
+              <p className={`text-[11px] font-semibold uppercase text-teal-700 ${labelTracking}`}>
                 {copy.eyebrow}
               </p>
               <h1
@@ -409,102 +429,142 @@ export default function Home() {
               </div>
 
               <div className="mt-8 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-                <Button asChild size="lg" className="h-12 rounded-lg bg-teal-700 px-8 text-white shadow-[0_10px_30px_-12px_rgba(15,118,110,0.7)] hover:bg-teal-800">
+                <Button asChild size="lg" className="group h-12 rounded-lg bg-teal-700 px-8 text-white shadow-[0_10px_30px_-12px_rgba(15,118,110,0.7)] transition-all hover:bg-teal-800 hover:shadow-[0_14px_36px_-12px_rgba(15,118,110,0.75)] motion-reduce:transition-none">
                   <Link href="/auth/signup">{copy.startFree}</Link>
                 </Button>
                 <Link
                   href="#capabilities"
-                  className="inline-flex items-center gap-1.5 border-b border-teal-700/50 pb-1 text-sm font-medium text-teal-800 transition-colors hover:border-teal-800 motion-reduce:transition-none"
+                  className="group inline-flex items-center gap-1.5 border-b border-teal-700/50 pb-1 text-sm font-medium text-teal-800 transition-colors hover:border-teal-800 motion-reduce:transition-none"
                 >
                   {copy.seeFeatures}
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0" />
                 </Link>
               </div>
             </motion.div>
 
-            <ProductPreview copy={copy} reduceMotion={!!reduceMotion} />
+            <ProductPreview copy={copy} reduceMotion={reduceMotion} />
           </div>
         </section>
 
+        {/* Steps: an editorial numbered rail rather than another bordered card. */}
         <section className="px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-7xl overflow-hidden rounded-xl border border-zinc-900/10 bg-white/55 lg:grid-cols-3">
-            {copy.steps.map((step, index) => {
-              const Icon = stepIcons[index];
-              return (
-                <article
-                  key={step.title}
-                  className="flex items-start gap-4 border-b border-zinc-900/10 p-5 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0"
-                >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-700/8 text-teal-700">
-                    <Icon className="h-5 w-5" />
+          <div className="mx-auto grid max-w-7xl border-t border-zinc-900/10 lg:grid-cols-3">
+            {copy.steps.map((step, index) => (
+              <Reveal
+                key={step.title}
+                reduceMotion={reduceMotion}
+                delay={index * 0.06}
+                className="group border-b border-zinc-900/10 py-7 lg:border-b-0 lg:border-l lg:border-zinc-900/10 lg:px-8 lg:first:border-l-0 lg:first:pl-0 lg:last:pr-0"
+              >
+                <div className="flex items-baseline gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="font-display text-5xl font-medium leading-none text-teal-700/20 transition-colors group-hover:text-teal-700/35 motion-reduce:transition-none"
+                  >
+                    {String(index + 1).padStart(2, "0")}
                   </span>
-                  <div>
-                    <h2 className="text-sm font-semibold">
-                      {index + 1}. {step.title}
-                    </h2>
-                    <p className="mt-1 text-xs leading-5 text-zinc-600">{step.description}</p>
-                  </div>
-                  {index < copy.steps.length - 1 ? (
-                    <ArrowRight
-                      aria-hidden="true"
-                      className="ml-auto hidden h-4 w-4 shrink-0 self-center text-zinc-400 lg:block"
-                    />
-                  ) : null}
-                </article>
-              );
-            })}
+                  {(() => {
+                    const Icon = stepIcons[index];
+                    return <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-teal-700" />;
+                  })()}
+                </div>
+                {/* h2: these are top-level page points with no section heading above them. */}
+                <h2 className={`mt-4 font-display text-lg font-medium ${headingTracking}`}>
+                  {step.title}
+                </h2>
+                <p className="mt-1.5 max-w-sm text-sm leading-6 text-zinc-600">{step.description}</p>
+              </Reveal>
+            ))}
           </div>
         </section>
 
-        <section id="capabilities" className="scroll-mt-8 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-          <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-2">
-            <CapabilityList
+        <section id="capabilities" className="scroll-mt-8 px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+          <Reveal reduceMotion={reduceMotion} className="mx-auto max-w-7xl">
+            <h2
+              className={`max-w-2xl font-display text-3xl font-medium leading-[1.15] sm:text-4xl lg:text-[2.75rem] ${headingTracking}`}
+            >
+              {copy.capabilitiesHeading}
+            </h2>
+            <p className="mt-4 max-w-xl text-base leading-7 text-zinc-600">{copy.capabilitiesLead}</p>
+          </Reveal>
+
+          <div className="mx-auto mt-12 grid max-w-7xl gap-10 lg:grid-cols-2 lg:gap-0">
+            <CapabilityColumn
               title={copy.worksTitle}
               items={copy.works}
               icons={builtInIcons}
+              reduceMotion={reduceMotion}
+              labelTracking={labelTracking}
             />
-            <CapabilityList
+            <CapabilityColumn
               title={copy.connectTitle}
               items={copy.connected}
               icons={integrationIcons}
               badge={copy.connectWhenNeeded}
-            />
-          </div>
-
-          <div className="mx-auto mt-4 grid max-w-7xl overflow-hidden rounded-xl border border-zinc-900/10 bg-white/55 md:grid-cols-2">
-            <TrustItem
-              icon={ShieldCheck}
-              title={copy.approvalTitle}
-              description={copy.approvalDescription}
-            />
-            <TrustItem
-              icon={Eye}
-              title={copy.progressTitle}
-              description={copy.progressDescription}
-              bordered
+              reduceMotion={reduceMotion}
+              labelTracking={labelTracking}
+              divided
             />
           </div>
         </section>
 
-        <section className="px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
-          <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 rounded-2xl bg-zinc-950 px-6 py-8 text-white sm:px-8 md:flex-row md:items-center">
-            <div>
+        {/* The one full-bleed moment: the trust claim is the differentiator, so it gets the page's peak. */}
+        <section className="relative overflow-hidden bg-zinc-950 px-4 py-20 text-white sm:px-6 sm:py-28 lg:px-8">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute right-8 top-1/2 hidden -translate-y-1/2 select-none font-display text-[10rem] font-medium leading-none text-white/[0.06] lg:block xl:right-16 xl:text-[13rem]"
+          >
+            하다
+          </span>
+
+          <div className="relative z-10 mx-auto max-w-7xl">
+            <Reveal reduceMotion={reduceMotion}>
               <h2
-                className={`font-display text-2xl font-medium ${
-                  isCjkLocale(locale) ? "tracking-normal" : "tracking-tight"
-                }`}
+                className={`max-w-3xl font-display text-3xl font-medium leading-[1.12] sm:text-5xl lg:text-[3.5rem] ${headingTracking}`}
               >
-                {copy.ctaTitle}
+                {copy.trustHeading}
               </h2>
-              <p className="mt-2 text-sm leading-6 text-zinc-400">{copy.ctaDescription}</p>
+            </Reveal>
+
+            <div className="mt-14 grid max-w-4xl gap-10 sm:mt-16 md:grid-cols-2 md:gap-14">
+              <TrustPoint
+                icon={ShieldCheck}
+                title={copy.approvalTitle}
+                description={copy.approvalDescription}
+                reduceMotion={reduceMotion}
+              />
+              <TrustPoint
+                icon={Eye}
+                title={copy.progressTitle}
+                description={copy.progressDescription}
+                reduceMotion={reduceMotion}
+                delay={0.08}
+              />
             </div>
-            <Button asChild size="lg" className="shrink-0 rounded-lg bg-teal-600 px-7 text-white hover:bg-teal-500">
+          </div>
+        </section>
+
+        <section className="px-4 py-20 text-center sm:px-6 sm:py-28 lg:px-8">
+          <Reveal reduceMotion={reduceMotion} className="mx-auto max-w-2xl">
+            <h2
+              className={`font-display text-3xl font-medium leading-[1.15] sm:text-5xl ${headingTracking}`}
+            >
+              {copy.ctaTitle}
+            </h2>
+            <p className="mx-auto mt-5 max-w-lg text-base leading-7 text-zinc-600">
+              {copy.ctaDescription}
+            </p>
+            <Button
+              asChild
+              size="lg"
+              className="group mt-9 h-14 rounded-lg bg-teal-700 px-10 text-base text-white shadow-[0_14px_40px_-14px_rgba(15,118,110,0.8)] transition-all hover:bg-teal-800 hover:shadow-[0_18px_48px_-14px_rgba(15,118,110,0.85)] motion-reduce:transition-none"
+            >
               <Link href="/auth/signup">
                 {copy.startFree}
-                <ArrowRight />
+                <ArrowRight className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0" />
               </Link>
             </Button>
-          </div>
+          </Reveal>
         </section>
       </main>
 
@@ -518,39 +578,89 @@ export default function Home() {
   );
 }
 
-function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: boolean }) {
+/**
+ * Scroll-triggered entrance that only ever moves an element.
+ * Opacity is deliberately untouched: if the viewport observer never fires, the
+ * content stays fully readable instead of being stranded invisible.
+ */
+function Reveal({
+  children,
+  className,
+  delay = 0,
+  reduceMotion,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+  reduceMotion: boolean;
+}) {
   return (
     <motion.div
+      className={className}
+      initial={reduceMotion ? false : { y: 24 }}
+      whileInView={{ y: 0 }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: boolean }) {
+  // Reveals the panel contents in the order Hada actually produced them.
+  const container = {
+    hidden: {},
+    shown: { transition: { staggerChildren: 0.12, delayChildren: 0.25 } },
+  };
+  const step = {
+    hidden: { opacity: 0, y: 10 },
+    shown: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
+  };
+
+  return (
+    <motion.div
+      role="img"
+      aria-label={copy.previewLabel}
       initial={reduceMotion ? false : { opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: reduceMotion ? 0 : 0.1, ease: "easeOut" }}
-      role="img"
-      aria-label={copy.previewLabel}
       className="grid min-w-0 gap-3 sm:grid-cols-[0.78fr_1.22fr]"
     >
-      <div className="flex min-w-0 flex-col rounded-xl border border-zinc-900/10 bg-white p-4 shadow-[0_18px_55px_-35px_rgba(24,24,27,0.45)]">
-        <ChatIdentity label={copy.userLabel} muted />
-        <div className="ml-8 mt-2 rounded-lg bg-zinc-100 px-3 py-2.5 text-xs leading-5">
-          {copy.userPrompt}
-        </div>
+      <motion.div
+        variants={reduceMotion ? undefined : container}
+        initial={reduceMotion ? false : "hidden"}
+        animate="shown"
+        className="flex min-w-0 flex-col rounded-xl border border-zinc-900/10 bg-white p-4 shadow-[0_18px_55px_-35px_rgba(24,24,27,0.45)]"
+      >
+        <motion.div variants={step}>
+          <ChatIdentity label={copy.userLabel} muted />
+          <div className="ml-8 mt-2 rounded-lg bg-zinc-100 px-3 py-2.5 text-xs leading-5">
+            {copy.userPrompt}
+          </div>
+        </motion.div>
 
-        <div className="mt-4">
+        <motion.div variants={step} className="mt-4">
           <ChatIdentity label={copy.assistantLabel} />
           <p className="ml-8 mt-2 text-xs leading-5 text-zinc-700">{copy.assistantResponse}</p>
-        </div>
+        </motion.div>
 
         <div className="ml-8 mt-4 space-y-2">
-          <ToolResult icon={Search} title={copy.searchDone} detail={copy.sourcesReturned} />
-          <ToolResult icon={FileText} title={copy.documentDone} detail={copy.documentTitle} />
+          <motion.div variants={step}>
+            <ToolResult icon={Search} title={copy.searchDone} detail={copy.sourcesReturned} />
+          </motion.div>
+          <motion.div variants={step}>
+            <ToolResult icon={FileText} title={copy.documentDone} detail={copy.documentTitle} />
+          </motion.div>
         </div>
 
-        <div className="mt-auto pt-5">
+        <motion.div variants={step} className="mt-auto pt-5">
           <div className="flex items-center justify-between rounded-lg border border-zinc-900/10 px-3 py-2.5 text-xs text-zinc-400">
             <span>{copy.askPlaceholder}</span>
             <Send className="h-3.5 w-3.5 text-zinc-500" />
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       <div className="min-w-0 rounded-xl border border-zinc-900/10 bg-white shadow-[0_18px_55px_-35px_rgba(24,24,27,0.45)]">
         <div className="flex items-center justify-between border-b border-zinc-900/10 px-4 py-3">
@@ -637,66 +747,85 @@ function SourceLine({ index, domain }: { index: string; domain: string }) {
   );
 }
 
-function CapabilityList({
+/**
+ * Label/description pairs, so they read as a definition list rather than as a
+ * stack of headings competing with the section title.
+ */
+function CapabilityColumn({
   title,
   items,
   icons,
   badge,
+  reduceMotion,
+  labelTracking,
+  divided = false,
 }: {
   title: string;
   items: FeatureCopy[];
   icons: LucideIcon[];
   badge?: string;
+  reduceMotion: boolean;
+  labelTracking: string;
+  divided?: boolean;
 }) {
   return (
-    <section className="rounded-xl border border-zinc-900/10 bg-white/55 p-5">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <div className="mt-4 border-t border-zinc-900/10">
+    <Reveal
+      reduceMotion={reduceMotion}
+      delay={divided ? 0.08 : 0}
+      className={divided ? "lg:border-l lg:border-zinc-900/10 lg:pl-10" : "lg:pr-10"}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className={`text-[11px] font-semibold uppercase text-zinc-500 ${labelTracking}`}>
+          {title}
+        </h3>
+        {badge ? (
+          <span className="rounded-full border border-teal-700/25 px-2.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-teal-800">
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <dl className="mt-6 border-t border-zinc-900/10">
         {items.map((item, index) => {
           const Icon = icons[index];
           return (
             <div
               key={item.title}
-              className="grid gap-2 border-b border-zinc-900/10 py-3 last:border-b-0 sm:grid-cols-[1.15fr_2fr_auto] sm:items-center"
+              className="group grid gap-1.5 border-b border-zinc-900/10 py-4 transition-colors hover:bg-white/50 sm:grid-cols-[1fr_1.5fr] sm:items-baseline sm:gap-4 motion-reduce:transition-none"
             >
-              <div className="flex items-center gap-3">
-                <Icon className="h-4 w-4 shrink-0 text-teal-700" />
-                <h3 className="text-xs font-semibold">{item.title}</h3>
-              </div>
-              <p className="pl-7 text-[11px] leading-5 text-zinc-600 sm:pl-0">{item.description}</p>
-              {badge ? (
-                <span className="ml-7 w-fit rounded-full bg-teal-700/8 px-2.5 py-1 text-[9px] font-medium text-teal-800 sm:ml-0">
-                  {badge}
-                </span>
-              ) : null}
+              <dt className="flex items-center gap-3">
+                <Icon
+                  aria-hidden="true"
+                  className="h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-teal-700 motion-reduce:transition-none"
+                />
+                <span className="text-sm font-semibold">{item.title}</span>
+              </dt>
+              <dd className="pl-7 text-sm leading-6 text-zinc-600 sm:pl-0">{item.description}</dd>
             </div>
           );
         })}
-      </div>
-    </section>
+      </dl>
+    </Reveal>
   );
 }
 
-function TrustItem({
+function TrustPoint({
   icon: Icon,
   title,
   description,
-  bordered = false,
+  reduceMotion,
+  delay = 0,
 }: {
   icon: LucideIcon;
   title: string;
   description: string;
-  bordered?: boolean;
+  reduceMotion: boolean;
+  delay?: number;
 }) {
   return (
-    <div className={`flex items-center gap-4 p-5 ${bordered ? "border-t border-zinc-900/10 md:border-l md:border-t-0" : ""}`}>
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-700/8 text-teal-700">
-        <Icon className="h-5 w-5" />
-      </span>
-      <div>
-        <h2 className="text-xs font-semibold">{title}</h2>
-        <p className="mt-1 text-[11px] leading-5 text-zinc-600">{description}</p>
-      </div>
-    </div>
+    <Reveal reduceMotion={reduceMotion} delay={delay} className="max-w-md">
+      <Icon aria-hidden="true" className="h-7 w-7 text-teal-400" />
+      <h3 className="mt-5 text-xl font-semibold leading-snug">{title}</h3>
+      <p className="mt-3 text-base leading-7 text-zinc-400">{description}</p>
+    </Reveal>
   );
 }
