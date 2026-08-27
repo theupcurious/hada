@@ -89,6 +89,10 @@ export async function POST(request: NextRequest) {
               isError: !!result.metadata.gatewayError,
               errorMessage: result.metadata.gatewayError?.message,
             });
+
+            // `complete` has finalized the response for the client; keep the
+            // stream open just long enough to deliver follow-up suggestions.
+            await awaitPendingWork(result.pendingWork);
           } catch (error: unknown) {
             emit({
               type: "error",
@@ -117,7 +121,7 @@ export async function POST(request: NextRequest) {
             emit(event);
           },
         })
-          .then((result) => {
+          .then(async (result) => {
             emit({
               type: "complete",
               id: result.assistantMessageId,
@@ -134,6 +138,10 @@ export async function POST(request: NextRequest) {
               isError: !!result.metadata.gatewayError,
               errorMessage: result.metadata.gatewayError?.message,
             });
+
+            // `complete` has finalized the response for the client; keep the
+            // stream open just long enough to deliver follow-up suggestions.
+            await awaitPendingWork(result.pendingWork);
           })
           .catch((error: unknown) => {
             emit({
@@ -216,6 +224,31 @@ export async function POST(request: NextRequest) {
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+// Follow-up suggestions stream in after `complete`, but must not hold the SSE
+// stream open indefinitely if their LLM call is slow. Cap the extra wait; if it
+// elapses, close anyway — the suggestions are persisted to the message and will
+// appear on the next load.
+const PENDING_WORK_GRACE_MS = 8_000;
+
+async function awaitPendingWork(pendingWork: Promise<void> | undefined): Promise<void> {
+  if (!pendingWork) {
+    return;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const grace = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, PENDING_WORK_GRACE_MS);
+  });
+
+  try {
+    await Promise.race([pendingWork.catch(() => undefined), grace]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function shouldFallbackToDirectRun(error: unknown): boolean {

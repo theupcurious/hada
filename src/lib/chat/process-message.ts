@@ -51,6 +51,14 @@ export interface ProcessMessageResult {
   conversationId: string;
   userMessageId: string;
   assistantMessageId: string;
+  /**
+   * Background tail work that must finish before the SSE stream is closed but
+   * that the `complete` event does NOT depend on — currently the follow-up
+   * suggestion generation (a separate LLM call). Emitting `complete` without
+   * awaiting this lets the response finalize immediately while the suggestion
+   * chips stream in a moment later. Always resolves; never rejects.
+   */
+  pendingWork?: Promise<void>;
 }
 
 export async function processMessage(options: ProcessMessageOptions): Promise<ProcessMessageResult> {
@@ -318,16 +326,23 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
 
     await emitEvent(options.onEvent, { type: "message_saved", id: assistantMessage.id });
 
-    const followUpSuggestions = await followUpPromise;
-
-    if (followUpSuggestions.length > 0) {
-      initialMetadata.followUpSuggestions = followUpSuggestions;
-      // Persist suggestions in the background — non-critical, don't block the response.
-      updateMessageById(supabase, assistantMessage.id, responseText, initialMetadata).catch(
-        (error) => console.error("Failed to persist follow-up suggestions", error),
-      );
-      await emitEvent(options.onEvent, { type: "follow_up_suggestions", suggestions: followUpSuggestions });
-    }
+    // Deliver follow-up suggestions without blocking the `complete` event.
+    // The route emits `complete` as soon as this function returns, then awaits
+    // `pendingWork` before closing the stream — so the response finalizes
+    // immediately while the (LLM-generated) suggestions stream in afterward.
+    const pendingWork = (async () => {
+      const followUpSuggestions = await followUpPromise;
+      if (followUpSuggestions.length > 0) {
+        initialMetadata.followUpSuggestions = followUpSuggestions;
+        // Persist suggestions in the background — non-critical, don't block the response.
+        updateMessageById(supabase, assistantMessage.id, responseText, initialMetadata).catch(
+          (error) => console.error("Failed to persist follow-up suggestions", error),
+        );
+        await emitEvent(options.onEvent, { type: "follow_up_suggestions", suggestions: followUpSuggestions });
+      }
+    })().catch((error) => {
+      console.error("Follow-up suggestion delivery failed", error);
+    });
 
     void maybeCompactConversation({
       supabase,
@@ -434,6 +449,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       conversationId: conversation.id,
       userMessageId: userMessage.id,
       assistantMessageId: assistantMessage.id,
+      pendingWork,
     };
   } catch (error) {
     fatalError =

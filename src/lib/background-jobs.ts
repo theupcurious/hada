@@ -173,7 +173,7 @@ export async function processBackgroundJob(jobId: string, token?: string): Promi
   };
 
   try {
-    await processMessage({
+    const result = await processMessage({
       userId: job.user_id,
       message: job.request_text,
       source: job.source,
@@ -184,6 +184,12 @@ export async function processBackgroundJob(jobId: string, token?: string): Promi
       backgroundJobId: job.id,
       onEvent: recordEvent,
     });
+
+    // Follow-up suggestions are now detached from the main path (they no longer
+    // block `complete`). In a background worker there is no lingering SSE stream
+    // to keep them alive, so await them here — otherwise the invocation can
+    // terminate before the persist lands and the suggestions are lost for good.
+    await result.pendingWork;
 
     await finalizeBackgroundJob(supabase, job.id, "completed", null);
     return { processed: true, status: "completed" };

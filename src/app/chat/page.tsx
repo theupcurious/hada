@@ -633,8 +633,13 @@ export default function ChatPage() {
     [],
   );
 
-  // Drain up to N chars per animation frame so fast bursts render smoothly.
-  const DRAIN_CHARS_PER_FRAME = 16;
+  // Drain buffered tokens each animation frame so fast bursts render smoothly.
+  // The rate is adaptive: a large backlog (fast model, batched network delivery)
+  // clears in ~6 frames so the visible text keeps up with the server, while a
+  // slow trickle still animates a few characters at a time. A fixed low rate
+  // capped the throughput at ~960 chars/s, which left seconds of drain latency
+  // after the server had already finished — the response looked stuck.
+  const DRAIN_MIN_CHARS_PER_FRAME = 16;
   const startDrainLoop = useCallback(() => {
     if (drainRafRef.current !== null) return;
     const drain = () => {
@@ -645,8 +650,9 @@ export default function ChatPage() {
       }
       const updates = new Map<string, string>();
       for (const [msgId, pending] of queue.entries()) {
-        const chunk = pending.slice(0, DRAIN_CHARS_PER_FRAME);
-        const remaining = pending.slice(DRAIN_CHARS_PER_FRAME);
+        const take = Math.max(DRAIN_MIN_CHARS_PER_FRAME, Math.ceil(pending.length / 6));
+        const chunk = pending.slice(0, take);
+        const remaining = pending.slice(take);
         updates.set(msgId, chunk);
         if (remaining) {
           queue.set(msgId, remaining);
@@ -1471,14 +1477,46 @@ export default function ChatPage() {
         );
         currentAssistantId = realAssistantId;
         activeAssistantMessageIdRef.current = currentAssistantId;
+        // The response is fully finalized — unlock the composer now instead of
+        // waiting for the stream to close, which lingers to deliver follow-up
+        // suggestion chips.
+        setIsLoading(false);
+        setIsThinking(false);
+      } else if (event.type === "done") {
+        // Generation has finished (emitted immediately after the last token,
+        // before the message is saved and before follow-up suggestions run).
+        // Flush any buffered tokens and swap in the authoritative terminal
+        // text now so the full response is visible the instant the model
+        // stops — instead of trickling out of the drain queue for another
+        // second while the cursor keeps blinking. isStreaming stays true until
+        // `message_saved` gives us the real message ID (needed for the
+        // regenerate/feedback actions), which arrives moments later.
+        pendingTokensRef.current.delete(currentAssistantId);
+        setIsThinking(false);
+        const terminal =
+          typeof event.content === "string" && event.content.length > 0 ? event.content : null;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === currentAssistantId && terminal !== null
+              ? { ...msg, content: terminal }
+              : msg,
+          ),
+        );
       } else if (event.type === "message_saved") {
         const realAssistantId = String(event.id ?? currentAssistantId);
+        // Flush any still-buffered tokens into content and migrate the drain
+        // queue key before the message ID changes. Without this, the temp→real
+        // id swap orphans the queue entry (keyed by the old id) and the tail of
+        // the response is frozen mid-stream until `complete` snaps it in.
+        const pendingTail = pendingTokensRef.current.get(currentAssistantId) ?? "";
+        pendingTokensRef.current.delete(currentAssistantId);
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === currentAssistantId
               ? {
                   ...msg,
                   id: realAssistantId,
+                  content: msg.content + pendingTail,
                   isStreaming: false,
                 }
               : msg,
@@ -1517,6 +1555,8 @@ export default function ChatPage() {
               : msg,
           ),
         );
+        setIsLoading(false);
+        setIsThinking(false);
       } else if (event.type === "background_job") {
         receivedTerminalEvent = true;
         // Stop following the bottom before applying terminal state, so the
@@ -1750,14 +1790,18 @@ export default function ChatPage() {
         );
       }
     } finally {
+      // Only tear down if this is still the active request. The stream stays
+      // open after `complete` to deliver follow-up suggestions, during which the
+      // user may have already sent the next message — its controller must not be
+      // reset by this one's cleanup.
       if (activeRequestControllerRef.current === requestController) {
         activeRequestControllerRef.current = null;
+        activeAssistantMessageIdRef.current = null;
+        didUserAbortRef.current = false;
+        streamFollowActiveRef.current = false;
+        setIsLoading(false);
+        setIsThinking(false);
       }
-      activeAssistantMessageIdRef.current = null;
-      didUserAbortRef.current = false;
-      streamFollowActiveRef.current = false;
-      setIsLoading(false);
-      setIsThinking(false);
     }
   };
 
@@ -1825,14 +1869,16 @@ export default function ChatPage() {
         }));
       }
     } finally {
+      // See sendMessage: keep cleanup scoped to the active request so a stream
+      // still lingering for follow-up suggestions can't reset a newer request.
       if (activeRequestControllerRef.current === requestController) {
         activeRequestControllerRef.current = null;
+        activeAssistantMessageIdRef.current = null;
+        didUserAbortRef.current = false;
+        streamFollowActiveRef.current = false;
+        setIsLoading(false);
+        setIsThinking(false);
       }
-      activeAssistantMessageIdRef.current = null;
-      didUserAbortRef.current = false;
-      streamFollowActiveRef.current = false;
-      setIsLoading(false);
-      setIsThinking(false);
     }
   };
 
