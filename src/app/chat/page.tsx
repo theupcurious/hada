@@ -556,6 +556,9 @@ export default function ChatPage() {
   const activeRequestControllerRef = useRef<AbortController | null>(null);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const didUserAbortRef = useRef(false);
+  // Invalidates in-flight history loads when the user changes what the message
+  // list represents (for example, leaving a past topic to send a new message).
+  const messageListRevisionRef = useRef(0);
   // Token drain queue: buffer text_delta tokens and release at a steady pace to smooth
   // out network bursts (TCP delivers batches of tokens at once → visually choppy).
   const pendingTokensRef = useRef<Map<string, string>>(new Map());
@@ -1151,6 +1154,7 @@ export default function ChatPage() {
   }, [pollBackgroundJob]);
 
   const loadHistory = useCallback(async (before?: string): Promise<Message[] | undefined> => {
+    const requestedRevision = messageListRevisionRef.current;
     try {
       const url = new URL("/api/conversations/messages", window.location.origin);
       url.searchParams.set("limit", "25");
@@ -1169,7 +1173,7 @@ export default function ChatPage() {
       if (before) {
         // Prepend older messages
         setMessages((prev) => [...loadedMessages, ...prev]);
-      } else {
+      } else if (requestedRevision === messageListRevisionRef.current) {
         // Initial load — keep landing view even when history exists.
         setMessages(loadedMessages);
       }
@@ -1223,6 +1227,7 @@ export default function ChatPage() {
 
   const handleJumpToSegment = useCallback(
     async (segment: SegmentListItem) => {
+      messageListRevisionRef.current += 1;
       setHistoryOpen(false);
       setIsLoadingHistory(true);
       try {
@@ -1250,6 +1255,7 @@ export default function ChatPage() {
   );
 
   const handleReturnToLatest = useCallback(async () => {
+    messageListRevisionRef.current += 1;
     setViewingSegment(null);
     setIsLoadingHistory(true);
     try {
@@ -1809,8 +1815,19 @@ export default function ChatPage() {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
     setShowConversation(true);
-    // Sending continues the live thread, so leave any past-topic view.
-    setViewingSegment(null);
+
+    // A topic view only contains that segment's messages. Return to the latest
+    // conversation before appending a new turn; otherwise the follow anchor
+    // points at the old topic and the screen appears to jump backwards.
+    messageListRevisionRef.current += 1;
+    if (viewingSegment) {
+      const latestMessages = await loadHistory();
+      if (!latestMessages) {
+        return;
+      }
+      setViewingSegment(null);
+    }
+
     shouldFollowStreamRef.current = true;
 
     // Build message with attached doc context prepended
