@@ -516,6 +516,10 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
   },
 };
 
+const STREAM_FOLLOW_BOTTOM_THRESHOLD_PX = 160;
+const FINALIZATION_RECOVERY_ATTEMPTS = 16;
+const FINALIZATION_RECOVERY_INTERVAL_MS = 500;
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -540,6 +544,10 @@ export default function ChatPage() {
   const [segmentsLoading, setSegmentsLoading] = useState(false);
   const [viewingSegment, setViewingSegment] = useState<{ id: string; title: string } | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  // This is opt-in per response: streaming text follows the viewport until the
+  // reader scrolls away. Tool and status updates never request a scroll.
+  const shouldFollowStreamRef = useRef(false);
+  const streamFollowRafRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const eventOrderRef = useRef(0);
   const backgroundJobPollersRef = useRef(new Map<string, number>());
@@ -559,9 +567,26 @@ export default function ChatPage() {
   const copy = CHAT_COPY[locale];
   const localeTag = toLocaleLanguageTag(locale);
 
-  const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
-  };
+  }, []);
+
+  const requestStreamFollow = useCallback(() => {
+    if (!shouldFollowStreamRef.current || streamFollowRafRef.current !== null) return;
+
+    // Run after React commits the freshly drained text, so we follow the new
+    // response content rather than repeatedly scrolling stale layout.
+    streamFollowRafRef.current = requestAnimationFrame(() => {
+      streamFollowRafRef.current = null;
+      if (shouldFollowStreamRef.current) {
+        scrollToBottom();
+      }
+    });
+  }, [scrollToBottom]);
+
+  const isNearPageBottom = () =>
+    window.innerHeight + window.scrollY >=
+    document.documentElement.scrollHeight - STREAM_FOLLOW_BOTTOM_THRESHOLD_PX;
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -623,6 +648,81 @@ export default function ChatPage() {
     [],
   );
 
+  const recoverFinalizedMessage = useCallback(async (
+    temporaryMessageId: string,
+    expectedContent: string,
+  ) => {
+    if (!expectedContent.trim()) return;
+
+    let messageId = temporaryMessageId;
+
+    // Some hosting proxies can deliver the streamed answer but drop the late
+    // `message_saved` / `follow_up_suggestions` SSE events. The message and its
+    // metadata are already persisted, so reconcile from the normal history API
+    // rather than leaving the row permanently in its temporary state.
+    for (let attempt = 0; attempt < FINALIZATION_RECOVERY_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await fetch("/api/conversations/messages?limit=10", {
+          cache: "no-store",
+        });
+        if (response.ok) {
+          const data = await response.json() as { messages?: ApiMessage[] };
+          const savedMessage = [...(data.messages || [])]
+            .reverse()
+            .find(
+              (message) =>
+                message.role === "assistant" &&
+                message.content.trim() === expectedContent.trim(),
+            );
+
+          if (savedMessage) {
+            const metadata = savedMessage.metadata;
+            const followUpSuggestions = Array.isArray(metadata?.followUpSuggestions)
+              ? metadata.followUpSuggestions.filter((value): value is string => typeof value === "string")
+              : undefined;
+
+            updateMessage(messageId, (message) => ({
+              ...message,
+              id: savedMessage.id,
+              content: savedMessage.content,
+              cards: Array.isArray(metadata?.cards) ? metadata.cards : message.cards,
+              followUpSuggestions: followUpSuggestions ?? message.followUpSuggestions,
+              confirmation: metadata?.confirmation?.pending
+                ? {
+                    pending: true,
+                    function: metadata.confirmation.function
+                      ? {
+                          name: metadata.confirmation.function.name || "",
+                          arguments: metadata.confirmation.function.arguments || {},
+                        }
+                      : undefined,
+                  }
+                : undefined,
+              isStreaming: false,
+              isFinalizing: false,
+              isError: !!metadata?.gatewayError,
+              streamSegments: undefined,
+            }));
+            messageId = savedMessage.id;
+            activeAssistantMessageIdRef.current = savedMessage.id;
+
+            // An empty array also means suggestion generation has finished.
+            if (Array.isArray(metadata?.followUpSuggestions)) {
+              return;
+            }
+          }
+        }
+      } catch {
+        // The SSE stream remains the primary delivery path; retry the
+        // non-critical reconciliation without interrupting the chat UI.
+      }
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, FINALIZATION_RECOVERY_INTERVAL_MS);
+      });
+    }
+  }, [updateMessage]);
+
   // Drain buffered tokens each animation frame so fast bursts render smoothly.
   // The rate is adaptive: a large backlog (fast model, batched network delivery)
   // clears in ~6 frames so the visible text keeps up with the server, while a
@@ -656,10 +756,11 @@ export default function ChatPage() {
           return chunk ? { ...msg, content: msg.content + chunk } : msg;
         }),
       );
+      requestStreamFollow();
       drainRafRef.current = requestAnimationFrame(drain);
     };
     drainRafRef.current = requestAnimationFrame(drain);
-  }, []);
+  }, [requestStreamFollow]);
 
   const stopBackgroundJobPolling = useCallback((jobId: string) => {
     const poller = backgroundJobPollersRef.current.get(jobId);
@@ -1174,6 +1275,22 @@ export default function ChatPage() {
     return () => window.removeEventListener("scroll", handleWindowScroll);
   }, [showConversation, hasMoreHistory, isLoadingMore, loadMoreHistory]);
 
+  useEffect(() => {
+    if (!showConversation) {
+      shouldFollowStreamRef.current = false;
+      return;
+    }
+
+    const handleWindowScroll = () => {
+      // A reader who scrolls away from the bottom takes control. Following
+      // resumes automatically with their next message or regeneration.
+      shouldFollowStreamRef.current = isNearPageBottom();
+    };
+
+    window.addEventListener("scroll", handleWindowScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleWindowScroll);
+  }, [showConversation]);
+
   const autosizeTextarea = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -1345,6 +1462,9 @@ export default function ChatPage() {
       if (drainRafRef.current !== null) {
         cancelAnimationFrame(drainRafRef.current);
       }
+      if (streamFollowRafRef.current !== null) {
+        cancelAnimationFrame(streamFollowRafRef.current);
+      }
     };
   }, []);
 
@@ -1474,6 +1594,8 @@ export default function ChatPage() {
               : msg,
           ),
         );
+        requestStreamFollow();
+        void recoverFinalizedMessage(currentAssistantId, terminal ?? "");
       } else if (event.type === "message_saved") {
         const realAssistantId = String(event.id ?? currentAssistantId);
         // Flush any still-buffered tokens into content and migrate the drain
@@ -1622,7 +1744,14 @@ export default function ChatPage() {
     }
 
     return currentAssistantId;
-  }, [applyAgentEventToMessage, copy.defaultErrorMessage, copy.interruptedMessage, ensureBackgroundJobPolling]);
+  }, [
+    applyAgentEventToMessage,
+    copy.defaultErrorMessage,
+    copy.interruptedMessage,
+    ensureBackgroundJobPolling,
+    recoverFinalizedMessage,
+    requestStreamFollow,
+  ]);
 
   const handleSaveToDoc = (_messageId: string, content: string) => {
     setSaveModalContent(content);
@@ -1682,6 +1811,7 @@ export default function ChatPage() {
     setShowConversation(true);
     // Sending continues the live thread, so leave any past-topic view.
     setViewingSegment(null);
+    shouldFollowStreamRef.current = true;
 
     // Build message with attached doc context prepended
     const docsToSend = attachedDocs;
@@ -1712,7 +1842,7 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
       },
     ]);
-    requestAnimationFrame(() => scrollToBottom());
+    requestStreamFollow();
     if (!overrideMessage) setInput("");
     setAttachedDocs([]);
     setIsLoading(true);
@@ -1801,6 +1931,8 @@ export default function ChatPage() {
       streamSegments: [],
     }));
 
+    shouldFollowStreamRef.current = true;
+    requestStreamFollow();
     setIsLoading(true);
     didUserAbortRef.current = false;
     activeAssistantMessageIdRef.current = assistantMessageId;
