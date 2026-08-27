@@ -62,6 +62,7 @@ export interface ChatMessageRowMessage {
   }>;
   isError?: boolean;
   isStreaming?: boolean;
+  isFinalizing?: boolean;
   created_at: string;
 }
 
@@ -409,6 +410,7 @@ export function ChatMessageRow({
                 copied={copied}
                 feedbackValue={message.feedback?.value}
                 isLong={isLong}
+                isPersisted={!message.isFinalizing}
                 onCopy={handleCopy}
                 onRegenerate={handleRegenerate}
                 onFeedback={handleFeedback}

@@ -64,6 +64,10 @@ interface Message {
   streamSegments?: StreamingSegment[];
   isError?: boolean;
   isStreaming?: boolean;
+  // The model has finished producing text, but the server has not yet
+  // acknowledged the persisted message ID. Copy and Save remain safe during
+  // this brief window; actions that require the real ID stay hidden.
+  isFinalizing?: boolean;
   created_at: string;
 }
 
@@ -512,13 +516,10 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
   },
 };
 
-const PAGE_BOTTOM_THRESHOLD_PX = 160;
-
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isThinking, setIsThinking] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
   const [user, setUser] = useState<{ email?: string; name?: string; id?: string } | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -539,12 +540,6 @@ export default function ChatPage() {
   const [segmentsLoading, setSegmentsLoading] = useState(false);
   const [viewingSegment, setViewingSegment] = useState<{ id: string; title: string } | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
-  const shouldAutoScrollRef = useRef(true);
-  // True only while tokens are actively streaming. We follow the bottom during
-  // this window and stop at the first terminal event, so the finalization
-  // renders (content swap, toolbar/suggestions mounting, isLoading flip) don't
-  // each trigger a scroll snap — which is what caused the end-of-response shake.
-  const streamFollowActiveRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const eventOrderRef = useRef(0);
   const backgroundJobPollersRef = useRef(new Map<string, number>());
@@ -566,11 +561,6 @@ export default function ChatPage() {
 
   const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
-  };
-
-  const isNearPageBottom = () => {
-    const documentHeight = document.documentElement.scrollHeight;
-    return window.innerHeight + window.scrollY >= documentHeight - PAGE_BOTTOM_THRESHOLD_PX;
   };
 
   const scrollToTop = () => {
@@ -722,7 +712,6 @@ export default function ChatPage() {
 
   const applyAgentEventToMessage = useCallback((assistantMessageId: string, event: Record<string, unknown>) => {
     if (event.type === "text_delta" && typeof event.content === "string") {
-      setIsThinking(false);
       const existing = pendingTokensRef.current.get(assistantMessageId) ?? "";
       pendingTokensRef.current.set(assistantMessageId, existing + event.content);
       startDrainLoop();
@@ -730,7 +719,6 @@ export default function ChatPage() {
     }
 
     if (event.type === "tool_call") {
-      setIsThinking(true);
       const order = nextEventOrder(eventOrderRef);
       const callId = typeof event.callId === "string" ? event.callId : `call_${Date.now()}`;
       const name = typeof event.name === "string" ? event.name : "unknown";
@@ -1015,7 +1003,6 @@ export default function ChatPage() {
     if (data.job.status === "completed" || data.job.status === "failed" || data.job.status === "timeout") {
       stopBackgroundJobPolling(jobId);
       setIsLoading(false);
-      setIsThinking(false);
 
       if (data.assistantMessage) {
         updateMessage(assistantMessageId, (message) => ({
@@ -1187,17 +1174,6 @@ export default function ChatPage() {
     return () => window.removeEventListener("scroll", handleWindowScroll);
   }, [showConversation, hasMoreHistory, isLoadingMore, loadMoreHistory]);
 
-  useEffect(() => {
-    if (!showConversation) return;
-
-    const handleWindowScroll = () => {
-      shouldAutoScrollRef.current = isNearPageBottom();
-    };
-
-    window.addEventListener("scroll", handleWindowScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleWindowScroll);
-  }, [showConversation]);
-
   const autosizeTextarea = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -1327,23 +1303,15 @@ export default function ChatPage() {
     initialize();
   }, [router, supabase, loadHistory]);
 
+  // Keep the reader's viewport stable while assistant events change the
+  // message (tokens, tool traces, thinking, and finalization). There is
+  // deliberately no effect that scrolls in response to `messages`; we scroll
+  // once when a message is submitted instead.
   useEffect(() => {
     if (!showConversation) {
       requestAnimationFrame(scrollToTop);
-      return;
     }
-
-    // Only follow the bottom while tokens are actively streaming and the user is
-    // near the bottom. Skipping this on terminal/finalization renders is what
-    // removes the end-of-response shake.
-    if (!streamFollowActiveRef.current || !shouldAutoScrollRef.current) return;
-
-    requestAnimationFrame(() => {
-      if (streamFollowActiveRef.current && shouldAutoScrollRef.current) {
-        scrollToBottom("auto");
-      }
-    });
-  }, [messages, isThinking, showConversation]);
+  }, [showConversation]);
 
   useEffect(() => {
     autosizeTextarea();
@@ -1413,9 +1381,6 @@ export default function ChatPage() {
     const processStreamEvent = (event: Record<string, unknown>) => {
       if (event.type === "complete") {
         receivedTerminalEvent = true;
-        // Stop following the bottom before applying terminal state, so the
-        // finalization render doesn't snap-scroll.
-        streamFollowActiveRef.current = false;
         // Drain any tokens still buffered so the visible content already equals
         // the full streamed text — then we only swap to the server's canonical
         // text if it genuinely differs, avoiding a redundant reflow/height jump.
@@ -1467,6 +1432,7 @@ export default function ChatPage() {
                   : msg.followUpSuggestions,
                 confirmation: liveConfirmation,
                 isStreaming: false,
+                isFinalizing: false,
                 isError: !!event.isError,
                 backgroundJob: undefined,
                 streamSegments: undefined,
@@ -1481,24 +1447,30 @@ export default function ChatPage() {
         // waiting for the stream to close, which lingers to deliver follow-up
         // suggestion chips.
         setIsLoading(false);
-        setIsThinking(false);
       } else if (event.type === "done") {
         // Generation has finished (emitted immediately after the last token,
         // before the message is saved and before follow-up suggestions run).
         // Flush any buffered tokens and swap in the authoritative terminal
         // text now so the full response is visible the instant the model
         // stops — instead of trickling out of the drain queue for another
-        // second while the cursor keeps blinking. isStreaming stays true until
-        // `message_saved` gives us the real message ID (needed for the
-        // regenerate/feedback actions), which arrives moments later.
+        // second while the cursor keeps blinking. Treat this as visually
+        // complete immediately: a slow or failed persistence acknowledgement
+        // must not leave a finished answer stuck on "Drafting response" with
+        // Copy and Save hidden. `isFinalizing` keeps ID-dependent actions
+        // (regenerate, feedback, delete) unavailable until `message_saved`.
         pendingTokensRef.current.delete(currentAssistantId);
-        setIsThinking(false);
         const terminal =
           typeof event.content === "string" && event.content.length > 0 ? event.content : null;
         setMessages((prev) =>
           prev.map((msg) =>
-            msg.id === currentAssistantId && terminal !== null
-              ? { ...msg, content: terminal }
+            msg.id === currentAssistantId
+              ? {
+                  ...msg,
+                  content: terminal ?? msg.content,
+                  isStreaming: false,
+                  isFinalizing: true,
+                  streamSegments: undefined,
+                }
               : msg,
           ),
         );
@@ -1518,6 +1490,7 @@ export default function ChatPage() {
                   id: realAssistantId,
                   content: msg.content + pendingTail,
                   isStreaming: false,
+                  isFinalizing: false,
                 }
               : msg,
           ),
@@ -1538,9 +1511,6 @@ export default function ChatPage() {
         );
       } else if (event.type === "error") {
         receivedTerminalEvent = true;
-        // Stop following the bottom before applying terminal state, so the
-        // finalization render doesn't snap-scroll.
-        streamFollowActiveRef.current = false;
         pendingTokensRef.current.delete(currentAssistantId);
         setMessages((prev) =>
           prev.map((msg) =>
@@ -1549,6 +1519,7 @@ export default function ChatPage() {
                   ...msg,
                   content: String(event.message ?? copy.defaultErrorMessage),
                   isStreaming: false,
+                  isFinalizing: false,
                   isError: true,
                   streamSegments: undefined,
                 }
@@ -1556,12 +1527,8 @@ export default function ChatPage() {
           ),
         );
         setIsLoading(false);
-        setIsThinking(false);
       } else if (event.type === "background_job") {
         receivedTerminalEvent = true;
-        // Stop following the bottom before applying terminal state, so the
-        // finalization render doesn't snap-scroll.
-        streamFollowActiveRef.current = false;
         const realAssistantId = String(event.assistantMessageId ?? currentAssistantId);
         const jobId = String(event.jobId ?? "");
 
@@ -1582,6 +1549,7 @@ export default function ChatPage() {
                     }
                   : undefined,
                 isStreaming: true,
+                isFinalizing: false,
               };
             }
             return msg;
@@ -1643,8 +1611,9 @@ export default function ChatPage() {
                 content: msg.content.trim()
                   ? `${msg.content}\n\n${copy.interruptedMessage}`
                   : copy.interruptedMessage,
-                isStreaming: false,
-                isError: true,
+              isStreaming: false,
+              isFinalizing: false,
+              isError: true,
                 streamSegments: undefined,
               }
             : msg,
@@ -1690,8 +1659,9 @@ export default function ChatPage() {
               content: msg.content.trim()
                 ? `${msg.content}\n\n${copy.interruptedMessage}`
                 : copy.interruptedMessage,
-              isStreaming: false,
-              isError: false,
+                isStreaming: false,
+                isFinalizing: false,
+                isError: false,
               streamSegments: undefined,
             }
           : msg,
@@ -1712,8 +1682,6 @@ export default function ChatPage() {
     setShowConversation(true);
     // Sending continues the live thread, so leave any past-topic view.
     setViewingSegment(null);
-    shouldAutoScrollRef.current = true;
-    streamFollowActiveRef.current = true;
 
     // Build message with attached doc context prepended
     const docsToSend = attachedDocs;
@@ -1748,7 +1716,6 @@ export default function ChatPage() {
     if (!overrideMessage) setInput("");
     setAttachedDocs([]);
     setIsLoading(true);
-    setIsThinking(true);
     didUserAbortRef.current = false;
     activeAssistantMessageIdRef.current = tempAssistantId;
     const requestController = new AbortController();
@@ -1782,6 +1749,7 @@ export default function ChatPage() {
                     ? error.message
                     : copy.connectionErrorMessage,
                   isStreaming: false,
+                  isFinalizing: false,
                   isError: true,
                   streamSegments: undefined,
                 }
@@ -1798,9 +1766,7 @@ export default function ChatPage() {
         activeRequestControllerRef.current = null;
         activeAssistantMessageIdRef.current = null;
         didUserAbortRef.current = false;
-        streamFollowActiveRef.current = false;
         setIsLoading(false);
-        setIsThinking(false);
       }
     }
   };
@@ -1823,6 +1789,7 @@ export default function ChatPage() {
     updateMessage(assistantMessageId, (message) => ({
       ...message,
       isStreaming: true,
+      isFinalizing: false,
       isError: false,
       followUpSuggestions: undefined,
       feedback: undefined,
@@ -1835,10 +1802,7 @@ export default function ChatPage() {
     }));
 
     setIsLoading(true);
-    setIsThinking(true);
     didUserAbortRef.current = false;
-    shouldAutoScrollRef.current = true;
-    streamFollowActiveRef.current = true;
     activeAssistantMessageIdRef.current = assistantMessageId;
     const requestController = new AbortController();
     activeRequestControllerRef.current = requestController;
@@ -1875,9 +1839,7 @@ export default function ChatPage() {
         activeRequestControllerRef.current = null;
         activeAssistantMessageIdRef.current = null;
         didUserAbortRef.current = false;
-        streamFollowActiveRef.current = false;
         setIsLoading(false);
-        setIsThinking(false);
       }
     }
   };
