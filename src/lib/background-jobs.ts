@@ -174,6 +174,15 @@ export async function processBackgroundJob(jobId: string, token?: string): Promi
     });
   };
 
+  // The job row doesn't carry the space, but its conversation does — recover it
+  // so space instructions and scoped memory apply to background runs too.
+  const { data: convRow } = await supabase
+    .from("conversations")
+    .select("project_id")
+    .eq("id", job.conversation_id)
+    .maybeSingle();
+  const projectId = (convRow as { project_id?: string | null } | null)?.project_id ?? null;
+
   try {
     const result = await processMessage({
       userId: job.user_id,
@@ -181,6 +190,7 @@ export async function processBackgroundJob(jobId: string, token?: string): Promi
       source: job.source,
       supabase,
       conversationId: job.conversation_id,
+      projectId: projectId ?? undefined,
       userMessageId: job.user_message_id,
       assistantMessageId: job.assistant_message_id,
       backgroundJobId: job.id,

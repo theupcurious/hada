@@ -31,13 +31,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const description = typeof body?.description === "string" ? body.description : null;
+  const instructions = typeof body?.instructions === "string" ? body.instructions : null;
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
   try {
-    const project = await createProject(supabase, user.id, { name, description });
+    const project = await createProject(supabase, user.id, { name, description, instructions });
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create project";

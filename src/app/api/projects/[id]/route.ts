@@ -64,6 +64,7 @@ export async function PATCH(
     const project = await updateProject(supabase, user.id, id, {
       name: typeof body?.name === "string" ? body.name : undefined,
       description: typeof body?.description === "string" ? body.description : undefined,
+      instructions: typeof body?.instructions === "string" ? body.instructions : undefined,
       archived: typeof body?.archived === "boolean" ? body.archived : undefined,
     });
     if (!project) {

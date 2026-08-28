@@ -31,6 +31,8 @@ export async function buildSystemPrompt(options: {
   tools: AgentTool[];
   connectedIntegrations?: string[];
   userMessage?: string;
+  /** Active space. NULL/undefined = General. Scopes which memories load into context. */
+  projectId?: string | null;
   activeSegment?: { title: string | null; topic_key: string | null; message_count?: number | null; last_active_at?: string | null } | null;
 }): Promise<BuildSystemPromptResult> {
   const basePrompt = await getBasePrompt();
@@ -47,12 +49,20 @@ export async function buildSystemPrompt(options: {
           .from("integrations")
           .select("provider")
           .eq("user_id", options.userId),
-    options.supabase
-      .from("user_memories")
-      .select("topic, content, updated_at, kind, pinned")
-      .eq("user_id", options.userId)
-      .order("pinned", { ascending: false })
-      .order("updated_at", { ascending: false }),
+    (() => {
+      // Global memories (project_id NULL) surface in every space; space memories
+      // only in their own space. In General only globals load.
+      const memoryQuery = options.supabase
+        .from("user_memories")
+        .select("topic, content, updated_at, kind, pinned")
+        .eq("user_id", options.userId);
+      return (options.projectId
+        ? memoryQuery.or(`project_id.is.null,project_id.eq.${options.projectId}`)
+        : memoryQuery.is("project_id", null)
+      )
+        .order("pinned", { ascending: false })
+        .order("updated_at", { ascending: false });
+    })(),
     options.supabase
       .from("documents")
       .select("id", { count: "exact", head: true })

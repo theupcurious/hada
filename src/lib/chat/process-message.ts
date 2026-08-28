@@ -90,6 +90,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     userId: options.userId,
     source: options.source,
     supabase,
+    projectId: options.projectId ?? null,
   };
   const tools = createTools(toolContext, { connectedIntegrations });
 
@@ -128,6 +129,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
         tools,
         connectedIntegrations,
         userMessage: options.message,
+        projectId: options.projectId ?? null,
         activeSegment: activeSegmentRow ?? null,
       });
     })(),
@@ -712,6 +714,13 @@ async function buildProjectContextSection(
     ];
     if (project.description?.trim()) {
       lines.push(`Project context: ${project.description.trim()}`);
+    }
+    if (project.instructions?.trim()) {
+      lines.push(
+        "### Space instructions",
+        "The user has configured this space with a specific role and style. Follow these instructions for every response in this space (they take precedence over general defaults, but never over the user's explicit request in the current message):",
+        project.instructions.trim(),
+      );
     }
     if (documents.length) {
       const docList = documents

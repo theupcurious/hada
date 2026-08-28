@@ -25,6 +25,12 @@ export const saveMemoryManifest: ToolManifest = {
         type: "string",
         description: "Concise memory content to store (up to 500 characters).",
       },
+      scope: {
+        type: "string",
+        enum: ["space", "global"],
+        description:
+          "Where this fact belongs. 'space' (default) keeps it to the current space only — use for facts specific to this space's topic. 'global' makes it visible in every space — use for durable personal facts (diet, timezone, working style). In the General space both behave the same.",
+      },
     },
     required: ["topic", "content"],
   },
@@ -48,20 +54,69 @@ export function createSaveMemoryTool(context: ToolContext): AgentTool {
         return JSON.stringify({ success: false, error: validationError });
       }
 
-      const embedding = await generateEmbedding(`${topic}: ${content}`);
-      const { error } = await context.supabase.from("user_memories").upsert(
-        {
-          user_id: context.userId,
-          topic,
-          content,
-          embedding: embedding ? JSON.stringify(embedding) : null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,topic" },
-      );
+      // A "global" fact (project_id NULL) is visible in every space; a
+      // "space" fact stays in the active space. In General there is no active
+      // space, so both collapse to global. We can't use PostgREST upsert here:
+      // onConflict only accepts a column list and our uniqueness is on the
+      // coalesce(project_id, sentinel) expression, so resolve the row by hand.
+      const scopeGlobal = String(args.scope || "").toLowerCase() === "global";
+      const targetProjectId = scopeGlobal ? null : context.projectId ?? null;
 
-      if (error) {
-        return JSON.stringify({ success: false, error: error.message });
+      const embedding = await generateEmbedding(`${topic}: ${content}`);
+      const embeddingJson = embedding ? JSON.stringify(embedding) : null;
+
+      const findExisting = context.supabase
+        .from("user_memories")
+        .select("id")
+        .eq("user_id", context.userId)
+        .eq("topic", topic);
+      const { data: existing } = await (targetProjectId
+        ? findExisting.eq("project_id", targetProjectId)
+        : findExisting.is("project_id", null)
+      ).maybeSingle();
+
+      if (existing?.id) {
+        const { error } = await context.supabase
+          .from("user_memories")
+          .update({
+            content,
+            embedding: embeddingJson,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+        if (error) {
+          return JSON.stringify({ success: false, error: error.message });
+        }
+        return JSON.stringify({ success: true, topic, content });
+      }
+
+      const { error: insertError } = await context.supabase.from("user_memories").insert({
+        user_id: context.userId,
+        project_id: targetProjectId,
+        topic,
+        content,
+        embedding: embeddingJson,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (insertError) {
+        // Lost a race to a concurrent insert on the same (user, space, topic).
+        // The unique index rejected us (23505); fall back to updating that row.
+        if (insertError.code === "23505") {
+          const retry = context.supabase
+            .from("user_memories")
+            .update({ content, embedding: embeddingJson, updated_at: new Date().toISOString() })
+            .eq("user_id", context.userId)
+            .eq("topic", topic);
+          const { error: retryError } = await (targetProjectId
+            ? retry.eq("project_id", targetProjectId)
+            : retry.is("project_id", null));
+          if (retryError) {
+            return JSON.stringify({ success: false, error: retryError.message });
+          }
+          return JSON.stringify({ success: true, topic, content });
+        }
+        return JSON.stringify({ success: false, error: insertError.message });
       }
 
       return JSON.stringify({ success: true, topic, content });
