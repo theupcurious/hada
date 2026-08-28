@@ -2503,7 +2503,7 @@ export default function ChatPage() {
               activeId={activeProject?.id ?? null}
               onSwitch={(space) => void switchSpace(space)}
               generalLabel={copy.spacesGeneral}
-              newSpaceHref="/projects"
+              newSpaceHref="/projects?new=1"
               newSpaceLabel={copy.spacesNew}
               switchAria={copy.spacesSwitchAria}
             />
