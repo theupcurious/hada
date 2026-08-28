@@ -13,6 +13,7 @@ import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
 import { DocAttachPicker, AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
 import { FileUploadButton } from "@/components/chat/file-upload-button";
 import { HistoryPanel } from "@/components/chat/history-panel";
+import { SpaceSwitcher, type Space } from "@/components/chat/space-switcher";
 import type { SegmentListItem } from "@/lib/db/segments";
 import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first-run-setup";
 import { WelcomeHome } from "@/components/chat/welcome-home";
@@ -219,6 +220,9 @@ interface ChatLocaleCopy {
   returnToLatest: string;
   activityLabel: string;
   openActivityAria: string;
+  spacesGeneral: string;
+  spacesNew: string;
+  spacesSwitchAria: string;
 }
 
 const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
@@ -294,6 +298,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     returnToLatest: "Return to latest",
     activityLabel: "Activity",
     openActivityAria: "Open activity",
+    spacesGeneral: "General",
+    spacesNew: "New space",
+    spacesSwitchAria: "Switch space",
   },
   ko: {
     greetingMorning: "좋은 아침입니다",
@@ -367,6 +374,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     returnToLatest: "최신으로 돌아가기",
     activityLabel: "활동",
     openActivityAria: "활동 열기",
+    spacesGeneral: "일반",
+    spacesNew: "새 스페이스",
+    spacesSwitchAria: "스페이스 전환",
   },
   ja: {
     greetingMorning: "おはようございます",
@@ -440,6 +450,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     returnToLatest: "最新に戻る",
     activityLabel: "アクティビティ",
     openActivityAria: "アクティビティを開く",
+    spacesGeneral: "一般",
+    spacesNew: "新しいスペース",
+    spacesSwitchAria: "スペースを切り替え",
   },
   zh: {
     greetingMorning: "早上好",
@@ -513,6 +526,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     returnToLatest: "返回最新",
     activityLabel: "活动",
     openActivityAria: "打开活动",
+    spacesGeneral: "通用",
+    spacesNew: "新建空间",
+    spacesSwitchAria: "切换空间",
   },
 };
 
@@ -531,7 +547,18 @@ export default function ChatPage() {
   const [greetingText, setGreetingText] = useState("Hello");
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [recentRuns, setRecentRuns] = useState<RecentRunSummary[]>([]);
-  const [activeProject, setActiveProject] = useState<{ id: string; name: string } | null>(null);
+  // Seed the active space synchronously from ?project=<id> so the switcher's
+  // selection matches the thread that loads on a deep link from the first
+  // render. The name-fetch effect fills in the display name.
+  const [activeProject, setActiveProject] = useState<{ id: string; name: string } | null>(() => {
+    if (typeof window === "undefined") return null;
+    const id = new URL(window.location.href).searchParams.get("project");
+    return id ? { id, name: "" } : null;
+  });
+  const [spaces, setSpaces] = useState<Space[]>([]);
+  // Mirrors the active space id for async history loads, which must not wait for
+  // the activeProject state/name round-trip to resolve.
+  const activeProjectIdRef = useRef<string | null>(null);
   const [recentDocuments, setRecentDocuments] = useState<HomeDocumentSummary[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<HomeTaskSummary[]>([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -1161,6 +1188,10 @@ export default function ChatPage() {
       if (before) {
         url.searchParams.set("before", before);
       }
+      const projectId = activeProjectIdRef.current;
+      if (projectId) {
+        url.searchParams.set("project", projectId);
+      }
 
       const response = await fetch(url.toString());
       if (!response.ok) {
@@ -1213,7 +1244,11 @@ export default function ChatPage() {
     setHistoryOpen(true);
     setSegmentsLoading(true);
     try {
-      const response = await fetch("/api/conversations/segments");
+      const segmentsUrl = new URL("/api/conversations/segments", window.location.origin);
+      if (activeProjectIdRef.current) {
+        segmentsUrl.searchParams.set("project", activeProjectIdRef.current);
+      }
+      const response = await fetch(segmentsUrl.toString());
       if (!response.ok) throw new Error("Failed to load segments");
       const data = (await response.json()) as { segments?: SegmentListItem[] };
       setSegments(data.segments ?? []);
@@ -1306,6 +1341,12 @@ export default function ChatPage() {
 
   useEffect(() => {
     const initialize = async () => {
+      // Resolve the active space from ?project=<id> synchronously so the very
+      // first history load is scoped to the right conversation.
+      if (typeof window !== "undefined") {
+        activeProjectIdRef.current = new URL(window.location.href).searchParams.get("project");
+      }
+
       const { data: dbUser } = await supabase
         .from("users")
         .select("id, name, email, settings")
@@ -1382,6 +1423,24 @@ export default function ChatPage() {
                 return aTime - bTime;
               });
             setUpcomingTasks(sortedTasks);
+          })
+          .catch(() => null),
+        fetch("/api/projects", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            const list = Array.isArray(d?.projects) ? (d.projects as unknown[]) : [];
+            setSpaces(
+              list
+                .filter(
+                  (p): p is { id: string; name: string; archived?: boolean } =>
+                    !!p &&
+                    typeof p === "object" &&
+                    typeof (p as { id?: unknown }).id === "string" &&
+                    typeof (p as { name?: unknown }).name === "string" &&
+                    (p as { archived?: unknown }).archived !== true,
+                )
+                .map((p) => ({ id: p.id, name: p.name })),
+            );
           })
           .catch(() => null),
       ]);
@@ -1767,14 +1826,45 @@ export default function ChatPage() {
     void sendMessage(`Ingest this into my wiki:\n\n${content}`);
   };
 
-  const exitProject = () => {
-    setActiveProject(null);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("project");
-      window.history.replaceState({}, document.title, url.toString());
-    }
-  };
+  // Switch the active space: point the ref at the target, sync the URL, and
+  // reload that space's thread. null = the default "General" space.
+  const switchSpace = useCallback(
+    async (space: Space | null) => {
+      const nextId = space?.id ?? null;
+      if (nextId === activeProjectIdRef.current) return;
+
+      // Invalidate any in-flight history load from the previous space so its
+      // response can't overwrite this one's messages.
+      messageListRevisionRef.current += 1;
+      activeProjectIdRef.current = nextId;
+      setActiveProject(space);
+      setViewingSegment(null);
+      setHasMoreHistory(false);
+      setMessages([]);
+
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (nextId) {
+          url.searchParams.set("project", nextId);
+        } else {
+          url.searchParams.delete("project");
+        }
+        window.history.replaceState({}, document.title, url.toString());
+      }
+
+      setIsLoadingHistory(true);
+      try {
+        const loaded = await loadHistory();
+        setShowConversation(!!loaded && loaded.length > 0);
+        requestAnimationFrame(() =>
+          window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }),
+        );
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    },
+    [loadHistory],
+  );
 
   const handleAttachDoc = (doc: AttachedDoc) => {
     setAttachedDocs((prev) => [...prev, doc]);
@@ -2254,20 +2344,6 @@ export default function ChatPage() {
 
   const inputForm = (
     <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
-      {activeProject ? (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-1.5 text-xs">
-          <span className="min-w-0 truncate text-teal-700 dark:text-teal-300">
-            <span className="font-medium">{copy.projectActivePrefix}</span> {activeProject.name}
-          </span>
-          <button
-            type="button"
-            onClick={exitProject}
-            className="shrink-0 text-teal-700/70 hover:text-teal-700 dark:text-teal-300/70 dark:hover:text-teal-300"
-          >
-            {copy.projectExit}
-          </button>
-        </div>
-      ) : null}
       <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden">
         {/* Attached doc chips */}
         <AttachedDocChips attachedDocs={attachedDocs} onDetach={handleDetachDoc} />
@@ -2346,7 +2422,8 @@ export default function ChatPage() {
     void fetch(`/api/projects/${projectId}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { project?: { id: string; name: string } } | null) => {
-        if (!cancelled && data?.project) {
+        // Only apply if the user hasn't switched away while this was in flight.
+        if (!cancelled && data?.project && activeProjectIdRef.current === data.project.id) {
           setActiveProject({ id: data.project.id, name: data.project.name });
         }
       })
@@ -2421,6 +2498,15 @@ export default function ChatPage() {
                 {connectionStatus === "disconnected" && copy.statusOffline}
               </span>
             </Link>
+            <SpaceSwitcher
+              spaces={spaces}
+              activeId={activeProject?.id ?? null}
+              onSwitch={(space) => void switchSpace(space)}
+              generalLabel={copy.spacesGeneral}
+              newSpaceHref="/projects"
+              newSpaceLabel={copy.spacesNew}
+              switchAria={copy.spacesSwitchAria}
+            />
           </div>
           <div className="flex items-center justify-end gap-1 sm:gap-1.5">
             <span className="hidden text-sm text-muted-foreground xl:block">{user?.email}</span>

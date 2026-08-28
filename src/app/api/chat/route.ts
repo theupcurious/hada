@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       if (regenerateAssistantMessageId) {
         void (async () => {
           try {
-            const conversation = await getOrCreateConversation(admin, user.id);
+            const conversation = await getOrCreateConversation(admin, user.id, projectId ?? null);
             const messages = await getConversationMessagesForRegeneration(
               admin,
               conversation.id,
@@ -169,6 +169,7 @@ export async function POST(request: NextRequest) {
               userId: user.id,
               source: "web",
               message,
+              projectId,
             });
 
             scheduleBackgroundJobProcessing({

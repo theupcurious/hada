@@ -12,16 +12,22 @@ import type {
  */
 export async function getOrCreateConversation(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  projectId?: string | null,
 ): Promise<Conversation> {
-  // Try to get existing conversation
-  const { data: existing, error: fetchError } = await supabase
+  // Try to get the existing conversation for this (user, space). A null
+  // projectId is the default "General" space.
+  const existingQuery = supabase
     .from('conversations')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+    .limit(1);
+
+  const { data: existing, error: fetchError } = await (projectId
+    ? existingQuery.eq('project_id', projectId)
+    : existingQuery.is('project_id', null)
+  ).single();
 
   if (existing && !fetchError) {
     return existing as Conversation;
@@ -30,7 +36,7 @@ export async function getOrCreateConversation(
   // Create new conversation
   const { data: created, error: createError } = await supabase
     .from('conversations')
-    .insert({ user_id: userId, title: null })
+    .insert({ user_id: userId, project_id: projectId ?? null, title: null })
     .select()
     .single();
 
@@ -210,15 +216,20 @@ export async function getSegmentMessages(
  */
 export async function getConversationId(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  projectId?: string | null,
 ): Promise<string | null> {
-  const { data, error } = await supabase
+  const query = supabase
     .from('conversations')
     .select('id')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+    .limit(1);
+
+  const { data, error } = await (projectId
+    ? query.eq('project_id', projectId)
+    : query.is('project_id', null)
+  ).single();
 
   if (error || !data) {
     return null;
