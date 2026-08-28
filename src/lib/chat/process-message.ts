@@ -78,7 +78,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   const [conversation, integrationsResult] = await Promise.all([
     options.conversationId
       ? Promise.resolve({ id: options.conversationId })
-      : getOrCreateConversation(supabase, options.userId),
+      : getOrCreateConversation(supabase, options.userId, options.projectId ?? null),
     supabase.from("integrations").select("provider").eq("user_id", options.userId),
   ]);
 

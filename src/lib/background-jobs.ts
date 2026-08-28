@@ -44,6 +44,8 @@ export async function enqueueBackgroundJob(options: {
   userMessageId?: string;
   assistantMessageId?: string;
   conversationId?: string;
+  /** The active space, so the job lands in that project's conversation. */
+  projectId?: string | null;
 }): Promise<{
   jobId: string;
   conversationId: string;
@@ -52,7 +54,7 @@ export async function enqueueBackgroundJob(options: {
   processingToken: string;
 }> {
   const conversationId = options.conversationId
-    ?? (await getOrCreateConversation(options.supabase, options.userId)).id;
+    ?? (await getOrCreateConversation(options.supabase, options.userId, options.projectId ?? null)).id;
   const jobId = crypto.randomUUID();
   const processingToken = crypto.randomUUID();
 

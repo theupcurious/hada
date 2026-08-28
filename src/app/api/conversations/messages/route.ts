@@ -35,9 +35,11 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 100);
     const before = searchParams.get('before') || undefined;
     const segment = searchParams.get('segment') || undefined;
+    // Which space's thread to load; absent = the default "General" space.
+    const project = searchParams.get('project') || undefined;
 
-    // Get user's conversation
-    const conversationId = await getConversationId(supabase, user.id);
+    // Get the conversation for this space
+    const conversationId = await getConversationId(supabase, user.id, project);
 
     if (!conversationId) {
       // No conversation yet - return empty

@@ -2,14 +2,15 @@ import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getConversationId } from "@/lib/db/conversations";
 import { listConversationSegments } from "@/lib/db/segments";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * GET /api/conversations/segments
  * List the user's conversation segments (topics) for the history navigator,
- * most recently active first.
+ * most recently active first. Scoped to a space via ?project=<id> (absent =
+ * the default "General" space).
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { user, error: authError } = await getAuthenticatedUser(supabase);
@@ -18,7 +19,8 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const conversationId = await getConversationId(supabase, user.id);
+    const project = request.nextUrl.searchParams.get("project") || undefined;
+    const conversationId = await getConversationId(supabase, user.id, project);
 
     if (!conversationId) {
       return NextResponse.json({ segments: [] });
