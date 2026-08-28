@@ -53,6 +53,15 @@ export default function ProjectsPage() {
     void load();
   }, [load]);
 
+  // Arrive here from the "New space" action with the create form already open,
+  // so the starter templates are the first thing you see.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("new") === "1") {
+      setShowForm(true);
+    }
+  }, []);
+
   const createProject = async () => {
     if (!name.trim()) return;
     setCreating(true);
@@ -142,10 +151,10 @@ export default function ProjectsPage() {
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
               <FolderKanban className="h-5 w-5 text-teal-600 dark:text-teal-400" />
-              Projects
+              Spaces
             </h1>
             <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-              A workspace that bundles its documents, chat, and outputs in one place.
+              A dedicated assistant for a topic — its own instructions, chat, and memory.
             </p>
           </div>
         </div>
@@ -157,21 +166,37 @@ export default function ProjectsPage() {
 
       {showForm ? (
         <div className="mb-6 space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
-          <div className="flex flex-wrap gap-1.5">
-            <span className="mr-1 self-center text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              Start from
-            </span>
-            {SPACE_TEMPLATES.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => applyTemplate(template)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:border-teal-500/50 hover:text-teal-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:text-teal-300"
-              >
-                <span aria-hidden>{template.icon}</span>
-                {template.label}
-              </button>
-            ))}
+          <div>
+            <p className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              Start from a template
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SPACE_TEMPLATES.map((template) => {
+                const active = template.name
+                  ? name === template.name && instructions === template.instructions
+                  : false;
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => applyTemplate(template)}
+                    className={cn(
+                      "flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-colors",
+                      active
+                        ? "border-teal-500/60 bg-teal-500/5"
+                        : "border-zinc-200 bg-white hover:border-teal-500/50 dark:border-zinc-700 dark:bg-zinc-950",
+                    )}
+                  >
+                    <span className="text-lg leading-none" aria-hidden>
+                      {template.icon}
+                    </span>
+                    <span className="text-xs font-medium text-zinc-800 dark:text-zinc-100">
+                      {template.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <Input
             value={name}
@@ -224,12 +249,12 @@ export default function ProjectsPage() {
       {error ? <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 
       {loading ? (
-        <p className="text-sm text-zinc-400">Loading projects…</p>
+        <p className="text-sm text-zinc-400">Loading spaces…</p>
       ) : projects.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-300 py-12 text-center dark:border-zinc-700">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">No projects yet.</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">No spaces yet.</p>
           <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-            Create one to group a piece of work — its docs, chat, and outputs stay together.
+            Create one to give the assistant a dedicated role — its chat and memory stay separate.
           </p>
         </div>
       ) : (
@@ -348,7 +373,7 @@ export default function ProjectsPage() {
       <ConfirmDialog
         open={toDelete !== null}
         title={`Delete "${toDelete?.name ?? ""}"?`}
-        description="This removes the project. Its documents and chat history are not deleted."
+        description="This removes the space. Its documents and chat history are not deleted."
         confirmLabel="Delete"
         cancelLabel="Cancel"
         destructive
