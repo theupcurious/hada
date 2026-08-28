@@ -300,6 +300,8 @@ export interface Project {
   name: string;
   folder: string;
   description: string | null;
+  /** Per-space directive layered into the system prompt. NULL = no custom identity. */
+  instructions: string | null;
   archived: boolean;
   created_at: string;
   updated_at: string;

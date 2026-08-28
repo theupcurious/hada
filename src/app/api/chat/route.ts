@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
               source: "web",
               supabase: admin,
               conversationId: conversation.id,
+              projectId,
               userMessageId: pair.userMessageId,
               assistantMessageId: pair.assistantMessageId,
               onEvent: (event: AgentEvent) => {
