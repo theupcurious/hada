@@ -2119,8 +2119,14 @@ export default function ChatPage() {
     });
     try {
       const toDelete = [messageId, precedingUserMessageId].filter(Boolean) as string[];
+      // Scope the delete to the active space so it targets the right
+      // conversation (a non-General space has its own conversation row).
+      const projectId = activeProjectIdRef.current;
+      const suffix = projectId ? `?project=${encodeURIComponent(projectId)}` : "";
       await Promise.all(
-        toDelete.map((id) => fetch(`/api/conversations/messages/${id}`, { method: "DELETE" })),
+        toDelete.map((id) =>
+          fetch(`/api/conversations/messages/${id}${suffix}`, { method: "DELETE" }),
+        ),
       );
     } catch (error) {
       console.error("Delete message error:", error);
