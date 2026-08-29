@@ -32,13 +32,21 @@ export async function POST(request: NextRequest) {
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const description = typeof body?.description === "string" ? body.description : null;
   const instructions = typeof body?.instructions === "string" ? body.instructions : null;
+  const emoji = typeof body?.emoji === "string" ? body.emoji : null;
+  const color = typeof body?.color === "string" ? body.color : null;
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
   try {
-    const project = await createProject(supabase, user.id, { name, description, instructions });
+    const project = await createProject(supabase, user.id, {
+      name,
+      description,
+      instructions,
+      emoji,
+      color,
+    });
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create project";

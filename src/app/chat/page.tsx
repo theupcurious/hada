@@ -1432,14 +1432,20 @@ export default function ChatPage() {
             setSpaces(
               list
                 .filter(
-                  (p): p is { id: string; name: string; archived?: boolean } =>
+                  (p): p is {
+                    id: string;
+                    name: string;
+                    emoji?: string | null;
+                    color?: string | null;
+                    archived?: boolean;
+                  } =>
                     !!p &&
                     typeof p === "object" &&
                     typeof (p as { id?: unknown }).id === "string" &&
                     typeof (p as { name?: unknown }).name === "string" &&
                     (p as { archived?: unknown }).archived !== true,
                 )
-                .map((p) => ({ id: p.id, name: p.name })),
+                .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji ?? null, color: p.color ?? null })),
             );
           })
           .catch(() => null),

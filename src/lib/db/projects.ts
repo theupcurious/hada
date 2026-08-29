@@ -37,7 +37,13 @@ export async function getProject(
 export async function createProject(
   supabase: SupabaseClient,
   userId: string,
-  input: { name: string; description?: string | null; instructions?: string | null },
+  input: {
+    name: string;
+    description?: string | null;
+    instructions?: string | null;
+    emoji?: string | null;
+    color?: string | null;
+  },
 ): Promise<Project> {
   const name = input.name.trim();
   const { data, error } = await supabase
@@ -48,6 +54,8 @@ export async function createProject(
       folder: projectFolder(name),
       description: input.description?.trim() || null,
       instructions: input.instructions?.trim() || null,
+      emoji: input.emoji?.trim() || null,
+      color: input.color?.trim() || null,
     })
     .select("*")
     .single();
@@ -59,7 +67,14 @@ export async function updateProject(
   supabase: SupabaseClient,
   userId: string,
   projectId: string,
-  updates: { name?: string; description?: string | null; instructions?: string | null; archived?: boolean },
+  updates: {
+    name?: string;
+    description?: string | null;
+    instructions?: string | null;
+    emoji?: string | null;
+    color?: string | null;
+    archived?: boolean;
+  },
 ): Promise<Project | null> {
   const patch: Record<string, unknown> = {};
   if (typeof updates.name === "string" && updates.name.trim()) {
@@ -71,6 +86,12 @@ export async function updateProject(
   }
   if (updates.instructions !== undefined) {
     patch.instructions = updates.instructions?.trim() || null;
+  }
+  if (updates.emoji !== undefined) {
+    patch.emoji = updates.emoji?.trim() || null;
+  }
+  if (updates.color !== undefined) {
+    patch.color = updates.color?.trim() || null;
   }
   if (typeof updates.archived === "boolean") {
     patch.archived = updates.archived;
