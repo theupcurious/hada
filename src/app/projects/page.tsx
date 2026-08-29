@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types/database";
-import { SPACE_TEMPLATES } from "@/lib/space-templates";
+import { SPACE_TEMPLATES, SPACE_COLORS, SPACE_EMOJIS } from "@/lib/space-templates";
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -21,6 +21,8 @@ export default function ProjectsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [emoji, setEmoji] = useState("");
+  const [color, setColor] = useState(SPACE_COLORS[0]);
   const [toDelete, setToDelete] = useState<Project | null>(null);
 
   // Inline per-space editor (description + instructions only — editing the name
@@ -28,6 +30,8 @@ export default function ProjectsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
+  const [editEmoji, setEditEmoji] = useState("");
+  const [editColor, setEditColor] = useState(SPACE_COLORS[0]);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
@@ -74,6 +78,8 @@ export default function ProjectsPage() {
           name: name.trim(),
           description: description.trim() || null,
           instructions: instructions.trim() || null,
+          emoji: emoji.trim() || null,
+          color: color || null,
         }),
       });
       const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -81,6 +87,8 @@ export default function ProjectsPage() {
       setName("");
       setDescription("");
       setInstructions("");
+      setEmoji("");
+      setColor(SPACE_COLORS[0]);
       setShowForm(false);
       await load();
     } catch (e) {
@@ -94,12 +102,17 @@ export default function ProjectsPage() {
     setName(template.name);
     setDescription(template.description);
     setInstructions(template.instructions);
+    // The blank template's "＋" is a UI marker, not a real space emoji.
+    setEmoji(template.name ? template.icon : "");
+    setColor(template.color);
   };
 
   const startEditing = (project: Project) => {
     setEditingId(project.id);
     setEditDescription(project.description ?? "");
     setEditInstructions(project.instructions ?? "");
+    setEditEmoji(project.emoji ?? "");
+    setEditColor(project.color || SPACE_COLORS[0]);
   };
 
   const saveEditing = async (project: Project) => {
@@ -112,6 +125,8 @@ export default function ProjectsPage() {
         body: JSON.stringify({
           description: editDescription.trim(),
           instructions: editInstructions.trim(),
+          emoji: editEmoji.trim(),
+          color: editColor,
         }),
       });
       const data = (await res.json().catch(() => null)) as { project?: Project; error?: string } | null;
@@ -210,6 +225,12 @@ export default function ProjectsPage() {
               }
             }}
           />
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              Icon &amp; color
+            </p>
+            <IdentityPicker emoji={emoji} color={color} onEmoji={setEmoji} onColor={setColor} />
+          </div>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -270,6 +291,7 @@ export default function ProjectsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <h2 className="flex items-center gap-1.5 truncate text-sm font-medium text-zinc-950 dark:text-zinc-50">
+                    <SpaceIdentity emoji={project.emoji} color={project.color} />
                     {project.name}
                     {project.instructions?.trim() ? (
                       <span
@@ -324,6 +346,15 @@ export default function ProjectsPage() {
 
               {editingId === project.id ? (
                 <div className="mt-3 space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+                  <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                    Icon &amp; color
+                  </label>
+                  <IdentityPicker
+                    emoji={editEmoji}
+                    color={editColor}
+                    onEmoji={setEditEmoji}
+                    onColor={setEditColor}
+                  />
                   <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">
                     Description
                   </label>
@@ -382,6 +413,82 @@ export default function ProjectsPage() {
           if (toDelete) return deleteProject(toDelete);
         }}
       />
+    </div>
+  );
+}
+
+/** The space's emoji if set, otherwise a colored dot from its accent color. */
+function SpaceIdentity({ emoji, color }: { emoji: string | null; color: string | null }) {
+  if (emoji?.trim()) {
+    return (
+      <span className="shrink-0 text-sm leading-none" aria-hidden>
+        {emoji}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="h-2.5 w-2.5 shrink-0 rounded-full"
+      style={{ backgroundColor: color || SPACE_COLORS[0] }}
+    />
+  );
+}
+
+/** Emoji + accent color picker shared by the create form and the inline editor. */
+function IdentityPicker({
+  emoji,
+  color,
+  onEmoji,
+  onColor,
+}: {
+  emoji: string;
+  color: string;
+  onEmoji: (value: string) => void;
+  onColor: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1">
+        {SPACE_EMOJIS.map((choice) => {
+          const active = emoji === choice;
+          return (
+            <button
+              key={choice}
+              type="button"
+              aria-pressed={active}
+              // Click a selected emoji again to clear it (fall back to a dot).
+              onClick={() => onEmoji(active ? "" : choice)}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg border text-base transition-colors",
+                active
+                  ? "border-teal-500/60 bg-teal-500/10"
+                  : "border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/60",
+              )}
+            >
+              {choice}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {SPACE_COLORS.map((choice) => {
+          const active = color === choice;
+          return (
+            <button
+              key={choice}
+              type="button"
+              aria-label={`Accent color ${choice}`}
+              aria-pressed={active}
+              onClick={() => onColor(choice)}
+              className={cn(
+                "h-6 w-6 rounded-full ring-offset-2 ring-offset-white transition dark:ring-offset-zinc-900",
+                active ? "ring-2 ring-zinc-900 dark:ring-white" : "ring-0",
+              )}
+              style={{ backgroundColor: choice }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

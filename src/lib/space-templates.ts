@@ -8,7 +8,7 @@ export interface SpaceTemplate {
   id: string;
   /** Short label for the chip. */
   label: string;
-  /** Emoji shown on the chip. */
+  /** Emoji shown on the chip, and prefilled as the space's emoji. */
   icon: string;
   /** Prefilled space name (user can override). */
   name: string;
@@ -16,7 +16,33 @@ export interface SpaceTemplate {
   description: string;
   /** Prefilled per-space instructions — the space's role and style. */
   instructions: string;
+  /** Prefilled accent color (hex) — one of SPACE_COLORS. */
+  color: string;
 }
+
+/**
+ * Accent palette for a space's colored dot / identity. Kept small and legible
+ * on both light and dark grounds. Stored as the hex string on projects.color.
+ */
+export const SPACE_COLORS: string[] = [
+  "#14b8a6", // teal (brand default)
+  "#3b82f6", // blue
+  "#8b5cf6", // violet
+  "#ec4899", // pink
+  "#f59e0b", // amber
+  "#10b981", // emerald
+  "#ef4444", // red
+  "#64748b", // slate
+];
+
+/**
+ * A small curated emoji set for the picker. Users get quick, on-theme choices
+ * without a full emoji keyboard; the field still accepts any single emoji.
+ */
+export const SPACE_EMOJIS: string[] = [
+  "📈", "💪", "✍️", "💡", "📚", "💰", "🎯", "🧠",
+  "🚀", "🏠", "🍳", "🎨", "🧭", "⚙️", "🌱", "❤️",
+];
 
 export const SPACE_TEMPLATES: SpaceTemplate[] = [
   {
@@ -31,6 +57,7 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
       "Distinguish clearly between fact and speculation. Flag risk on any idea you surface.",
       "You are not a licensed financial advisor — never give personalized investment advice; frame everything as information, not a recommendation to buy or sell.",
     ].join(" "),
+    color: "#10b981",
   },
   {
     id: "health",
@@ -44,6 +71,7 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
       "Remember the user's goals, constraints, and progress, and check in on them.",
       "You are not a medical professional — for symptoms, pain, or medication questions, recommend seeing a doctor rather than diagnosing.",
     ].join(" "),
+    color: "#ec4899",
   },
   {
     id: "writing",
@@ -56,6 +84,7 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
       "When asked to edit, preserve the author's voice — improve, don't rewrite into your own style.",
       "Point out weak spots directly and suggest concrete fixes. Avoid filler and hedging.",
     ].join(" "),
+    color: "#8b5cf6",
   },
   {
     id: "blank",
@@ -64,5 +93,6 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
     name: "",
     description: "",
     instructions: "",
+    color: "#14b8a6",
   },
 ];

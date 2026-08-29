@@ -7,6 +7,8 @@ import Link from "next/link";
 export interface Space {
   id: string;
   name: string;
+  emoji?: string | null;
+  color?: string | null;
 }
 
 interface SpaceSwitcherProps {
@@ -33,17 +35,24 @@ function spaceHue(id: string): number {
   return Math.abs(hash) % 360;
 }
 
-function SpaceDot({ id }: { id: string | null }) {
-  if (id === null) {
+/**
+ * A space's visual identity: its emoji if set, otherwise a colored dot using
+ * its stored accent color, falling back to a stable hashed hue. `space === null`
+ * is the default General space (a neutral dot).
+ */
+function SpaceIdentity({ space }: { space: Space | null }) {
+  if (space === null) {
     return <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-500" />;
   }
-  const hue = spaceHue(id);
-  return (
-    <span
-      className="h-2.5 w-2.5 shrink-0 rounded-full"
-      style={{ backgroundColor: `hsl(${hue} 62% 50%)` }}
-    />
-  );
+  if (space.emoji) {
+    return (
+      <span className="w-4 shrink-0 text-center text-[13px] leading-none" aria-hidden>
+        {space.emoji}
+      </span>
+    );
+  }
+  const background = space.color || `hsl(${spaceHue(space.id)} 62% 50%)`;
+  return <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: background }} />;
 }
 
 export function SpaceSwitcher({
@@ -58,8 +67,8 @@ export function SpaceSwitcher({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const activeName =
-    activeId === null ? generalLabel : spaces.find((s) => s.id === activeId)?.name ?? generalLabel;
+  const activeSpace = activeId === null ? null : spaces.find((s) => s.id === activeId) ?? null;
+  const activeName = activeSpace?.name ?? generalLabel;
 
   useEffect(() => {
     if (!open) return;
@@ -96,7 +105,7 @@ export function SpaceSwitcher({
         onClick={() => setOpen((v) => !v)}
         className="flex max-w-[9rem] items-center gap-1.5 rounded-full border border-zinc-200/80 px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800/60 sm:max-w-[12rem] sm:text-sm"
       >
-        <SpaceDot id={activeId} />
+        <SpaceIdentity space={activeSpace} />
         <span className="truncate">{activeName}</span>
         <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
       </button>
@@ -113,7 +122,7 @@ export function SpaceSwitcher({
             onClick={() => select(null)}
             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/70"
           >
-            <SpaceDot id={null} />
+            <SpaceIdentity space={null} />
             <span className="min-w-0 flex-1 truncate">{generalLabel}</span>
             {activeId === null ? <Check className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" /> : null}
           </button>
@@ -127,7 +136,7 @@ export function SpaceSwitcher({
               onClick={() => select(space)}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/70"
             >
-              <SpaceDot id={space.id} />
+              <SpaceIdentity space={space} />
               <span className="min-w-0 flex-1 truncate">{space.name}</span>
               {activeId === space.id ? (
                 <Check className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />

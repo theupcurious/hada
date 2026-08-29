@@ -302,6 +302,10 @@ export interface Project {
   description: string | null;
   /** Per-space directive layered into the system prompt. NULL = no custom identity. */
   instructions: string | null;
+  /** Single emoji for the space's visual identity. NULL = show a colored dot. */
+  emoji: string | null;
+  /** Accent color as a hex string, e.g. '#14b8a6'. NULL = hashed-hue fallback. */
+  color: string | null;
   archived: boolean;
   created_at: string;
   updated_at: string;

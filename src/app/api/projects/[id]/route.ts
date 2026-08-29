@@ -65,6 +65,8 @@ export async function PATCH(
       name: typeof body?.name === "string" ? body.name : undefined,
       description: typeof body?.description === "string" ? body.description : undefined,
       instructions: typeof body?.instructions === "string" ? body.instructions : undefined,
+      emoji: typeof body?.emoji === "string" ? body.emoji : undefined,
+      color: typeof body?.color === "string" ? body.color : undefined,
       archived: typeof body?.archived === "boolean" ? body.archived : undefined,
     });
     if (!project) {
