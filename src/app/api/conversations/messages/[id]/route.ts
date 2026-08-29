@@ -4,10 +4,11 @@ import { deleteMessageById } from "@/lib/db/conversations";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: messageId } = await params;
+  const projectId = request.nextUrl.searchParams.get("project");
 
   const authClient = await createClient();
   const { user, error: authError } = await getAuthenticatedUser(authClient);
@@ -18,7 +19,7 @@ export async function DELETE(
 
   try {
     const supabase = createAdminClient();
-    await deleteMessageById(supabase, messageId, user.id);
+    await deleteMessageById(supabase, messageId, user.id, projectId);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete message error:", error);

@@ -109,14 +109,23 @@ export async function deleteMessageById(
   supabase: SupabaseClient,
   messageId: string,
   userId: string,
+  projectId?: string | null,
 ): Promise<void> {
-  // Resolve the user's conversation first so we only delete messages they own.
-  const { data: conv } = await supabase
+  // Resolve the active space's conversation first so we only delete messages
+  // the user owns. Scoping by projectId is essential: without it, a non-General
+  // space would resolve an arbitrary conversation and the delete would silently
+  // match nothing. A null projectId is the default "General" space.
+  const convQuery = supabase
     .from("conversations")
     .select("id")
     .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  const { data: conv } = await (projectId
+    ? convQuery.eq("project_id", projectId)
+    : convQuery.is("project_id", null)
+  ).maybeSingle();
 
   if (!conv) return; // No conversation — nothing to delete.
 
