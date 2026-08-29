@@ -298,25 +298,34 @@ export async function patchMessageMetadata(
 }
 
 /**
- * Delete the user's latest conversation and all related messages.
- * Returns true when a conversation was deleted, false when none existed.
+ * Global account reset for "Clear chat": delete every one of the user's
+ * conversations across all Spaces (each carries its own messages via cascade)
+ * and clear all web chat activity. Scoped per-Space clearing is intentionally
+ * not offered here — this is the account-level action, and the activity panel
+ * it feeds is itself global. Returns true when anything was deleted.
  */
-export async function clearLatestConversation(
+export async function clearAllConversations(
   supabase: SupabaseClient,
   userId: string
 ): Promise<boolean> {
-  const conversationId = await getConversationId(supabase, userId);
-  const { count: webRunCount, error: webRunCountError } = await supabase
-    .from("agent_runs")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("source", "web");
+  const [{ count: convCount }, { count: webRunCount, error: webRunCountError }] =
+    await Promise.all([
+      supabase
+        .from("conversations")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+      supabase
+        .from("agent_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("source", "web"),
+    ]);
 
   if (webRunCountError) {
     throw new Error(`Failed to inspect chat activity: ${webRunCountError.message}`);
   }
 
-  const cleared = Boolean(conversationId) || ((webRunCount || 0) > 0);
+  const cleared = (convCount || 0) > 0 || (webRunCount || 0) > 0;
 
   // Remove activity rows tied to web chat so the welcome "Recent activity"
   // panel reflects a cleared chat state.
@@ -330,19 +339,14 @@ export async function clearLatestConversation(
     throw new Error(`Failed to clear chat activity: ${runsError.message}`);
   }
 
-  if (!conversationId) {
-    return cleared;
-  }
-
   const { error } = await supabase
     .from('conversations')
     .delete()
-    .eq('id', conversationId)
     .eq('user_id', userId);
 
   if (error) {
     throw new Error(`Failed to clear conversation: ${error.message}`);
   }
 
-  return true;
+  return cleared;
 }
