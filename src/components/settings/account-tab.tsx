@@ -987,12 +987,12 @@ export function AccountTab() {
         <CardHeader>
           <CardTitle className="text-base">Chat History</CardTitle>
           <CardDescription>
-            Reset your current conversation if you want to start fresh without prior context.
+            Start completely fresh across every Space, with no prior context.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            This removes your current chat thread and its saved message history. A new conversation will be created automatically the next time you send a message.
+            This clears every conversation across all your Spaces (General and any you&apos;ve created) along with your chat activity history. A new conversation starts automatically the next time you send a message in each Space.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs text-zinc-500">{clearChatMessage || ""}</span>
@@ -1015,7 +1015,7 @@ export function AccountTab() {
         description={
           pendingConfirmation === "reset-onboarding"
             ? "This clears your saved working style and welcome state, then shows first-run setup again in chat."
-            : "This permanently removes the current conversation and all of its messages."
+            : "This permanently removes every conversation across all your Spaces, plus your chat activity history. It cannot be undone."
         }
         confirmLabel={pendingConfirmation === "reset-onboarding" ? "Reset onboarding" : "Clear chat"}
         destructive

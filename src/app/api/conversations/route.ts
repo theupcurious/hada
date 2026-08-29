@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
-import { clearLatestConversation } from "@/lib/db/conversations";
+import { clearAllConversations } from "@/lib/db/conversations";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 
 export async function DELETE() {
@@ -13,7 +13,7 @@ export async function DELETE() {
     }
 
     const supabase = createAdminClient();
-    const cleared = await clearLatestConversation(supabase, user.id);
+    const cleared = await clearAllConversations(supabase, user.id);
 
     return NextResponse.json({
       success: true,
