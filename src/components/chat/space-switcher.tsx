@@ -9,6 +9,10 @@ export interface Space {
   name: string;
   emoji?: string | null;
   color?: string | null;
+  /** Optional space context, carried for the chat home hero (unused by the switcher UI). */
+  description?: string | null;
+  /** Starter prompts prefilled from the space's template, for the empty-state cards. */
+  suggestions?: string[] | null;
 }
 
 interface SpaceSwitcherProps {

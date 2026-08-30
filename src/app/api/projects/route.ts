@@ -34,6 +34,9 @@ export async function POST(request: NextRequest) {
   const instructions = typeof body?.instructions === "string" ? body.instructions : null;
   const emoji = typeof body?.emoji === "string" ? body.emoji : null;
   const color = typeof body?.color === "string" ? body.color : null;
+  const suggestions = Array.isArray(body?.suggestions)
+    ? (body.suggestions as unknown[]).filter((s): s is string => typeof s === "string")
+    : null;
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -46,6 +49,7 @@ export async function POST(request: NextRequest) {
       instructions,
       emoji,
       color,
+      suggestions,
     });
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {

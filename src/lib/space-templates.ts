@@ -18,6 +18,12 @@ export interface SpaceTemplate {
   instructions: string;
   /** Prefilled accent color (hex) — one of SPACE_COLORS. */
   color: string;
+  /**
+   * Short starter prompts for the space's empty-state cards. Each doubles as the
+   * card label and the message sent on click, so keep them concise and specific.
+   * Blank template has none (falls back to the general starters).
+   */
+  suggestions: string[];
 }
 
 /**
@@ -58,6 +64,12 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
       "You are not a licensed financial advisor — never give personalized investment advice; frame everything as information, not a recommendation to buy or sell.",
     ].join(" "),
     color: "#10b981",
+    suggestions: [
+      "Summarize today's market news",
+      "What's moving markets right now?",
+      "Review a stock or ticker for me",
+      "Explain a macro concept simply",
+    ],
   },
   {
     id: "health",
@@ -72,6 +84,12 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
       "You are not a medical professional — for symptoms, pain, or medication questions, recommend seeing a doctor rather than diagnosing.",
     ].join(" "),
     color: "#ec4899",
+    suggestions: [
+      "Plan my workouts this week",
+      "Build a simple meal plan",
+      "Check in on my goals",
+      "Suggest a quick healthy recipe",
+    ],
   },
   {
     id: "writing",
@@ -85,6 +103,12 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
       "Point out weak spots directly and suggest concrete fixes. Avoid filler and hedging.",
     ].join(" "),
     color: "#8b5cf6",
+    suggestions: [
+      "Edit a draft for clarity",
+      "Sharpen this paragraph",
+      "Brainstorm angles for a piece",
+      "Suggest a stronger opening line",
+    ],
   },
   {
     id: "blank",
@@ -94,5 +118,6 @@ export const SPACE_TEMPLATES: SpaceTemplate[] = [
     description: "",
     instructions: "",
     color: "#14b8a6",
+    suggestions: [],
   },
 ];

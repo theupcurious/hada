@@ -16,7 +16,8 @@ import { HistoryPanel } from "@/components/chat/history-panel";
 import { SpaceSwitcher, type Space } from "@/components/chat/space-switcher";
 import type { SegmentListItem } from "@/lib/db/segments";
 import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first-run-setup";
-import { WelcomeHome } from "@/components/chat/welcome-home";
+import { WelcomeHome, type WelcomeSpaceIdentity } from "@/components/chat/welcome-home";
+import { WelcomeSpacesStrip } from "@/components/chat/welcome-spaces-strip";
 import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
 import type { TaskPlan, UserSettings } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
@@ -30,7 +31,7 @@ import {
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Activity, Calendar, FolderKanban, History, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2 } from "lucide-react";
+import { Activity, Calendar, FolderKanban, History, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
@@ -167,6 +168,8 @@ interface ChatLocaleCopy {
   styleFlexibleWorkRhythm: string;
   workspaceReady: string;
   welcomeContinueLastWorkspace: string;
+  welcomeYourSpaces: string;
+  welcomeSpaceSubtitleFallback: string;
   actionContinue: string;
   actionOpenChat: string;
   actionOpen: string;
@@ -239,7 +242,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     styleAfternoonDeepWork: "afternoon deep work",
     styleFlexibleWorkRhythm: "a flexible work rhythm",
     workspaceReady: "Your workspace is ready.",
-    welcomeContinueLastWorkspace: "Continue your last workspace",
+    welcomeContinueLastWorkspace: "Pick up where you left off",
+    welcomeYourSpaces: "Your Spaces",
+    welcomeSpaceSubtitleFallback: "A focused space with its own memory and instructions.",
     actionContinue: "Continue",
     actionOpenChat: "Open chat",
     actionOpen: "Open",
@@ -278,9 +283,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterSummarizeEmailLabel: "Summarize my email",
     starterSummarizeEmailPrompt:
       "Summarize my unread email from the last day. Group it by sender or topic, flag anything urgent or that needs a reply from me, and keep it skimmable.",
-    starterDraftEmailLabel: "Draft an email",
+    starterDraftEmailLabel: "Draft something",
     starterDraftEmailPrompt:
-      "Help me write an email. Ask who it's for and what it's about, then draft it in my voice for me to review. Don't send anything until I approve it.",
+      "Help me draft something — an email, a message, a doc, or a post. Ask what it is and who it's for, then write it in my voice for me to review. Don't send or publish anything until I approve it.",
     starterResearchTopicLabel: "Research a topic",
     starterResearchTopicPrompt:
       "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
@@ -315,7 +320,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     styleAfternoonDeepWork: "오후 집중 근무",
     styleFlexibleWorkRhythm: "유연한 작업 리듬",
     workspaceReady: "워크스페이스가 준비되었습니다.",
-    welcomeContinueLastWorkspace: "지난 작업 계속하기",
+    welcomeContinueLastWorkspace: "이어서 계속하기",
+    welcomeYourSpaces: "내 스페이스",
+    welcomeSpaceSubtitleFallback: "고유한 메모리와 지침을 갖춘 전용 스페이스입니다.",
     actionContinue: "계속",
     actionOpenChat: "채팅 열기",
     actionOpen: "열기",
@@ -354,9 +361,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterSummarizeEmailLabel: "이메일 요약",
     starterSummarizeEmailPrompt:
       "지난 하루 동안의 읽지 않은 이메일을 요약해 주세요. 보낸 사람이나 주제별로 묶고, 급하거나 제 답장이 필요한 항목을 표시하며, 한눈에 보기 쉽게 정리해 주세요.",
-    starterDraftEmailLabel: "이메일 초안 작성",
+    starterDraftEmailLabel: "초안 작성",
     starterDraftEmailPrompt:
-      "이메일 작성을 도와주세요. 받는 사람과 내용을 먼저 물어본 뒤, 제 말투로 초안을 작성해 검토할 수 있게 해 주세요. 제가 승인하기 전에는 보내지 마세요.",
+      "무언가 초안 작성을 도와주세요 — 이메일, 메시지, 문서, 게시글 등. 무엇을 누구에게 쓰는지 먼저 물어본 뒤, 제 말투로 작성해 검토할 수 있게 해 주세요. 제가 승인하기 전에는 보내거나 게시하지 마세요.",
     starterResearchTopicLabel: "주제 리서치",
     starterResearchTopicPrompt:
       "특정 주제를 리서치하고 싶어요. 먼저 어떤 주제를 조사할지 물어보고, 최신 소스를 활용해 핵심만 담긴 간결한 근거 기반 브리프를 만들어 주세요.",
@@ -391,7 +398,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     styleAfternoonDeepWork: "午後の集中作業",
     styleFlexibleWorkRhythm: "柔軟な作業リズム",
     workspaceReady: "ワークスペースの準備ができました。",
-    welcomeContinueLastWorkspace: "前回の作業を続ける",
+    welcomeContinueLastWorkspace: "続きから始める",
+    welcomeYourSpaces: "あなたのスペース",
+    welcomeSpaceSubtitleFallback: "独自のメモリと指示を持つ専用スペースです。",
     actionContinue: "続ける",
     actionOpenChat: "チャットを開く",
     actionOpen: "開く",
@@ -433,9 +442,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterSummarizeEmailLabel: "メールを要約",
     starterSummarizeEmailPrompt:
       "直近1日の未読メールを要約してください。送信者やトピックごとにまとめ、急ぎのものや私の返信が必要なものを示し、ひと目で分かるようにしてください。",
-    starterDraftEmailLabel: "メールの下書き",
+    starterDraftEmailLabel: "下書きを作る",
     starterDraftEmailPrompt:
-      "メール作成を手伝ってください。宛先と内容をまず確認し、私の口調で下書きを作って確認できるようにしてください。私が承認するまで送信しないでください。",
+      "何かの下書きを手伝ってください — メール、メッセージ、ドキュメント、投稿など。何を誰宛てに書くのかをまず確認し、私の口調で作成して確認できるようにしてください。私が承認するまで送信・公開しないでください。",
     historyLabel: "履歴",
     historyAria: "チャット履歴を見る",
     historySearchPlaceholder: "トピックを検索…",
@@ -467,7 +476,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     styleAfternoonDeepWork: "下午深度工作",
     styleFlexibleWorkRhythm: "灵活的工作节奏",
     workspaceReady: "你的工作区已准备就绪。",
-    welcomeContinueLastWorkspace: "继续上次的工作区",
+    welcomeContinueLastWorkspace: "从上次的地方继续",
+    welcomeYourSpaces: "你的空间",
+    welcomeSpaceSubtitleFallback: "拥有独立记忆和指令的专属空间。",
     actionContinue: "继续",
     actionOpenChat: "打开聊天",
     actionOpen: "打开",
@@ -509,9 +520,9 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     starterSummarizeEmailLabel: "总结我的邮件",
     starterSummarizeEmailPrompt:
       "总结我过去一天的未读邮件。按发件人或主题分组，标出紧急或需要我回复的内容，保持简洁易读。",
-    starterDraftEmailLabel: "起草一封邮件",
+    starterDraftEmailLabel: "起草内容",
     starterDraftEmailPrompt:
-      "帮我写一封邮件。先问我收件人和内容，然后用我的语气起草，让我审阅。在我确认之前不要发送。",
+      "帮我起草一些内容 — 邮件、消息、文档或帖子。先问我写什么、给谁，然后用我的语气起草，让我审阅。在我确认之前不要发送或发布。",
     historyLabel: "历史",
     historyAria: "浏览聊天记录",
     historySearchPlaceholder: "搜索话题…",
@@ -550,7 +561,7 @@ export default function ChatPage() {
   // Seed the active space synchronously from ?project=<id> so the switcher's
   // selection matches the thread that loads on a deep link from the first
   // render. The name-fetch effect fills in the display name.
-  const [activeProject, setActiveProject] = useState<{ id: string; name: string } | null>(() => {
+  const [activeProject, setActiveProject] = useState<Space | null>(() => {
     if (typeof window === "undefined") return null;
     const id = new URL(window.location.href).searchParams.get("project");
     return id ? { id, name: "" } : null;
@@ -1437,6 +1448,8 @@ export default function ChatPage() {
                     name: string;
                     emoji?: string | null;
                     color?: string | null;
+                    description?: string | null;
+                    suggestions?: string[] | null;
                     archived?: boolean;
                   } =>
                     !!p &&
@@ -1445,7 +1458,14 @@ export default function ChatPage() {
                     typeof (p as { name?: unknown }).name === "string" &&
                     (p as { archived?: unknown }).archived !== true,
                 )
-                .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji ?? null, color: p.color ?? null })),
+                .map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  emoji: p.emoji ?? null,
+                  color: p.color ?? null,
+                  description: p.description ?? null,
+                  suggestions: Array.isArray(p.suggestions) ? p.suggestions : null,
+                })),
             );
           })
           .catch(() => null),
@@ -2302,12 +2322,29 @@ export default function ChatPage() {
     setShowFirstRunSetup(false);
   };
 
+  const inSpace = activeProject !== null;
+  const activeSpaceName = activeProject?.name?.trim() ?? "";
   const welcomeGreeting = `${greetingText}, ${user?.name || copy.greetingFallbackName}`;
-  const welcomeSubtitle = buildWelcomeSubtitle(userSettings, copy);
+  // General keeps the personalized style line; inside a Space the subtitle is the
+  // Space's own purpose, so it reads as a distinct, specialized assistant.
+  const welcomeSubtitle = inSpace
+    ? activeProject?.description?.trim() || copy.welcomeSpaceSubtitleFallback
+    : buildWelcomeSubtitle(userSettings, copy);
+  // Eyebrow identity — only once the Space's name has actually loaded.
+  const welcomeSpaceIdentity: WelcomeSpaceIdentity | null =
+    inSpace && activeSpaceName
+      ? {
+          name: activeSpaceName,
+          emoji: activeProject?.emoji ?? null,
+          color: activeProject?.color ?? null,
+        }
+      : null;
   const latestDocument = recentDocuments[0];
   const dueTodayCount = upcomingTasks.filter((task) => isTaskDueToday(task.next_run_at)).length;
   const welcomeStatusText = buildWelcomeStatusText(recentDocuments.length, dueTodayCount, locale, copy);
-  const welcomeStarterActions: WelcomeStarterAction[] = [
+  // General starter cards — also the fallback for a blank/legacy Space with no
+  // stored suggestions.
+  const generalStarterActions: WelcomeStarterAction[] = [
     {
       id: "plan-my-day",
       label: copy.starterPlanMyDayLabel,
@@ -2333,6 +2370,35 @@ export default function ChatPage() {
       onClick: () => handleStarterAction(copy.starterResearchTopicPrompt),
     },
   ];
+  // A Space's own template suggestions become its starter cards — the moment the
+  // assistant reads as specialized rather than "General with a colored dot".
+  const spaceSuggestions =
+    inSpace && Array.isArray(activeProject?.suggestions)
+      ? activeProject.suggestions.map((s) => s.trim()).filter(Boolean).slice(0, 4)
+      : [];
+  const welcomeStarterActions: WelcomeStarterAction[] =
+    spaceSuggestions.length > 0
+      ? spaceSuggestions.map((prompt, i) => ({
+          id: `space-suggestion-${i}`,
+          label: prompt,
+          icon: activeProject?.emoji?.trim() ? (
+            <span className="text-base leading-none">{activeProject.emoji}</span>
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          ),
+          onClick: () => handleStarterAction(prompt),
+        }))
+      : generalStarterActions;
+  const welcomeSpacesStrip =
+    !inSpace && spaces.length > 0 ? (
+      <WelcomeSpacesStrip
+        heading={copy.welcomeYourSpaces}
+        newLabel={copy.spacesNew}
+        spaces={spaces}
+        onOpen={(id) => void switchSpace(spaces.find((s) => s.id === id) ?? null)}
+        onNew={() => router.push("/projects?new=1")}
+      />
+    ) : null;
   const welcomeContinueRow = latestDocument && !hasLastChat
     ? {
         label: latestDocument.title,
@@ -2433,12 +2499,32 @@ export default function ChatPage() {
     let cancelled = false;
     void fetch(`/api/projects/${projectId}`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { project?: { id: string; name: string } } | null) => {
-        // Only apply if the user hasn't switched away while this was in flight.
-        if (!cancelled && data?.project && activeProjectIdRef.current === data.project.id) {
-          setActiveProject({ id: data.project.id, name: data.project.name });
-        }
-      })
+      .then(
+        (
+          data: {
+            project?: {
+              id: string;
+              name: string;
+              emoji?: string | null;
+              color?: string | null;
+              description?: string | null;
+              suggestions?: string[] | null;
+            };
+          } | null,
+        ) => {
+          // Only apply if the user hasn't switched away while this was in flight.
+          if (!cancelled && data?.project && activeProjectIdRef.current === data.project.id) {
+            setActiveProject({
+              id: data.project.id,
+              name: data.project.name,
+              emoji: data.project.emoji ?? null,
+              color: data.project.color ?? null,
+              description: data.project.description ?? null,
+              suggestions: Array.isArray(data.project.suggestions) ? data.project.suggestions : null,
+            });
+          }
+        },
+      )
       .catch(() => {
         /* ignore — chat still works without project context */
       });
@@ -2669,6 +2755,8 @@ export default function ChatPage() {
                       <WelcomeHome
                         greeting={welcomeGreeting}
                         subtitle={welcomeSubtitle}
+                        spaceIdentity={welcomeSpaceIdentity}
+                        spacesStrip={welcomeSpacesStrip}
                         starterActions={welcomeStarterActions}
                         continueRow={welcomeContinueRow}
                         statusLine={{

@@ -67,6 +67,9 @@ export async function PATCH(
       instructions: typeof body?.instructions === "string" ? body.instructions : undefined,
       emoji: typeof body?.emoji === "string" ? body.emoji : undefined,
       color: typeof body?.color === "string" ? body.color : undefined,
+      suggestions: Array.isArray(body?.suggestions)
+        ? (body.suggestions as unknown[]).filter((s): s is string => typeof s === "string")
+        : undefined,
       archived: typeof body?.archived === "boolean" ? body.archived : undefined,
     });
     if (!project) {
