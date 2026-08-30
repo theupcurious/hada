@@ -34,6 +34,11 @@ import { registry } from "@/lib/chat/tools/tool-registry";
 
 export interface CreateToolsOptions {
   connectedIntegrations?: string[];
+  /**
+   * Per-space allowlist of gateable tool names. `null`/omitted = unrestricted
+   * (all tools). See ToolRegistry.getAvailable for the exact semantics.
+   */
+  allowedTools?: readonly string[] | null;
 }
 
 // Register all core tools
@@ -104,7 +109,7 @@ export function createTools(
   options: CreateToolsOptions = {},
 ): AgentTool[] {
   const integrations = options.connectedIntegrations || [];
-  return registry.getAvailable(context, integrations);
+  return registry.getAvailable(context, integrations, options.allowedTools ?? null);
 }
 
 export function summarizeToolList(tools: AgentTool[]): string {

@@ -19,6 +19,23 @@ function normalizeSuggestions(
   return cleaned.length > 0 ? cleaned : null;
 }
 
+/**
+ * Clean a tool allowlist. Unlike suggestions, an empty array is meaningful
+ * ("no gateable tools") and preserved — only null/undefined/non-array collapse
+ * to NULL (unrestricted). Trims, drops blanks, de-dupes.
+ */
+function normalizeToolAllowlist(
+  allowlist: string[] | null | undefined,
+): string[] | null {
+  if (allowlist === null || allowlist === undefined) return null;
+  if (!Array.isArray(allowlist)) return null;
+  const cleaned = allowlist
+    .filter((s): s is string => typeof s === "string")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return Array.from(new Set(cleaned));
+}
+
 export async function listProjects(
   supabase: SupabaseClient,
   userId: string,
@@ -57,9 +74,16 @@ export async function createProject(
     emoji?: string | null;
     color?: string | null;
     suggestions?: string[] | null;
+    toolAllowlist?: string[] | null;
   },
 ): Promise<Project> {
   const name = input.name.trim();
+  // Only include tool_allowlist when the caller actually set it, so creation
+  // still works if migration 021 hasn't been applied yet (the column is absent).
+  const allowlistPatch =
+    input.toolAllowlist !== undefined
+      ? { tool_allowlist: normalizeToolAllowlist(input.toolAllowlist) }
+      : {};
   const { data, error } = await supabase
     .from("projects")
     .insert({
@@ -71,6 +95,7 @@ export async function createProject(
       emoji: input.emoji?.trim() || null,
       color: input.color?.trim() || null,
       suggestions: normalizeSuggestions(input.suggestions),
+      ...allowlistPatch,
     })
     .select("*")
     .single();
@@ -89,6 +114,7 @@ export async function updateProject(
     emoji?: string | null;
     color?: string | null;
     suggestions?: string[] | null;
+    toolAllowlist?: string[] | null;
     archived?: boolean;
   },
 ): Promise<Project | null> {
@@ -111,6 +137,10 @@ export async function updateProject(
   }
   if (updates.suggestions !== undefined) {
     patch.suggestions = normalizeSuggestions(updates.suggestions);
+  }
+  if (updates.toolAllowlist !== undefined) {
+    // normalize preserves [] (no gateable tools) and maps null → NULL (unrestricted).
+    patch.tool_allowlist = normalizeToolAllowlist(updates.toolAllowlist);
   }
   if (typeof updates.archived === "boolean") {
     patch.archived = updates.archived;
@@ -144,6 +174,31 @@ export async function deleteProject(
     .maybeSingle();
   if (error) throw new Error(`Failed to delete project: ${error.message}`);
   return Boolean(data);
+}
+
+/**
+ * Fetch just a space's tool allowlist for the agent loop. Returns NULL
+ * (unrestricted) when the space has none, isn't found, or — importantly — when
+ * the `tool_allowlist` column doesn't exist yet (migration 021 not applied), so
+ * chat never breaks over a missing column. Only a non-null array restricts.
+ */
+export async function getProjectToolAllowlist(
+  supabase: SupabaseClient,
+  userId: string,
+  projectId: string,
+): Promise<string[] | null> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("tool_allowlist")
+    .eq("id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    // Missing column / transient error → degrade to unrestricted, never throw.
+    return null;
+  }
+  const value = (data as { tool_allowlist?: string[] | null } | null)?.tool_allowlist;
+  return Array.isArray(value) ? value : null;
 }
 
 /** Documents bound to a project (folder match). */

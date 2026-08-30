@@ -308,6 +308,12 @@ export interface Project {
   color: string | null;
   /** Starter prompts for the space's empty-state cards. NULL/[] = general starters. */
   suggestions: string[] | null;
+  /**
+   * Gateable tool names this space's assistant may use. NULL = unrestricted (all
+   * tools); [] = core essentials only; [...] = those tools plus the always-on
+   * core set. Enforced in tool-registry.getAvailable.
+   */
+  tool_allowlist: string[] | null;
   archived: boolean;
   created_at: string;
   updated_at: string;

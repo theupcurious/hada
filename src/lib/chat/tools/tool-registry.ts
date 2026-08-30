@@ -19,6 +19,27 @@ export interface ToolRegistration {
   create: (context: ToolContext) => AgentTool;
 }
 
+/**
+ * Tools that a per-space allowlist can never remove — the loop and UX would
+ * break without them. Memory keeps the space's scoped memory working, planning
+ * and delegation are core agent mechanics, and render_card drives the chat UI.
+ * Everything else is "gateable": it appears in the space tool picker and is
+ * subject to the allowlist. (delegate_task is safe here — sub-agents draw from
+ * the already-filtered tool pool, so a space's restrictions propagate into them.)
+ */
+export const ALWAYS_ON_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "save_memory",
+  "recall_memory",
+  "plan_task",
+  "delegate_task",
+  "render_card",
+]);
+
+/** A tool the per-space allowlist can restrict (i.e. not an always-on core tool). */
+export function isGateableTool(name: string): boolean {
+  return !ALWAYS_ON_TOOL_NAMES.has(name);
+}
+
 export class ToolRegistry {
   private tools = new Map<string, ToolRegistration>();
 
@@ -26,18 +47,37 @@ export class ToolRegistry {
     this.tools.set(registration.manifest.name, registration);
   }
 
-  getAvailable(context: ToolContext, connectedIntegrations: string[]): AgentTool[] {
+  /**
+   * Build the live tool set for a context.
+   *
+   * `allowedTools` is a per-space allowlist of gateable tool names:
+   *   - `null`/`undefined` → unrestricted (all tools), the default;
+   *   - an array → only those gateable tools are offered (an empty array means
+   *     no gateable tools). Always-on core tools (see ALWAYS_ON_TOOL_NAMES) are
+   *     offered regardless of the allowlist.
+   * Integration gating still applies on top: a tool whose integration is not
+   * connected is omitted even if the allowlist includes it.
+   */
+  getAvailable(
+    context: ToolContext,
+    connectedIntegrations: string[],
+    allowedTools?: readonly string[] | null,
+  ): AgentTool[] {
     const integrations = new Set(connectedIntegrations);
+    const allowSet = Array.isArray(allowedTools) ? new Set(allowedTools) : null;
     const availableTools: AgentTool[] = [];
 
     for (const registration of this.tools.values()) {
-      if (
-        !registration.manifest.requiresIntegration ||
-        integrations.has(registration.manifest.requiresIntegration)
-      ) {
-        const tool = registration.create(context);
-        availableTools.push({ ...tool, riskLevel: registration.manifest.riskLevel });
+      const { name, requiresIntegration } = registration.manifest;
+      if (requiresIntegration && !integrations.has(requiresIntegration)) {
+        continue;
       }
+      // Apply the per-space allowlist to gateable tools only.
+      if (allowSet && isGateableTool(name) && !allowSet.has(name)) {
+        continue;
+      }
+      const tool = registration.create(context);
+      availableTools.push({ ...tool, riskLevel: registration.manifest.riskLevel });
     }
 
     return availableTools;

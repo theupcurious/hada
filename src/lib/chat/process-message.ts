@@ -17,7 +17,7 @@ import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getOrCreateConversation, saveMessage, updateMessageById } from "@/lib/db/conversations";
-import { getProject, getProjectDocuments } from "@/lib/db/projects";
+import { getProject, getProjectDocuments, getProjectToolAllowlist } from "@/lib/db/projects";
 import {
   getOpenRouterReasoningCapabilities,
   normalizeOpenRouterReasoningEffort,
@@ -74,12 +74,17 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
   let thrownError: unknown = null;
   let result: ProcessMessageResult | null = null;
 
-  // Round 1: fetch conversation + integrations in parallel (both independent)
-  const [conversation, integrationsResult] = await Promise.all([
+  // Round 1: fetch conversation + integrations + the space's tool allowlist in
+  // parallel (all independent). The allowlist restricts which gateable tools the
+  // space's assistant may use; General (no projectId) is always unrestricted.
+  const [conversation, integrationsResult, toolAllowlist] = await Promise.all([
     options.conversationId
       ? Promise.resolve({ id: options.conversationId })
       : getOrCreateConversation(supabase, options.userId, options.projectId ?? null),
     supabase.from("integrations").select("provider").eq("user_id", options.userId),
+    options.projectId
+      ? getProjectToolAllowlist(supabase, options.userId, options.projectId)
+      : Promise.resolve(null),
   ]);
 
   const connectedIntegrations = (
@@ -92,7 +97,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
     supabase,
     projectId: options.projectId ?? null,
   };
-  const tools = createTools(toolContext, { connectedIntegrations });
+  const tools = createTools(toolContext, { connectedIntegrations, allowedTools: toolAllowlist });
 
   // Round 2: save user message + build prompt + create agent run in parallel.
   // NOTE: assembleConversationContext is intentionally excluded here and runs

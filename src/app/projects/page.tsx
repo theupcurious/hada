@@ -10,6 +10,35 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types/database";
 import { SPACE_TEMPLATES, SPACE_COLORS, SPACE_EMOJIS } from "@/lib/space-templates";
+import { ALWAYS_ON_TOOL_NAMES } from "@/lib/chat/tools/tool-registry";
+
+/** A tool the space allowlist can restrict (from /api/tools, minus always-on core). */
+interface GateableTool {
+  name: string;
+  displayName: string;
+  description: string;
+  category: string;
+  requiresIntegration?: string;
+  isConnected: boolean;
+}
+
+/** Friendly section labels for the tool categories shown in the picker. */
+const TOOL_CATEGORY_LABELS: Record<string, string> = {
+  web: "Web",
+  communication: "Email",
+  calendar: "Calendar",
+  documents: "Documents",
+  custom: "Connectors",
+  system: "System",
+};
+
+/** Order-insensitive equality for two allowlists (null = unrestricted). */
+function allowlistEqual(a: string[] | null, b: string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((name) => set.has(name));
+}
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -25,7 +54,10 @@ export default function ProjectsPage() {
   const [color, setColor] = useState(SPACE_COLORS[0]);
   // Starter prompts prefilled from a template; not directly edited in the form.
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  // null = unrestricted (all tools); array = only those gateable tools.
+  const [toolAllowlist, setToolAllowlist] = useState<string[] | null>(null);
   const [toDelete, setToDelete] = useState<Project | null>(null);
+  const [toolCatalog, setToolCatalog] = useState<GateableTool[]>([]);
 
   // Inline per-space editor (description + instructions only — editing the name
   // would re-derive the folder and orphan the space's documents).
@@ -34,6 +66,7 @@ export default function ProjectsPage() {
   const [editInstructions, setEditInstructions] = useState("");
   const [editEmoji, setEditEmoji] = useState("");
   const [editColor, setEditColor] = useState(SPACE_COLORS[0]);
+  const [editToolAllowlist, setEditToolAllowlist] = useState<string[] | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
@@ -59,6 +92,28 @@ export default function ProjectsPage() {
     void load();
   }, [load]);
 
+  // Fetch the gateable tool catalog once for the allowlist pickers. Core
+  // always-on tools are filtered out — they can't be restricted.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/tools");
+        if (!res.ok) return;
+        const data = (await res.json()) as { tools?: GateableTool[] };
+        if (cancelled) return;
+        setToolCatalog(
+          (data.tools ?? []).filter((t) => !ALWAYS_ON_TOOL_NAMES.has(t.name)),
+        );
+      } catch {
+        // Non-fatal: the picker simply shows nothing to limit.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Arrive here from the "New space" action with the create form already open,
   // so the starter templates are the first thing you see.
   useEffect(() => {
@@ -83,6 +138,9 @@ export default function ProjectsPage() {
           emoji: emoji.trim() || null,
           color: color || null,
           suggestions: suggestions.length > 0 ? suggestions : null,
+          // Only send when restricting, so unrestricted creation still works
+          // before migration 021 is applied (the column may not exist).
+          ...(toolAllowlist !== null ? { tool_allowlist: toolAllowlist } : {}),
         }),
       });
       const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -93,6 +151,7 @@ export default function ProjectsPage() {
       setEmoji("");
       setColor(SPACE_COLORS[0]);
       setSuggestions([]);
+      setToolAllowlist(null);
       setShowForm(false);
       await load();
     } catch (e) {
@@ -118,6 +177,7 @@ export default function ProjectsPage() {
     setEditInstructions(project.instructions ?? "");
     setEditEmoji(project.emoji ?? "");
     setEditColor(project.color || SPACE_COLORS[0]);
+    setEditToolAllowlist(project.tool_allowlist ?? null);
   };
 
   const saveEditing = async (project: Project) => {
@@ -132,6 +192,12 @@ export default function ProjectsPage() {
           instructions: editInstructions.trim(),
           emoji: editEmoji.trim(),
           color: editColor,
+          // Send the allowlist only when it actually changed, so editing other
+          // fields doesn't touch the column (keeps pre-021 edits working). null
+          // is sent when cleared, so "Limit tools" can be turned back off.
+          ...(allowlistEqual(editToolAllowlist, project.tool_allowlist ?? null)
+            ? {}
+            : { tool_allowlist: editToolAllowlist }),
         }),
       });
       const data = (await res.json().catch(() => null)) as { project?: Project; error?: string } | null;
@@ -255,6 +321,11 @@ export default function ProjectsPage() {
               The assistant follows these for every message in this space.
             </p>
           </div>
+          <ToolAllowlistPicker
+            catalog={toolCatalog}
+            value={toolAllowlist}
+            onChange={setToolAllowlist}
+          />
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -380,6 +451,11 @@ export default function ProjectsPage() {
                     rows={4}
                     className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
                   />
+                  <ToolAllowlistPicker
+                    catalog={toolCatalog}
+                    value={editToolAllowlist}
+                    onChange={setEditToolAllowlist}
+                  />
                   <div className="flex gap-2">
                     <Button
                       size="sm"
@@ -436,6 +512,107 @@ function SpaceIdentity({ emoji, color }: { emoji: string | null; color: string |
       className="h-2.5 w-2.5 shrink-0 rounded-full"
       style={{ backgroundColor: color || SPACE_COLORS[0] }}
     />
+  );
+}
+
+/**
+ * Per-space tool allowlist picker. Off by default (unrestricted — all tools,
+ * value `null`). Turning "Limit tools" on preselects every gateable tool, so
+ * the common case is unchecking the few a space shouldn't use (e.g. Email).
+ * An empty selection is valid and means "core essentials only".
+ */
+function ToolAllowlistPicker({
+  catalog,
+  value,
+  onChange,
+}: {
+  catalog: GateableTool[];
+  value: string[] | null;
+  onChange: (value: string[] | null) => void;
+}) {
+  const limited = value !== null;
+
+  // Group the catalog by category, preserving a stable, sensible section order.
+  const order = ["web", "communication", "calendar", "documents", "custom", "system"];
+  const groups = order
+    .map((cat) => ({ cat, tools: catalog.filter((t) => t.category === cat) }))
+    .filter((g) => g.tools.length > 0);
+  // Any categories not in `order` (future-proofing) go last.
+  for (const t of catalog) {
+    if (!order.includes(t.category) && !groups.some((g) => g.cat === t.category)) {
+      groups.push({ cat: t.category, tools: catalog.filter((x) => x.category === t.category) });
+    }
+  }
+
+  const selected = new Set(value ?? []);
+  const toggleTool = (name: string) => {
+    if (value === null) return;
+    onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name]);
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
+      <label className="flex cursor-pointer items-start justify-between gap-3">
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-200">
+            Limit tools in this space
+          </span>
+          <span className="mt-0.5 block text-xs text-zinc-400 dark:text-zinc-500">
+            {limited
+              ? "Only the checked tools are available here. Memory and core tools always stay on."
+              : "All tools are available. Turn on to restrict what this space can do."}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          checked={limited}
+          // On → preselect all gateable tools (uncheck to remove). Off → unrestricted.
+          onChange={(e) => onChange(e.target.checked ? catalog.map((t) => t.name) : null)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-teal-600"
+        />
+      </label>
+
+      {limited ? (
+        <div className="mt-3 space-y-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+          {groups.length === 0 ? (
+            <p className="text-xs text-zinc-400">No optional tools available.</p>
+          ) : (
+            groups.map((group) => (
+              <div key={group.cat}>
+                <p className="mb-1.5 text-[0.68rem] font-medium uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500">
+                  {TOOL_CATEGORY_LABELS[group.cat] ?? group.cat}
+                </p>
+                <div className="space-y-1">
+                  {group.tools.map((tool) => (
+                    <label
+                      key={tool.name}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(tool.name)}
+                        onChange={() => toggleTool(tool.name)}
+                        className="h-4 w-4 shrink-0 accent-teal-600"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                          {tool.displayName}
+                        </span>
+                      </span>
+                      {tool.requiresIntegration && !tool.isConnected ? (
+                        <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                          Not connected
+                        </span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
