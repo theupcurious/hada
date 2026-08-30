@@ -2914,7 +2914,7 @@ export default function ChatPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1], delay: 0.05 }}
-                  className="min-w-0 w-full"
+                  className="min-w-0 w-full space-y-6"
                 >
                   <AnimatePresence>
                     {messages.map((message) => (
