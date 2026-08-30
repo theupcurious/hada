@@ -37,6 +37,13 @@ export async function POST(request: NextRequest) {
   const suggestions = Array.isArray(body?.suggestions)
     ? (body.suggestions as unknown[]).filter((s): s is string => typeof s === "string")
     : null;
+  // undefined = not sent (leave unrestricted); null/array = explicit allowlist.
+  const toolAllowlist =
+    body?.tool_allowlist === null
+      ? null
+      : Array.isArray(body?.tool_allowlist)
+        ? (body.tool_allowlist as unknown[]).filter((s): s is string => typeof s === "string")
+        : undefined;
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -50,6 +57,7 @@ export async function POST(request: NextRequest) {
       emoji,
       color,
       suggestions,
+      toolAllowlist,
     });
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {

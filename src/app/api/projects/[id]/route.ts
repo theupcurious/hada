@@ -70,6 +70,15 @@ export async function PATCH(
       suggestions: Array.isArray(body?.suggestions)
         ? (body.suggestions as unknown[]).filter((s): s is string => typeof s === "string")
         : undefined,
+      // null clears the allowlist (unrestricted); an array sets it; anything
+      // else leaves it untouched. Must special-case null so "Limit tools" can
+      // be turned back off — Array.isArray(null) is false.
+      toolAllowlist:
+        body?.tool_allowlist === null
+          ? null
+          : Array.isArray(body?.tool_allowlist)
+            ? (body.tool_allowlist as unknown[]).filter((s): s is string => typeof s === "string")
+            : undefined,
       archived: typeof body?.archived === "boolean" ? body.archived : undefined,
     });
     if (!project) {
