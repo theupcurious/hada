@@ -2749,12 +2749,16 @@ export default function ChatPage() {
                 <div className="flex flex-col items-center justify-center min-h-[60vh]">
                   <span className="text-sm text-zinc-400">{copy.loading}</span>
                 </div>
-              ) : shouldShowLanding ? (
+              ) : (
+                <AnimatePresence mode="wait">
+                {shouldShowLanding ? (
                 <motion.div
+                  key="landing"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
-                  className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-8 pt-5 sm:min-h-[60vh] sm:justify-center sm:px-4 sm:pb-10 sm:pt-6"
+                  exit={{ opacity: 0, y: -28, filter: "blur(4px)", scale: 0.985 }}
+                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                  className="flex min-h-full w-full min-w-0 flex-col items-center justify-start overflow-x-hidden px-4 pb-3 pt-3 sm:min-h-[54vh] sm:justify-center sm:px-4 sm:pb-4 sm:pt-4"
                 >
                   {showFirstRunSetup ? (
                     <FirstRunSetup
@@ -2787,51 +2791,61 @@ export default function ChatPage() {
                             : undefined,
                         }}
                       />
-
-                      <div className="mx-auto mt-8 w-full max-w-xl sm:mt-10">
-                        {inputForm}
-                      </div>
                     </div>
                   )}
                 </motion.div>
               ) : (
-                <AnimatePresence>
-                  {messages.map((message) => (
-                    <motion.div
-                      key={message.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.18, ease: "easeOut" }}
-                      className="min-w-0"
-                    >
-                      <ChatMessageRow
-                        message={message}
-                        userName={user?.name}
-                        isLoading={isLoading}
-                        onQuickReply={handleQuickReply}
-                        onCopy={handleCopyMessage}
-                        onRegenerate={handleRegenerateMessage}
-                        onFeedback={handleMessageFeedback}
-                        onSaveToDoc={handleSaveToDoc}
-                        onOpenArtifact={handleOpenArtifact}
-                        onDelete={handleDeleteMessage}
-                        onConfirmAction={handleConfirmAction}
-                      />
-                    </motion.div>
-                  ))}
+                <motion.div
+                  key="thread"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1], delay: 0.05 }}
+                  className="min-w-0 w-full"
+                >
+                  <AnimatePresence>
+                    {messages.map((message) => (
+                      <motion.div
+                        key={message.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+                        className="min-w-0"
+                      >
+                        <ChatMessageRow
+                          message={message}
+                          userName={user?.name}
+                          isLoading={isLoading}
+                          onQuickReply={handleQuickReply}
+                          onCopy={handleCopyMessage}
+                          onRegenerate={handleRegenerateMessage}
+                          onFeedback={handleMessageFeedback}
+                          onSaveToDoc={handleSaveToDoc}
+                          onOpenArtifact={handleOpenArtifact}
+                          onDelete={handleDeleteMessage}
+                          onConfirmAction={handleConfirmAction}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+                )}
                 </AnimatePresence>
               )}
               <div ref={endOfMessagesRef} />
             </div>
           </div>
 
-          {/* Input Area - Fixed at bottom when there are messages */}
-          {showConversation && (
-            <div className="sticky bottom-0 z-20 shrink-0 border-t border-border/50 bg-background/80 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 backdrop-blur-md">
-              {inputForm}
-            </div>
-          )}
+          {/* Input Area — always docked at the bottom; the empty-state hero
+              dissolves upward above it into the conversation. Chrome (border +
+              blur) fades in only once a conversation is on screen. */}
+          <div
+            className={`sticky bottom-0 z-20 shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 transition-colors duration-300 ${
+              showConversation ? "border-t border-border/50 bg-background/80 backdrop-blur-md" : ""
+            }`}
+          >
+            {inputForm}
+          </div>
         </div>
 
         {/* Artifact Panel */}
