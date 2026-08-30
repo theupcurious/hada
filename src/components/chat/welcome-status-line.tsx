@@ -16,20 +16,19 @@ export function WelcomeStatusLine({ text, actionLabel, onAction, className }: We
       aria-live="polite"
       aria-atomic="true"
       className={cn(
-        "flex w-full flex-col gap-3 rounded-2xl border border-border/60 bg-background px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between",
-        "dark:bg-zinc-900/60",
+        "flex w-full items-center justify-between gap-3 rounded-lg px-1 py-1.5",
         className,
       )}
     >
-      <p className="min-w-0 truncate text-sm font-medium text-zinc-950 dark:text-zinc-50">{text}</p>
+      <p className="min-w-0 truncate text-sm text-zinc-500 dark:text-zinc-400">{text}</p>
       {actionLabel && onAction ? (
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={onAction}
           aria-label={actionLabel}
-          className="shrink-0 rounded-full"
+          className="h-7 shrink-0 px-2.5 text-xs font-medium text-teal-700 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300"
         >
           {actionLabel}
         </Button>
