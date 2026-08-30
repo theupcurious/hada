@@ -1,6 +1,6 @@
 # Hada
 
-Hada is a multi-channel assistant app built around an in-app agent loop. It supports web chat, Telegram, scheduled runs, long-term memory, an internal topic-segmentation layer for long threads, a docs workspace, and a dashboard/settings control surface.
+Hada is a multi-channel assistant app built around an in-app agent loop. It supports web chat, Telegram, scheduled runs, long-term memory, an internal topic-segmentation layer for long threads, a docs workspace, **Spaces** (specialized assistants per topic, each with its own conversation, identity, memory scope, and tool permissions), and a dashboard/settings control surface.
 
 ## Stack
 
@@ -16,14 +16,16 @@ Hada is a multi-channel assistant app built around an in-app agent loop. It supp
 - Regeneration of assistant messages (via `/api/chat` + `regenerateAssistantMessageId`)
 - Background job queue for long requests (`background_jobs`, `background_job_events`)
 - Tool call traces, step/plan traces, and delegation traces in chat UI
-- Single visible conversation per user with internal topic segments (`conversation_segments`)
+- Spaces (`projects`): a specialized assistant per topic — its own conversation, persona (emoji/color), instructions, starter suggestions, scoped memory, and a per-space tool allowlist
+- One conversation per `(user, Space)` — a default **General** space plus one thread per Space — each with internal topic segments (`conversation_segments`)
 - Ranked context retrieval across active-segment recency, segment summaries, long-term memories, and durable segment artifacts
 - Long-term memory (`user_memories`) with semantic recall + text fallback
 - Documents workspace (`/docs`) with markdown editor, foldering, upload, share links, and an LLM-maintained personal wiki
 - Durable long-form outputs stored as segment artifacts (`segment_artifacts`)
 - Smart card rendering (`comparison`, `steps`, `checklist`)
 - Follow-up suggestions after web chat responses
-- Google Calendar integration (OAuth + list/create/update/delete event tools)
+- Google integration (OAuth): Calendar (list/create/update/delete), Gmail (search/read/draft/send-with-approval), and Drive (read-only search/read)
+- Multimodal text ingest: upload PDF / Word / Excel / CSV / text files in chat (parsed to text server-side)
 - Telegram account linking and webhook-based chat
 - Scheduled tasks (`once`, `recurring`) processed by `/api/cron`
 - Dashboard APIs for activity, analytics, tasks, and memories
@@ -41,6 +43,10 @@ Current registered tools:
 - `list_documents`, `read_document`, `create_document`, `update_document`, `search_documents`, `delete_document`
 - `mcp_call`
 - `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`
+- `gmail_search`, `gmail_read`, `gmail_draft`, `gmail_send` (Google; `gmail_send` is high-risk → approval flow)
+- `drive_search`, `drive_read` (Google, read-only)
+
+A Space can restrict which of these an assistant may use via its `tool_allowlist` (`ToolRegistry.getAvailable`). Core tools (`save_memory`, `recall_memory`, `plan_task`, `delegate_task`, `render_card`) are always available and cannot be gated.
 
 ## Quick Start
 
@@ -110,6 +116,13 @@ Existing database upgrades:
 12. `012_conversation_segments.sql`
 13. `013_memory_classes.sql`
 14. `014_segment_artifacts.sql`
+15. `015_conversation_segments_rls.sql`
+16. `016_projects.sql`
+17. `017_project_conversations.sql`
+18. `018_space_instructions_and_scoped_memory.sql`
+19. `019_space_persona.sql`
+20. `020_space_suggestions.sql`
+21. `021_space_tool_allowlist.sql`
 
 Important:
 
@@ -128,6 +141,7 @@ Open:
 
 - `http://localhost:3000/`
 - `http://localhost:3000/chat`
+- `http://localhost:3000/projects`
 - `http://localhost:3000/docs`
 - `http://localhost:3000/settings`
 
@@ -151,6 +165,7 @@ npm run build
 - `POST|DELETE /api/documents/[id]/share`
 - `GET /api/shared/documents/[shareId]`
 - `GET /api/tools` - tool manifests + integration connection status
+- `GET|POST /api/projects`, `GET|PATCH|DELETE /api/projects/[id]` - Spaces (list/create, and a Space with its documents + segments)
 - `GET /api/dashboard/activity`
 - `GET /api/dashboard/analytics`
 - `GET|POST /api/dashboard/memories`, `PATCH|DELETE /api/dashboard/memories/[id]`
@@ -167,7 +182,7 @@ npm run build
 
 - Long requests are classified in `src/lib/chat/runtime-budgets.ts` and may be queued into `background_jobs`.
 - Ranked context retrieval is enabled by default and can be disabled with `HADA_ENABLE_RANKED_CONTEXT_RETRIEVAL=0`.
-- Hada still uses one visible conversation per user, but prompt assembly is no longer purely flat-recency based.
+- Hada uses one conversation per `(user, Space)` — a default General conversation plus one per Space; Telegram and cron always use General. Prompt assembly is no longer purely flat-recency based.
 - Tool permissions are enforced by `DEFAULT_POLICY` in `src/lib/chat/tool-permissions.ts`.
 - Provider/model user overrides are only applied for admin emails (`ADMIN_USER_EMAILS` / `ADMIN_EMAILS`).
 - `render_card` currently supports only `comparison`, `steps`, and `checklist`.
