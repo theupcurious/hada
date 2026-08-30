@@ -66,7 +66,7 @@ export function SpacesRail({
 }: SpacesRailProps) {
   const rowFor = (active: boolean) =>
     cn(
-      "group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+      "group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-[background-color,color,transform] duration-200 active:scale-[0.98]",
       active
         ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800/70 dark:text-zinc-100"
         : "text-zinc-600 hover:bg-zinc-100/70 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100",
