@@ -18,6 +18,7 @@ import type { SegmentListItem } from "@/lib/db/segments";
 import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first-run-setup";
 import { WelcomeHome, type WelcomeSpaceIdentity } from "@/components/chat/welcome-home";
 import { WelcomeSpacesStrip } from "@/components/chat/welcome-spaces-strip";
+import { SpacesRail } from "@/components/chat/spaces-rail";
 import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
 import type { TaskPlan, UserSettings } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
@@ -2701,6 +2702,19 @@ export default function ChatPage() {
 
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1">
+        {/* Persistent desktop Spaces rail — hidden when an artifact panel is open
+            so the reading column keeps its width. */}
+        {!artifactContent && (
+          <SpacesRail
+            spaces={spaces}
+            activeId={activeProject?.id ?? null}
+            onSelect={(space) => void switchSpace(space)}
+            generalLabel={copy.spacesGeneral}
+            heading={copy.welcomeYourSpaces}
+            newSpaceLabel={copy.spacesNew}
+            newSpaceHref="/projects?new=1"
+          />
+        )}
         <div className={`flex min-w-0 w-full flex-col ${artifactContent ? "md:max-w-none md:px-3 sm:px-3" : "max-w-4xl mx-auto px-3 sm:px-4 md:px-6"}`}>
 
           {/* Viewing-a-past-topic banner */}
