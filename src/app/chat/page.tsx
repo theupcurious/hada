@@ -19,6 +19,7 @@ import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first
 import { WelcomeHome, type WelcomeSpaceIdentity } from "@/components/chat/welcome-home";
 import { WelcomeSpacesStrip } from "@/components/chat/welcome-spaces-strip";
 import { SpacesRail } from "@/components/chat/spaces-rail";
+import { CommandPalette, type CommandItem } from "@/components/chat/command-palette";
 import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
 import type { TaskPlan, UserSettings } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
@@ -32,7 +33,7 @@ import {
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Activity, Calendar, FolderKanban, History, LayoutDashboard, Mail, Octagon, PenLine, Search, Sparkles } from "lucide-react";
+import { Activity, Calendar, FileText, FolderKanban, History, LayoutDashboard, Mail, Octagon, PenLine, Plus, Search, Settings2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
@@ -229,6 +230,10 @@ interface ChatLocaleCopy {
   spacesGeneral: string;
   spacesNew: string;
   spacesSwitchAria: string;
+  commandPlaceholder: string;
+  commandOpenLabel: string;
+  commandGroupSpaces: string;
+  commandGroupGoTo: string;
 }
 
 const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
@@ -311,6 +316,10 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     spacesGeneral: "General",
     spacesNew: "New space",
     spacesSwitchAria: "Switch space",
+    commandPlaceholder: "Search spaces and actions…",
+    commandOpenLabel: "Search & switch",
+    commandGroupSpaces: "Spaces",
+    commandGroupGoTo: "Go to",
   },
   ko: {
     greetingMorning: "좋은 아침입니다",
@@ -391,6 +400,10 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     spacesGeneral: "일반",
     spacesNew: "새 스페이스",
     spacesSwitchAria: "스페이스 전환",
+    commandPlaceholder: "스페이스와 작업 검색…",
+    commandOpenLabel: "검색 및 전환",
+    commandGroupSpaces: "스페이스",
+    commandGroupGoTo: "이동",
   },
   ja: {
     greetingMorning: "おはようございます",
@@ -471,6 +484,10 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     spacesGeneral: "一般",
     spacesNew: "新しいスペース",
     spacesSwitchAria: "スペースを切り替え",
+    commandPlaceholder: "スペースと操作を検索…",
+    commandOpenLabel: "検索して切り替え",
+    commandGroupSpaces: "スペース",
+    commandGroupGoTo: "移動",
   },
   zh: {
     greetingMorning: "早上好",
@@ -551,6 +568,10 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     spacesGeneral: "通用",
     spacesNew: "新建空间",
     spacesSwitchAria: "切换空间",
+    commandPlaceholder: "搜索空间和操作…",
+    commandOpenLabel: "搜索并切换",
+    commandGroupSpaces: "空间",
+    commandGroupGoTo: "前往",
   },
 };
 
@@ -563,6 +584,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [user, setUser] = useState<{ email?: string; name?: string; id?: string } | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showFirstRunSetup, setShowFirstRunSetup] = useState(false);
@@ -1938,6 +1960,18 @@ export default function ChatPage() {
     controller.abort();
   }, []);
 
+  // ⌘K / Ctrl+K opens the command palette from anywhere in the chat.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const sendMessage = async (overrideMessage?: string) => {
     const messageText = overrideMessage ?? input;
     if (!messageText.trim() || isLoading) return;
@@ -2434,6 +2468,75 @@ export default function ChatPage() {
   // Persona accent: tint the composer's send button with the active Space's color
   // so context is signalled persistently, not just on the empty state.
   const composerAccent = activeProject?.color?.trim() || null;
+
+  // Command palette (⌘K) entries: switch to any space, plus quick navigation.
+  const commandItems = useMemo<CommandItem[]>(() => {
+    const dot = (color?: string | null) => (
+      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color || "#14b8a6" }} />
+    );
+    const items: CommandItem[] = [
+      {
+        id: "space-general",
+        label: copy.spacesGeneral,
+        group: copy.commandGroupSpaces,
+        keywords: "space general home",
+        glyph: <span className="h-2.5 w-2.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />,
+        onSelect: () => void switchSpace(null),
+      },
+      ...spaces.map((s) => ({
+        id: `space-${s.id}`,
+        label: s.name,
+        group: copy.commandGroupSpaces,
+        keywords: "space",
+        glyph: s.emoji?.trim() ? <span className="text-[15px] leading-none">{s.emoji}</span> : dot(s.color),
+        onSelect: () => void switchSpace(s),
+      })),
+      {
+        id: "space-new",
+        label: copy.spacesNew,
+        group: copy.commandGroupSpaces,
+        keywords: "create add space",
+        glyph: <Plus className="h-4 w-4" />,
+        onSelect: () => router.push("/projects?new=1"),
+      },
+      {
+        id: "go-history",
+        label: copy.historyLabel,
+        group: copy.commandGroupGoTo,
+        glyph: <History className="h-4 w-4" />,
+        onSelect: () => setHistoryOpen(true),
+      },
+      {
+        id: "go-docs",
+        label: copy.docsLabel,
+        group: copy.commandGroupGoTo,
+        glyph: <FileText className="h-4 w-4" />,
+        onSelect: () => router.push("/docs"),
+      },
+      {
+        id: "go-spaces",
+        label: copy.projectsLabel,
+        group: copy.commandGroupGoTo,
+        glyph: <FolderKanban className="h-4 w-4" />,
+        onSelect: () => router.push("/projects"),
+      },
+      {
+        id: "go-activity",
+        label: copy.activityLabel,
+        group: copy.commandGroupGoTo,
+        glyph: <Activity className="h-4 w-4" />,
+        onSelect: () => router.push("/settings?tab=tasks"),
+      },
+      {
+        id: "go-settings",
+        label: copy.settingsLabel,
+        group: copy.commandGroupGoTo,
+        glyph: <Settings2 className="h-4 w-4" />,
+        onSelect: () => router.push("/settings"),
+      },
+    ];
+    return items;
+  }, [spaces, copy, switchSpace, router]);
   const inputForm = (
     <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
       <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden transition-colors duration-300 focus-within:border-teal-500/40">
@@ -2624,6 +2727,17 @@ export default function ChatPage() {
             />
           </div>
           <div className="flex items-center justify-end gap-0.5 sm:gap-1.5">
+            {/* ⌘K command palette trigger — desktop only (keyboard-first). */}
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              aria-label={copy.commandOpenLabel}
+              className="mr-1 hidden items-center gap-2 rounded-lg border border-border/70 bg-background/40 px-2.5 py-1.5 text-xs text-zinc-500 transition-colors hover:border-border hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 lg:inline-flex"
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span>{copy.commandOpenLabel}</span>
+              <kbd className="rounded border border-border/70 px-1 text-[10px] font-sans">⌘K</kbd>
+            </button>
             {/* Primary nav — icon-only on mobile, labeled on desktop. */}
             <Button
               variant="ghost"
@@ -2872,6 +2986,15 @@ export default function ChatPage() {
         <SaveToDocModal
           content={saveModalContent}
           onClose={() => setSaveModalContent(null)}
+        />
+      )}
+
+      {/* Command palette (⌘K) — mounted only while open, for fresh state. */}
+      {commandOpen && (
+        <CommandPalette
+          onClose={() => setCommandOpen(false)}
+          placeholder={copy.commandPlaceholder}
+          items={commandItems}
         />
       )}
 
