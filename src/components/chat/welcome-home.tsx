@@ -93,7 +93,9 @@ export function WelcomeHome({
           </div>
         ) : null}
 
-        {spacesStrip ? <div className="mt-5 w-full sm:mt-6">{spacesStrip}</div> : null}
+        {/* Hidden at md+ where the persistent Spaces rail already lists spaces;
+            shown on smaller screens as the only always-visible space launcher. */}
+        {spacesStrip ? <div className="mt-5 w-full sm:mt-6 md:hidden">{spacesStrip}</div> : null}
 
         {/* Tertiary utilities — quiet rows, visually separated from the cards above. */}
         <div className="mt-6 w-full border-t border-zinc-200/70 pt-3 dark:border-zinc-800/70 sm:mt-8">
