@@ -21,25 +21,26 @@ export function WelcomeContinueRow({
   return (
     <div
       className={cn(
-        "flex w-full flex-col gap-3 rounded-2xl border border-border/60 bg-background px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between",
-        "dark:bg-zinc-900/60",
+        "flex w-full items-center justify-between gap-3 rounded-lg px-1 py-1.5",
         className,
       )}
     >
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-zinc-950 dark:text-zinc-50">{label}</p>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <p className="truncate text-sm text-zinc-600 dark:text-zinc-300">{label}</p>
         {description ? (
-          <p className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">{description}</p>
+          <p className="hidden shrink-0 text-xs text-zinc-400 dark:text-zinc-500 sm:block">
+            {description}
+          </p>
         ) : null}
       </div>
 
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="sm"
         onClick={onContinue}
         aria-label={`${actionLabel}: ${label}`}
-        className="shrink-0 rounded-full"
+        className="h-7 shrink-0 px-2.5 text-xs font-medium text-teal-700 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300"
       >
         {actionLabel}
       </Button>

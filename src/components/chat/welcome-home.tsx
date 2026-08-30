@@ -95,11 +95,9 @@ export function WelcomeHome({
 
         {spacesStrip ? <div className="mt-5 w-full sm:mt-6">{spacesStrip}</div> : null}
 
-        <div className="mt-4 w-full sm:mt-5">
+        {/* Tertiary utilities — quiet rows, visually separated from the cards above. */}
+        <div className="mt-6 w-full border-t border-zinc-200/70 pt-3 dark:border-zinc-800/70 sm:mt-8">
           <WelcomeContinueRow {...continueRow} />
-        </div>
-
-        <div className="mt-5 w-full sm:mt-6">
           <WelcomeStatusLine {...statusLine} />
         </div>
       </div>

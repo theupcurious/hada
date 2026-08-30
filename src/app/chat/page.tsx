@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { useHealthStatus } from "@/lib/hooks/use-health-status";
 import { type TraceEvent, type ThinkingEvent } from "@/components/chat/agent-trace";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AccountMenu } from "@/components/chat/account-menu";
 import { ChatMessageRow } from "@/components/chat/chat-message-row";
 import { ArtifactPanel, type ArtifactData } from "@/components/chat/artifact-panel";
 import { SaveToDocModal } from "@/components/chat/save-to-doc-modal";
-import { DocAttachPicker, AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
-import { FileUploadButton } from "@/components/chat/file-upload-button";
+import { AttachedDocChips, type AttachedDoc } from "@/components/chat/doc-attach-picker";
+import { AttachMenu } from "@/components/chat/attach-menu";
 import { HistoryPanel } from "@/components/chat/history-panel";
 import { SpaceSwitcher, type Space } from "@/components/chat/space-switcher";
 import type { SegmentListItem } from "@/lib/db/segments";
@@ -31,7 +31,7 @@ import {
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Activity, Calendar, FolderKanban, History, LayoutDashboard, LogOut, Mail, Octagon, PenLine, Search, Settings2, Sparkles } from "lucide-react";
+import { Activity, Calendar, FolderKanban, History, LayoutDashboard, Mail, Octagon, PenLine, Search, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
@@ -191,6 +191,8 @@ interface ChatLocaleCopy {
   projectsLabel: string;
   openSettingsAria: string;
   settingsLabel: string;
+  accountAria: string;
+  themeLabel: string;
   signOutAria: string;
   signOutLabel: string;
   responseTitle: string;
@@ -267,6 +269,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     projectsLabel: "Spaces",
     openSettingsAria: "Open settings",
     settingsLabel: "Settings",
+    accountAria: "Account menu",
+    themeLabel: "Toggle theme",
     signOutAria: "Sign out",
     signOutLabel: "Sign out",
     responseTitle: "Response",
@@ -345,6 +349,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     projectsLabel: "스페이스",
     openSettingsAria: "설정 열기",
     settingsLabel: "설정",
+    accountAria: "계정 메뉴",
+    themeLabel: "테마 전환",
     signOutAria: "로그아웃",
     signOutLabel: "로그아웃",
     responseTitle: "응답",
@@ -423,6 +429,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     projectsLabel: "スペース",
     openSettingsAria: "設定を開く",
     settingsLabel: "設定",
+    accountAria: "アカウントメニュー",
+    themeLabel: "テーマ切り替え",
     signOutAria: "サインアウト",
     signOutLabel: "サインアウト",
     responseTitle: "応答",
@@ -501,6 +509,8 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     projectsLabel: "空间",
     openSettingsAria: "打开设置",
     settingsLabel: "设置",
+    accountAria: "账户菜单",
+    themeLabel: "切换主题",
     signOutAria: "退出登录",
     signOutLabel: "退出登录",
     responseTitle: "回复",
@@ -2420,6 +2430,9 @@ export default function ChatPage() {
         },
       };
 
+  // Persona accent: tint the composer's send button with the active Space's color
+  // so context is signalled persistently, not just on the empty state.
+  const composerAccent = activeProject?.color?.trim() || null;
   const inputForm = (
     <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
       <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden">
@@ -2444,12 +2457,12 @@ export default function ChatPage() {
         />
         {/* Bottom bar: attach + send */}
         <div className="flex items-center gap-1 px-2 pb-2">
-          <DocAttachPicker
+          <AttachMenu
             attachedDocs={attachedDocs}
             onAttach={handleAttachDoc}
-            onDetach={handleDetachDoc}
+            disabled={isLoading}
+            title={copy.attachFileLabel}
           />
-          <FileUploadButton onAttach={handleAttachDoc} disabled={isLoading} title={copy.attachFileLabel} />
           <div className="flex-1" />
           {isLoading ? (
             <Button
@@ -2468,7 +2481,10 @@ export default function ChatPage() {
               type="submit"
               disabled={!input.trim()}
               size="sm"
-              className="rounded-xl gradient-brand text-white border-0 shadow-md shadow-teal-500/20 disabled:opacity-40"
+              style={composerAccent ? { backgroundColor: composerAccent } : undefined}
+              className={`rounded-xl text-white border-0 shadow-md disabled:opacity-40 ${
+                composerAccent ? "shadow-black/10 hover:brightness-95" : "gradient-brand shadow-teal-500/20"
+              }`}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -2606,10 +2622,8 @@ export default function ChatPage() {
               switchAria={copy.spacesSwitchAria}
             />
           </div>
-          <div className="flex items-center justify-end gap-1 sm:gap-1.5">
-            <span className="hidden text-sm text-muted-foreground xl:block">{user?.email}</span>
-            <ThemeToggle />
-
+          <div className="flex items-center justify-end gap-0.5 sm:gap-1.5">
+            {/* Primary nav — icon-only on mobile, labeled on desktop. */}
             <Button
               variant="ghost"
               size="icon"
@@ -2669,33 +2683,18 @@ export default function ChatPage() {
               </Button>
             </Link>
 
-            <Link href="/settings" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label={copy.openSettingsAria}>
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </Link>
-
-            <Link href="/settings" className="hidden sm:block">
-              <Button variant="ghost" size="sm" className="px-2.5">
-                <Settings2 className="mr-2 h-4 w-4" />
-                {copy.settingsLabel}
-              </Button>
-            </Link>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="sm:hidden"
-              aria-label={copy.signOutAria}
-              onClick={handleSignOut}
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-
-            <Button variant="ghost" size="sm" className="hidden px-2.5 sm:inline-flex" onClick={handleSignOut}>
-              <LogOut className="mr-2 h-4 w-4" />
-              {copy.signOutLabel}
-            </Button>
+            {/* Account overflow — theme, settings, sign out, and the user's email. */}
+            <div className="ml-0.5 sm:ml-1">
+              <AccountMenu
+                name={user?.name}
+                email={user?.email}
+                accountAria={copy.accountAria}
+                settingsLabel={copy.settingsLabel}
+                signOutLabel={copy.signOutLabel}
+                themeLabel={copy.themeLabel}
+                onSignOut={handleSignOut}
+              />
+            </div>
           </div>
         </div>
       </header>
