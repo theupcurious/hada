@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import "@/lib/chat/tools"; // side-effect: registers all tools into the registry
 import { registry } from "@/lib/chat/tools/tool-registry";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
