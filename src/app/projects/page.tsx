@@ -23,6 +23,8 @@ export default function ProjectsPage() {
   const [instructions, setInstructions] = useState("");
   const [emoji, setEmoji] = useState("");
   const [color, setColor] = useState(SPACE_COLORS[0]);
+  // Starter prompts prefilled from a template; not directly edited in the form.
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [toDelete, setToDelete] = useState<Project | null>(null);
 
   // Inline per-space editor (description + instructions only — editing the name
@@ -80,6 +82,7 @@ export default function ProjectsPage() {
           instructions: instructions.trim() || null,
           emoji: emoji.trim() || null,
           color: color || null,
+          suggestions: suggestions.length > 0 ? suggestions : null,
         }),
       });
       const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -89,6 +92,7 @@ export default function ProjectsPage() {
       setInstructions("");
       setEmoji("");
       setColor(SPACE_COLORS[0]);
+      setSuggestions([]);
       setShowForm(false);
       await load();
     } catch (e) {
@@ -105,6 +109,7 @@ export default function ProjectsPage() {
     // The blank template's "＋" is a UI marker, not a real space emoji.
     setEmoji(template.name ? template.icon : "");
     setColor(template.color);
+    setSuggestions(template.suggestions);
   };
 
   const startEditing = (project: Project) => {

@@ -6,6 +6,19 @@ export function projectFolder(name: string): string {
   return name.trim().replace(/\s+/g, " ").slice(0, 80) || "Untitled Project";
 }
 
+/** Clean a suggestions list: trim, drop blanks, cap length. NULL when empty. */
+function normalizeSuggestions(
+  suggestions: string[] | null | undefined,
+): string[] | null {
+  if (!Array.isArray(suggestions)) return null;
+  const cleaned = suggestions
+    .filter((s): s is string => typeof s === "string")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 export async function listProjects(
   supabase: SupabaseClient,
   userId: string,
@@ -43,6 +56,7 @@ export async function createProject(
     instructions?: string | null;
     emoji?: string | null;
     color?: string | null;
+    suggestions?: string[] | null;
   },
 ): Promise<Project> {
   const name = input.name.trim();
@@ -56,6 +70,7 @@ export async function createProject(
       instructions: input.instructions?.trim() || null,
       emoji: input.emoji?.trim() || null,
       color: input.color?.trim() || null,
+      suggestions: normalizeSuggestions(input.suggestions),
     })
     .select("*")
     .single();
@@ -73,6 +88,7 @@ export async function updateProject(
     instructions?: string | null;
     emoji?: string | null;
     color?: string | null;
+    suggestions?: string[] | null;
     archived?: boolean;
   },
 ): Promise<Project | null> {
@@ -92,6 +108,9 @@ export async function updateProject(
   }
   if (updates.color !== undefined) {
     patch.color = updates.color?.trim() || null;
+  }
+  if (updates.suggestions !== undefined) {
+    patch.suggestions = normalizeSuggestions(updates.suggestions);
   }
   if (typeof updates.archived === "boolean") {
     patch.archived = updates.archived;

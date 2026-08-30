@@ -306,6 +306,8 @@ export interface Project {
   emoji: string | null;
   /** Accent color as a hex string, e.g. '#14b8a6'. NULL = hashed-hue fallback. */
   color: string | null;
+  /** Starter prompts for the space's empty-state cards. NULL/[] = general starters. */
+  suggestions: string[] | null;
   archived: boolean;
   created_at: string;
   updated_at: string;
