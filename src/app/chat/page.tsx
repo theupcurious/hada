@@ -2436,7 +2436,7 @@ export default function ChatPage() {
   const composerAccent = activeProject?.color?.trim() || null;
   const inputForm = (
     <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
-      <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden">
+      <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden transition-colors duration-300 focus-within:border-teal-500/40">
         {/* Attached doc chips */}
         <AttachedDocChips attachedDocs={attachedDocs} onDetach={handleDetachDoc} />
         {/* Textarea */}
@@ -2483,7 +2483,7 @@ export default function ChatPage() {
               disabled={!input.trim()}
               size="sm"
               style={composerAccent ? { backgroundColor: composerAccent } : undefined}
-              className={`rounded-xl text-white border-0 shadow-md disabled:opacity-40 ${
+              className={`rounded-xl text-white border-0 shadow-md disabled:opacity-40 transition-[background-color,box-shadow,transform,filter] duration-500 ease-smooth hover:-translate-y-px active:scale-95 ${
                 composerAccent ? "shadow-black/10 hover:brightness-95" : "gradient-brand shadow-teal-500/20"
               }`}
             >

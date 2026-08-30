@@ -46,6 +46,17 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
+/* ── Motion vocabulary ──────────────────────────────────────
+   A calmer default curve + duration for every `transition-*` utility,
+   plus opt-in springy/smooth easings (generate `ease-spring` / `ease-smooth`).
+   This is the shared timing the "craft" pass builds on. */
+@theme {
+  --default-transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  --default-transition-duration: 200ms;
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --ease-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 /* ── Dark theme (default) ────────────────────────────────── */
 :root {
   --radius: 0.5rem;
@@ -275,5 +286,17 @@ html[data-theme="light"] .gradient-text {
   }
   50% {
     transform: translateY(-8px);
+  }
+}
+
+/* ── Respect reduced-motion: keep everything, just make it instant ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -33,9 +33,10 @@ export function WelcomeStarterActions({ actions, className }: WelcomeStarterActi
           disabled={action.disabled}
           aria-label={action.label}
           className={cn(
-            "flex h-full min-h-20 w-full items-center justify-start gap-3 rounded-2xl border border-border/70 bg-background/75 px-4 py-4 shadow-sm backdrop-blur-sm",
-            "transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/40 hover:bg-teal-500/5 hover:shadow-md hover:shadow-teal-500/10",
-            "dark:bg-zinc-950/50 dark:hover:bg-teal-500/10",
+            "flex h-full min-h-20 w-full items-center justify-start gap-3 rounded-2xl border border-border/50 bg-transparent px-4 py-4 backdrop-blur-sm",
+            "transition-[transform,background-color,border-color,box-shadow] duration-300 ease-spring hover:-translate-y-0.5 hover:border-teal-500/40 hover:bg-teal-500/5 hover:shadow-lg hover:shadow-teal-500/10",
+            "active:translate-y-0 active:scale-[0.98]",
+            "dark:bg-transparent dark:hover:bg-teal-500/10",
           )}
         >
           {action.icon ? (
