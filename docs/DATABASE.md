@@ -26,6 +26,13 @@ Current migration chain:
 12. `012_conversation_segments.sql`
 13. `013_memory_classes.sql`
 14. `014_segment_artifacts.sql`
+15. `015_conversation_segments_rls.sql`
+16. `016_projects.sql` — Spaces (`projects` table)
+17. `017_project_conversations.sql` — `conversations.project_id` (a conversation per space)
+18. `018_space_instructions_and_scoped_memory.sql` — `projects.instructions`, `user_memories.project_id`, drops `unique(user_id, topic)`, 5-arg `match_user_memories`
+19. `019_space_persona.sql` — `projects.emoji`, `projects.color`
+20. `020_space_suggestions.sql` — `projects.suggestions`
+21. `021_space_tool_allowlist.sql` — `projects.tool_allowlist`
 
 ## High-Level Relationships
 
@@ -79,14 +86,15 @@ Conversation thread container.
 
 - `id`
 - `user_id`
+- `project_id` (nullable FK to `projects`; migration 017) — the Space this conversation belongs to; `NULL` is the default **General** space
 - `title`
 - `compacted_through` (timestamp marker for conversation compaction)
 - `created_at`, `updated_at`
 
 Notes:
 
-- Current app behavior is one latest conversation per user in normal web usage.
-- Internal topic separation is handled by `conversation_segments`, not separate top-level user threads.
+- One conversation per `(user, project)`: General (`project_id IS NULL`) plus one thread per Space. Within web usage a user has one General conversation.
+- Internal topic separation within a conversation is handled by `conversation_segments`, not separate top-level user threads.
 
 ### `messages`
 
@@ -143,15 +151,17 @@ Durable long-term memory entries.
 - `content`
 - `embedding vector(1536)` (nullable)
 - `kind` (`profile`, `project`, `preference`, `archive`)
+- `project_id` (nullable FK to `projects`; migration 018) — `NULL` = global (visible in every Space); set = scoped to that Space only
 - `pinned boolean`
 - `source_segment_id` (nullable FK to `conversation_segments`)
 - `created_at`, `updated_at`
-- unique: `(user_id, topic)`
+- unique: `idx_user_memories_user_project_topic` on `(user_id, coalesce(project_id, '000…000'::uuid), topic)` — migration 018 **dropped** the old `unique(user_id, topic)` (which collided a topic across Spaces) and treats a NULL `project_id` as a fixed sentinel so global topics stay unique per user
 
 Current runtime use:
 
 - Pinned/profile/preference memories are eligible for prompt-level global injection.
 - Project/archive memories are primarily used by ranked context retrieval when relevant.
+- Recall everywhere filters `project_id IS NULL OR project_id = <active space>`, so a Space sees its own memories plus globals, never another Space's.
 
 ### `conversation_segments`
 
@@ -175,6 +185,7 @@ Key constraints and indexes:
 
 - unique active segment per conversation: `idx_one_active_segment`
 - lookup indexes on conversation, user, and `(conversation_id, status)`
+- `metadata.project_id` tags a segment with its Space, so a Space transitively owns its segments and their `segment_artifacts`
 
 ### `segment_artifacts`
 
@@ -230,6 +241,28 @@ Share links for read-only document access.
 - `user_id`
 - `share_id` (UUID, unique)
 - `created_at`
+
+### `projects`
+
+User-facing **Spaces** — a specialized assistant per topic. The table keeps the internal name `projects` (migration 016); everything user-facing says "Spaces". See [ARCHITECTURE.md §8](ARCHITECTURE.md) for how these columns are used at runtime.
+
+- `id`
+- `user_id`
+- `name`
+- `folder` — binds the Space to `documents` with the same folder value
+- `description` (nullable)
+- `instructions` (nullable; migration 018) — injected into the system prompt as "Space instructions"
+- `emoji` (nullable; migration 019) — identity glyph; NULL shows a colored dot
+- `color` (nullable hex, e.g. `#14b8a6`; migration 019) — accent color
+- `suggestions text[]` (nullable; migration 020) — empty-state starter prompts; NULL/`[]` = general starters
+- `tool_allowlist text[]` (nullable; migration 021) — gateable tools the Space may use. `NULL` = unrestricted (all tools); `[]` = core essentials only; `[...]` = those tools plus the always-on core. Enforced in `ToolRegistry.getAvailable`
+- `archived boolean`
+- `created_at`, `updated_at`
+
+Notes:
+
+- RLS owner-scoped. A unique folder constraint surfaces as a friendly 409 on duplicate names.
+- `NULL project_id` elsewhere (conversations, user_memories, segment metadata) is the default **General** space, not a real `projects` row.
 
 ### `telegram_link_tokens`
 
@@ -292,12 +325,13 @@ Replayable event log for queued runs.
 
 ### `match_user_memories(...)`
 
-Added in `007_memory_embeddings.sql`.
+Added in `007_memory_embeddings.sql`; **replaced by a 5-arg signature in `018_space_instructions_and_scoped_memory.sql`** (the old 4-arg version is dropped explicitly to avoid a PGRST203 overload ambiguity).
 
 Arguments:
 
 - `query_embedding vector(1536)`
 - `match_user_id uuid`
+- `match_project_id uuid default null` — the active Space; results are filtered `project_id is null or project_id = match_project_id` (Space memories + globals)
 - `match_threshold float default 0.3`
 - `match_count int default 20`
 
@@ -323,6 +357,7 @@ RLS is enabled on:
 - `background_job_events`
 - `documents`
 - `document_shares`
+- `projects`
 
 Service-role server paths (cron/webhooks/background processing) bypass user RLS where appropriate.
 

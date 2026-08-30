@@ -151,6 +151,12 @@ Default policy:
 - Rate limit: `delegate_task` max 3 calls/run
 - `confirm` pauses the run (human-in-the-loop): the loop emits a `permission_request`, ends the turn, and persists the proposed action to `messages.metadata.confirmation`. The UI renders an approval card; on approval `POST /api/chat/confirm-action` executes the tool server-side and appends the outcome. High-risk tools (`delete_*`, `gmail_send`) flow through this path.
 
+Per-space tool allowlist:
+
+- `ToolRegistry.getAvailable(context, connectedIntegrations, allowedTools?)` builds the live tool set. `allowedTools` is a space's `projects.tool_allowlist`: `null` = unrestricted (default), `[]` = core essentials only, `[...]` = those gateable tools plus the always-on core.
+- `ALWAYS_ON_TOOL_NAMES` (`save_memory`, `recall_memory`, `plan_task`, `delegate_task`, `render_card`) can never be gated — scoped memory, planning/delegation, and card rendering always work. Everything else is "gateable" and subject to the allowlist. Integration gating still applies on top.
+- `processMessage` fetches the allowlist in its first round (`getProjectToolAllowlist`, which degrades to `null` if the column is absent, so chat never breaks) and threads it into `createTools`. `delegate_task` sub-agents draw from the already-filtered pool, so a space's restriction propagates into them. See [8. Spaces](#8-spaces).
+
 Current registered tools:
 
 - Memory: `save_memory`, `recall_memory`
@@ -228,14 +234,17 @@ Embeddings are optional:
 - `maybeCompactConversation()` is segment-aware: it prefers compacting runs of messages within the same `segment_id` boundary instead of mixing unrelated topics.
 - Long-form outputs can be persisted to `segment_artifacts` so future turns can recall the artifact summary instead of replaying the full research transcript.
 
-### 8. Projects
+### 8. Spaces
 
-Projects are user-visible workspaces that bundle a documents folder, chat history, and artifacts under one name.
+Spaces turn the single assistant into several specialized ones — each with its own conversation, identity, memory scope, and tool permissions. The DB table is still named `projects` and code/params use `projectId`; everything user-facing says **Spaces**. `project_id IS NULL` is the default **General** space (the pre-existing conversation). RLS is owner-scoped throughout.
 
-- `projects` table (migration `016_projects.sql`); RLS owner-scoped. A project's `folder` binds it to `documents` with the same folder value.
-- Chat is project-scoped via `?project=<id>` on `/chat`, which sends `projectId` to `POST /api/chat`. `processMessage` then (a) injects an "Active Project" section (name, description, document list) into the system prompt, and (b) tags the turn's `conversation_segment` with `metadata.project_id` — so the project transitively owns its segments and their `segment_artifacts`.
-- No change to the "one conversation per user" invariant: projects group **segments** within that single conversation, not separate threads.
-- Surfaces: `/projects` (list/create/delete + "Open in chat"), a project banner in `/chat`, and `GET /api/projects/[id]` returns the project with its documents and segments.
+- **Own conversation** (`017_project_conversations.sql`): `conversations.project_id` gives each space its own thread. `getOrCreateConversation(userId, projectId)` resolves it; `?project=<id>` on `/chat` sends `projectId` to `POST /api/chat`. This **supersedes** the original 016 model — spaces are now separate conversations, not just segment groups inside one shared thread.
+- **Identity** (`019_space_persona.sql`, `020_space_suggestions.sql`): `projects.emoji`, `projects.color` (accent hex), and `projects.suggestions text[]` (empty-state starter cards). `src/lib/space-templates.ts` prefills these at creation.
+- **Instructions** (`018_space_instructions_and_scoped_memory.sql`): `projects.instructions` is injected into the system prompt as a "Space instructions" section by `buildProjectContextSection` (process-message.ts).
+- **Scoped memory** (`018_...`): `user_memories.project_id` (NULL = global, visible everywhere; set = that space only). `save_memory` takes a `scope` (`space` | `global`); recall filters `project_id IS NULL OR = active` at every read site, including the `match_user_memories` RPC (now 5-arg with `match_project_id`). The old `unique(user_id, topic)` was dropped so a topic can exist per space.
+- **Tool allowlist** (`021_space_tool_allowlist.sql`): `projects.tool_allowlist text[]` restricts which gateable tools the space may use — see [3. Tool Registry + Policy](#3-tool-registry--policy) for enforcement.
+- **Docs binding**: a space's `folder` still binds it to `documents` with the same folder value; its turns tag `conversation_segment.metadata.project_id`, so a space transitively owns its segments and their `segment_artifacts`.
+- **Surfaces**: `/projects` (list/create/delete + per-space identity / instructions / tool pickers + "Open in chat"), a top-bar Space switcher and a persistent desktop Spaces rail in `/chat`, and `GET /api/projects/[id]` returns the space with its documents and segments.
 
 ## UI Architecture
 
