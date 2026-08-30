@@ -18,9 +18,11 @@ import {
   Link2,
   Mail,
   MessageCircle,
+  PenLine,
   Search,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import Image from "next/image";
@@ -38,6 +40,11 @@ interface HomeCopy {
   heroTitle: string;
   capabilitiesHeading: string;
   capabilitiesLead: string;
+  spacesEyebrow: string;
+  spacesHeading: string;
+  spacesLead: string;
+  spacesItems: { name: string; role: string }[];
+  spacesFacets: FeatureCopy[];
   trustHeading: string;
   heroDescription: string;
   integrationBoundary: string;
@@ -84,6 +91,21 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     capabilitiesHeading: "Everything here works today.",
     capabilitiesLead:
       "No waitlists and no coming-soon labels. Sign up and the built-in tools are live; connect the rest whenever you want them.",
+    spacesEyebrow: "Spaces",
+    spacesHeading: "A dedicated assistant for each part of your work.",
+    spacesLead:
+      "Spin up a Space for investing, health, writing — anything. Each one keeps its own instructions, its own memory, and its own set of tools. Switch between them and Hada changes hats completely.",
+    spacesItems: [
+      { name: "Investing", role: "Tracks markets and flags risk. Never gives advice." },
+      { name: "Health & Fitness", role: "Plans workouts and remembers your goals." },
+      { name: "Writing", role: "Edits for clarity, keeping your voice." },
+      { name: "Reading", role: "Summarizes and keeps notes on what you read." },
+    ],
+    spacesFacets: [
+      { title: "Its own instructions", description: "Set the role and voice each Space works in." },
+      { title: "Separate memory", description: "What Hada learns in one Space stays in that Space." },
+      { title: "Scoped tools", description: "Choose which tools a Space can use — keep email out of investing." },
+    ],
     trustHeading: "Nothing happens behind your back.",
     heroDescription:
       "Research current topics, turn useful answers into documents, and schedule recurring Hada workflows. Source links and tool progress stay visible.",
@@ -134,7 +156,7 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
       { title: "Documents & Wiki", description: "Create, edit, and organize documents in Hada." },
       { title: "Scheduled workflows", description: "Set one-time or recurring reminders and briefings." },
       { title: "Memory", description: "Save useful preferences and recall them across conversations." },
-      { title: "Projects", description: "Organize work and keep project context together." },
+      { title: "Spaces", description: "A dedicated assistant per topic — its own instructions, memory, and tools." },
     ],
     connectTitle: "Connect when needed",
     connectWhenNeeded: "Optional connection",
@@ -160,6 +182,21 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     capabilitiesHeading: "여기 있는 기능은 오늘 바로 작동합니다.",
     capabilitiesLead:
       "대기 명단도, 출시 예정 표시도 없습니다. 가입하면 기본 기능은 바로 작동하고, 나머지는 원할 때 연결하면 됩니다.",
+    spacesEyebrow: "스페이스",
+    spacesHeading: "업무의 영역마다 전담 어시스턴트를.",
+    spacesLead:
+      "투자, 건강, 글쓰기 — 무엇이든 스페이스를 만드세요. 각 스페이스는 고유한 지침과 메모리, 그리고 사용할 도구를 따로 갖습니다. 스페이스를 전환하면 Hada가 완전히 다른 역할로 바뀝니다.",
+    spacesItems: [
+      { name: "투자", role: "시장을 추적하고 위험을 짚어줍니다. 조언은 하지 않습니다." },
+      { name: "건강·운동", role: "운동을 계획하고 목표를 기억합니다." },
+      { name: "글쓰기", role: "당신의 문체를 지키며 명확하게 다듬습니다." },
+      { name: "리딩", role: "읽은 내용을 요약하고 메모로 남깁니다." },
+    ],
+    spacesFacets: [
+      { title: "고유한 지침", description: "각 스페이스의 역할과 어조를 설정합니다." },
+      { title: "분리된 메모리", description: "한 스페이스에서 배운 내용은 그 안에만 남습니다." },
+      { title: "도구 범위 지정", description: "스페이스가 쓸 도구를 고르세요. 투자에서 이메일은 빼도 됩니다." },
+    ],
     trustHeading: "당신 모르게 일어나는 일은 없습니다.",
     heroDescription:
       "최신 주제를 조사하고, 유용한 답변을 문서로 만들고, 반복 Hada 워크플로우를 예약하세요. 출처 링크와 도구 진행 상황을 확인할 수 있습니다.",
@@ -201,7 +238,7 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
       { title: "문서와 위키", description: "Hada에서 문서를 만들고 편집하고 정리합니다." },
       { title: "예약 워크플로우", description: "일회성 또는 반복 알림과 브리핑을 설정합니다." },
       { title: "메모리", description: "유용한 선호도를 저장하고 대화 전반에서 불러옵니다." },
-      { title: "프로젝트", description: "업무를 정리하고 프로젝트 맥락을 함께 유지합니다." },
+      { title: "스페이스", description: "주제별 전담 어시스턴트 — 고유한 지침, 메모리, 도구를 갖습니다." },
     ],
     connectTitle: "필요할 때 연결",
     connectWhenNeeded: "선택 연결",
@@ -227,6 +264,21 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     capabilitiesHeading: "ここにある機能は、今日から動きます。",
     capabilitiesLead:
       "順番待ちも「近日公開」もありません。登録すれば標準の機能はすぐ動き、残りは必要なときに接続できます。",
+    spacesEyebrow: "スペース",
+    spacesHeading: "仕事の領域ごとに、専用のアシスタントを。",
+    spacesLead:
+      "投資、健康、執筆 — 何でもスペースを作れます。それぞれが独自の指示、独自のメモリ、そして使えるツールを個別に持ちます。スペースを切り替えると、Hada は役割ごと入れ替わります。",
+    spacesItems: [
+      { name: "投資", role: "市場を追い、リスクを指摘。助言はしません。" },
+      { name: "健康・運動", role: "トレーニングを計画し、目標を覚えます。" },
+      { name: "執筆", role: "あなたの文体を保ちつつ、明確に整えます。" },
+      { name: "リーディング", role: "読んだ内容を要約し、メモに残します。" },
+    ],
+    spacesFacets: [
+      { title: "独自の指示", description: "各スペースの役割とトーンを設定します。" },
+      { title: "分離したメモリ", description: "あるスペースで学んだことは、その中だけに残ります。" },
+      { title: "ツールの範囲指定", description: "スペースが使えるツールを選択。投資からメールを外せます。" },
+    ],
     trustHeading: "あなたの知らないところでは、何も起きません。",
     heroDescription:
       "最新トピックを調査し、有用な回答をドキュメントにして、定期 Hada ワークフローを予約できます。情報源リンクとツールの進捗も確認できます。",
@@ -268,7 +320,7 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
       { title: "ドキュメントと Wiki", description: "Hada で文書を作成、編集、整理します。" },
       { title: "定期ワークフロー", description: "単発・定期の通知やブリーフィングを設定します。" },
       { title: "メモリ", description: "有用な設定を保存し、会話をまたいで呼び出します。" },
-      { title: "プロジェクト", description: "仕事を整理し、プロジェクトの文脈を保ちます。" },
+      { title: "スペース", description: "トピックごとの専用アシスタント — 独自の指示、メモリ、ツールを持ちます。" },
     ],
     connectTitle: "必要なときに接続",
     connectWhenNeeded: "任意の接続",
@@ -294,6 +346,21 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
     capabilitiesHeading: "这里的每一项，今天就能用。",
     capabilitiesLead:
       "没有等候名单，也没有即将推出。注册后内置功能立刻可用，其余的随时连接。",
+    spacesEyebrow: "空间",
+    spacesHeading: "为工作的每个部分配一个专属助手。",
+    spacesLead:
+      "为投资、健康、写作 — 任何主题建立一个空间。每个空间都有自己的指令、自己的记忆，以及自己可用的工具。切换空间，Hada 就彻底换一副面孔。",
+    spacesItems: [
+      { name: "投资", role: "追踪市场并提示风险，从不给出建议。" },
+      { name: "健康与健身", role: "规划锻炼并记住你的目标。" },
+      { name: "写作", role: "保留你的文风，把文字改得更清晰。" },
+      { name: "阅读", role: "总结所读内容并留下笔记。" },
+    ],
+    spacesFacets: [
+      { title: "专属指令", description: "为每个空间设定角色与语气。" },
+      { title: "独立记忆", description: "在一个空间学到的，只留在那个空间。" },
+      { title: "工具范围", description: "选择每个空间可用的工具 — 让投资用不到邮件。" },
+    ],
     trustHeading: "不会有任何事在你不知情时发生。",
     heroDescription:
       "研究最新主题，把有用回答转成文档，并安排定期 Hada 工作流。来源链接和工具进度始终可见。",
@@ -335,7 +402,7 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
       { title: "文档与 Wiki", description: "在 Hada 中创建、编辑和整理文档。" },
       { title: "定时工作流", description: "设置一次性或定期提醒和简报。" },
       { title: "记忆", description: "保存有用偏好并在不同对话中调用。" },
-      { title: "项目", description: "整理工作并集中保留项目上下文。" },
+      { title: "空间", description: "按主题划分的专属助手 — 拥有自己的指令、记忆和工具。" },
     ],
     connectTitle: "需要时连接",
     connectWhenNeeded: "可选连接",
@@ -358,6 +425,13 @@ const HOME_COPY: Record<AppLocale, HomeCopy> = {
 const stepIcons: LucideIcon[] = [Search, FileText, CalendarClock];
 const builtInIcons: LucideIcon[] = [Search, BookOpen, Clock3, Database, FolderKanban];
 const integrationIcons: LucideIcon[] = [CalendarClock, Mail, FileSearch, MessageCircle];
+
+// Locale-independent identity for the Spaces showcase cards. Names/roles are
+// localized in copy; the emoji + accent are shared, mirroring the app's own
+// per-space palette.
+const spaceEmojis = ["📈", "💪", "✍️", "📚"];
+const spaceAccents = ["#6366f1", "#ec4899", "#8b5cf6", "#14b8a6"];
+const facetIcons: LucideIcon[] = [PenLine, Database, SlidersHorizontal];
 
 function isCjkLocale(locale: AppLocale): boolean {
   return locale === "zh" || locale === "ja" || locale === "ko";
@@ -477,6 +551,13 @@ export default function Home() {
             ))}
           </div>
         </section>
+
+        <SpacesShowcase
+          copy={copy}
+          reduceMotion={reduceMotion}
+          headingTracking={headingTracking}
+          labelTracking={labelTracking}
+        />
 
         <section id="capabilities" className="scroll-mt-8 px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
           <Reveal reduceMotion={reduceMotion} className="mx-auto max-w-7xl">
@@ -805,6 +886,86 @@ function CapabilityColumn({
         })}
       </dl>
     </Reveal>
+  );
+}
+
+/**
+ * The Spaces differentiator: a row of accent-colored space cards, each a
+ * specialized assistant, over a three-up explanation of what a Space actually
+ * scopes — instructions, memory, and tools. Sits on a tinted band so it reads
+ * as its own beat between the steps rail and the capability list.
+ */
+function SpacesShowcase({
+  copy,
+  reduceMotion,
+  headingTracking,
+  labelTracking,
+}: {
+  copy: HomeCopy;
+  reduceMotion: boolean;
+  headingTracking: string;
+  labelTracking: string;
+}) {
+  return (
+    <section className="border-y border-zinc-900/10 bg-white/60 px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+      <Reveal reduceMotion={reduceMotion} className="mx-auto max-w-7xl">
+        <p className={`text-[11px] font-semibold uppercase text-teal-700 ${labelTracking}`}>
+          {copy.spacesEyebrow}
+        </p>
+        <h2
+          className={`mt-4 max-w-2xl font-display text-3xl font-medium leading-[1.15] sm:text-4xl lg:text-[2.75rem] ${headingTracking}`}
+        >
+          {copy.spacesHeading}
+        </h2>
+        <p className="mt-4 max-w-xl text-base leading-7 text-zinc-600">{copy.spacesLead}</p>
+      </Reveal>
+
+      <div className="mx-auto mt-12 grid max-w-7xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {copy.spacesItems.map((item, index) => {
+          const accent = spaceAccents[index % spaceAccents.length];
+          return (
+            <Reveal
+              key={item.name}
+              reduceMotion={reduceMotion}
+              delay={index * 0.06}
+              className="group flex flex-col rounded-xl border border-zinc-900/10 bg-white p-4 shadow-[0_18px_55px_-40px_rgba(24,24,27,0.5)] transition-colors hover:border-zinc-900/20 motion-reduce:transition-none"
+            >
+              <div className="flex items-center gap-2.5">
+                <span
+                  aria-hidden="true"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base"
+                  style={{ backgroundColor: `${accent}1a` }}
+                >
+                  {spaceEmojis[index % spaceEmojis.length]}
+                </span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold">
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: accent }}
+                  />
+                  {item.name}
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-zinc-600">{item.role}</p>
+            </Reveal>
+          );
+        })}
+      </div>
+
+      <div className="mx-auto mt-10 grid max-w-7xl gap-8 border-t border-zinc-900/10 pt-10 sm:grid-cols-3 sm:gap-10">
+        {copy.spacesFacets.map((facet, index) => {
+          const Icon = facetIcons[index];
+          return (
+            <Reveal key={facet.title} reduceMotion={reduceMotion} delay={index * 0.06}>
+              <Icon aria-hidden="true" className="h-5 w-5 text-teal-700" />
+              <h3 className="mt-4 text-sm font-semibold">{facet.title}</h3>
+              <p className="mt-1.5 text-sm leading-6 text-zinc-600">{facet.description}</p>
+            </Reveal>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
