@@ -580,6 +580,18 @@ const STREAM_FOLLOW_BOTTOM_THRESHOLD_PX = 160;
 const FINALIZATION_RECOVERY_ATTEMPTS = 16;
 const FINALIZATION_RECOVERY_INTERVAL_MS = 500;
 
+// Beyond a working session, re-orient to the Space's welcome (with its
+// "Continue" bridge) instead of dropping into a cold thread. Within it, resume
+// the conversation directly. 6h spans a normal gap (lunch, meetings) without
+// treating yesterday's thread as "current".
+const SPACE_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+function isRecentlyActive(messages: { created_at?: string }[]): boolean {
+  const last = messages[messages.length - 1];
+  if (!last?.created_at) return false;
+  const t = new Date(last.created_at).getTime();
+  return Number.isFinite(t) && Date.now() - t < SPACE_STALE_AFTER_MS;
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -1474,43 +1486,59 @@ export default function ChatPage() {
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
             const list = Array.isArray(d?.projects) ? (d.projects as unknown[]) : [];
-            setSpaces(
-              list
-                .filter(
-                  (p): p is {
-                    id: string;
-                    name: string;
-                    emoji?: string | null;
-                    color?: string | null;
-                    description?: string | null;
-                    suggestions?: string[] | null;
-                    archived?: boolean;
-                  } =>
-                    !!p &&
-                    typeof p === "object" &&
-                    typeof (p as { id?: unknown }).id === "string" &&
-                    typeof (p as { name?: unknown }).name === "string" &&
-                    (p as { archived?: unknown }).archived !== true,
-                )
-                .map((p) => ({
-                  id: p.id,
-                  name: p.name,
-                  emoji: p.emoji ?? null,
-                  color: p.color ?? null,
-                  description: p.description ?? null,
-                  suggestions: Array.isArray(p.suggestions) ? p.suggestions : null,
-                })),
-            );
+            const mapped: Space[] = list
+              .filter(
+                (p): p is {
+                  id: string;
+                  name: string;
+                  emoji?: string | null;
+                  color?: string | null;
+                  description?: string | null;
+                  suggestions?: string[] | null;
+                  archived?: boolean;
+                } =>
+                  !!p &&
+                  typeof p === "object" &&
+                  typeof (p as { id?: unknown }).id === "string" &&
+                  typeof (p as { name?: unknown }).name === "string" &&
+                  (p as { archived?: unknown }).archived !== true,
+              )
+              .map((p) => ({
+                id: p.id,
+                name: p.name,
+                emoji: p.emoji ?? null,
+                color: p.color ?? null,
+                description: p.description ?? null,
+                suggestions: Array.isArray(p.suggestions) ? p.suggestions : null,
+              }));
+            setSpaces(mapped);
+            // Seed the active Space fully from the list so a deep-link / refresh
+            // shows the right persona + starters immediately, instead of racing
+            // the per-project detail fetch (which could leave General starters).
+            const urlProjectId = new URL(window.location.href).searchParams.get("project");
+            if (urlProjectId) {
+              const match = mapped.find((s) => s.id === urlProjectId);
+              if (match) setActiveProject(match);
+            }
           })
           .catch(() => null),
       ]);
       setIsLoadingHistory(false);
+
+      // On first load, resume the thread only if the Space was recently active;
+      // otherwise stay on the welcome so you re-orient to the Space (matching the
+      // switch-Space behavior). A pending user turn (handled below) forces the
+      // thread regardless.
+      if (initialMessages && initialMessages.length > 0 && isRecentlyActive(initialMessages)) {
+        setShowConversation(true);
+      }
 
       // If the last message is from the user with no assistant reply, the server may
       // still be processing. Show a streaming placeholder and poll until the response lands.
       if (initialMessages && initialMessages.length > 0) {
         const lastMsg = initialMessages[initialMessages.length - 1];
         if (lastMsg.role === "user") {
+          setShowConversation(true);
           const placeholderId = `pending-${Date.now()}`;
           setMessages((prev) => [
             ...prev,
@@ -1915,7 +1943,9 @@ export default function ChatPage() {
       setIsLoadingHistory(true);
       try {
         const loaded = await loadHistory();
-        setShowConversation(!!loaded && loaded.length > 0);
+        // Resume directly only if the Space was recently active; a stale/empty
+        // Space opens on its welcome so you re-orient (and can "Continue").
+        setShowConversation(!!loaded && loaded.length > 0 && isRecentlyActive(loaded));
         requestAnimationFrame(() =>
           window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }),
         );
@@ -2434,6 +2464,11 @@ export default function ChatPage() {
           ),
           onClick: () => handleStarterAction(prompt),
         }))
+      : inSpace
+      ? // A specialized Space with no starters of its own shows none — the General
+        // starters ("Summarize my email", …) read wrong here. Add them per Space
+        // in Spaces → Customize → Starter prompts.
+        []
       : generalStarterActions;
   const welcomeSpacesStrip =
     !inSpace && spaces.length > 0 ? (
@@ -2855,7 +2890,7 @@ export default function ChatPage() {
 
           {/* Messages Area */}
           <div className="flex-1 py-4">
-            <div className={`min-w-0 w-full space-y-6 ${showConversation ? "pb-32" : "pb-8"}`}>
+            <div className={`min-w-0 w-full space-y-6 ${showConversation ? "pb-32" : "pb-4"}`}>
               {isLoadingMore && (
                 <div className="flex justify-center py-2">
                   <span className="text-sm text-zinc-400">{copy.loadingEarlierMessages}</span>

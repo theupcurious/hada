@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { saveMessage } from "@/lib/db/conversations";
+import { getProjectToolAllowlist } from "@/lib/db/projects";
 import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
 import type { Message, MessageMetadata } from "@/lib/types/database";
@@ -44,27 +45,31 @@ export async function POST(request: NextRequest) {
     return jsonError("messageId and a valid decision are required", 400);
   }
 
-  // Resolve the user's conversation so we only touch messages they own.
-  const { data: conversation } = await admin
-    .from("conversations")
-    .select("id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!conversation) {
-    return jsonError("Conversation not found", 404);
-  }
-
+  // Look up the pending message by id, then verify the user owns its
+  // conversation. Scoping to the message's own conversation (rather than an
+  // arbitrary `.limit(1)` one) is required now that Spaces give a user multiple
+  // conversations — otherwise an action proposed inside a Space wouldn't be found.
   const { data: messageRow } = await admin
     .from("messages")
     .select("*")
     .eq("id", messageId)
-    .eq("conversation_id", conversation.id)
     .maybeSingle();
 
   const message = messageRow as Message | null;
   const confirmation = message?.metadata?.confirmation;
+
+  const { data: conversation } = message
+    ? await admin
+        .from("conversations")
+        .select("id, project_id")
+        .eq("id", message.conversation_id)
+        .eq("user_id", user.id)
+        .maybeSingle()
+    : { data: null };
+
+  if (!conversation) {
+    return jsonError("Conversation not found", 404);
+  }
 
   if (!message || !confirmation?.pending || !confirmation.function?.name) {
     return jsonError("No pending action found for this message", 404);
@@ -125,13 +130,22 @@ export async function POST(request: NextRequest) {
     (integrationsData as Array<{ provider: string }> | null) ?? []
   ).map((row) => row.provider);
 
+  // Execute in the same Space the action was proposed in: scope memory writes to
+  // the Space and honor its tool allowlist (a since-restricted tool won't be
+  // found below and falls through to the graceful "no longer available" path).
+  const projectId = (conversation as { project_id?: string | null }).project_id ?? null;
+  const toolAllowlist = projectId
+    ? await getProjectToolAllowlist(admin, user.id, projectId)
+    : null;
+
   const toolContext: ToolContext = {
     userId: user.id,
     source: "web",
     supabase: admin,
     timezone,
+    projectId,
   };
-  const tools = createTools(toolContext, { connectedIntegrations });
+  const tools = createTools(toolContext, { connectedIntegrations, allowedTools: toolAllowlist });
   toolContext.availableTools = tools;
 
   const tool = tools.find((candidate) => candidate.name === toolName);

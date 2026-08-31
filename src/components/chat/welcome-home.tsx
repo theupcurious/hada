@@ -49,7 +49,7 @@ export function WelcomeHome({
       transition={{ duration: 0.25, ease: "easeOut" }}
       aria-labelledby={titleId}
       aria-describedby={subtitleId}
-      className={cn("w-full px-5 py-10 sm:px-7 sm:py-14", className)}
+      className={cn("w-full px-5 py-8 sm:px-7 sm:py-10", className)}
     >
       <div className="mx-auto flex w-full max-w-xl flex-col items-center text-center">
         <div>
@@ -88,7 +88,7 @@ export function WelcomeHome({
         </div>
 
         {starterActions.length > 0 ? (
-          <div className="mt-10 w-full sm:mt-12">
+          <div className="mt-8 w-full sm:mt-10">
             <WelcomeStarterActions actions={starterActions} />
           </div>
         ) : null}
@@ -98,7 +98,7 @@ export function WelcomeHome({
         {spacesStrip ? <div className="mt-5 w-full sm:mt-6 md:hidden">{spacesStrip}</div> : null}
 
         {/* Tertiary utilities — quiet rows, visually separated from the cards above. */}
-        <div className="mt-6 w-full border-t border-zinc-200/70 pt-3 dark:border-zinc-800/70 sm:mt-8">
+        <div className="mt-5 w-full border-t border-zinc-200/70 pt-3 dark:border-zinc-800/70 sm:mt-6">
           <WelcomeContinueRow {...continueRow} />
           <WelcomeStatusLine {...statusLine} />
         </div>
