@@ -59,20 +59,46 @@ export async function POST(request: NextRequest) {
 
   const dueTasks: ScheduledTask[] = [...((onceTasks || []) as ScheduledTask[]), ...dueRecurring];
   let processed = 0;
+  // Cache Space labels so a batch of tasks in the same Space fetches it once.
+  const spaceLabels = new Map<string, string | null>();
 
   for (const task of dueTasks) {
     try {
+      // Run the task in its Space (its instructions, scoped memory, tools, and
+      // conversation) — NULL project_id, or a missing column, means General.
+      const projectId = task.project_id ?? null;
       const result = await processMessage({
         userId: task.user_id,
         message: task.description,
         source: "scheduled",
         supabase,
+        projectId: projectId ?? undefined,
       });
+
+      // Label the delivery so a Space briefing reads as that assistant, not an
+      // anonymous message alongside General reminders.
+      let prefix = "";
+      if (projectId) {
+        if (!spaceLabels.has(projectId)) {
+          const { data: proj } = await supabase
+            .from("projects")
+            .select("name, emoji")
+            .eq("id", projectId)
+            .maybeSingle();
+          const p = proj as { name?: string; emoji?: string | null } | null;
+          spaceLabels.set(
+            projectId,
+            p?.name ? `${p.emoji?.trim() ? `${p.emoji.trim()} ` : ""}${p.name}` : null,
+          );
+        }
+        const label = spaceLabels.get(projectId);
+        if (label) prefix = `${label}\n\n`;
+      }
 
       await sendTelegramToUser({
         supabase,
         userId: task.user_id,
-        text: result.response,
+        text: `${prefix}${result.response}`,
       });
 
       const updates: Record<string, unknown> = {
