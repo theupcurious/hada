@@ -62,6 +62,10 @@ export function createScheduleTaskTool(context: ToolContext): AgentTool {
         return JSON.stringify({ success: false, error: "cron_expression is required for recurring tasks" });
       }
 
+      // Tag the task with the current Space so it later runs as that assistant.
+      // Only include the column when in a Space, so General scheduling still
+      // works before migration 022 adds the column.
+      const projectPatch = context.projectId ? { project_id: context.projectId } : {};
       const { data, error } = await context.supabase
         .from("scheduled_tasks")
         .insert({
@@ -71,6 +75,7 @@ export function createScheduleTaskTool(context: ToolContext): AgentTool {
           run_at: type === "once" ? runAt : null,
           cron_expression: type === "recurring" ? cronExpression : null,
           enabled: true,
+          ...projectPatch,
         })
         .select("id, type, description, run_at, cron_expression, enabled")
         .single();
