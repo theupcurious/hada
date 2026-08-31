@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FolderKanban, MessageSquare, Plus, Sliders, Trash2 } from "lucide-react";
+import { ArrowLeft, FolderKanban, MessageSquare, Plus, Sliders, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -66,6 +66,7 @@ export default function ProjectsPage() {
   const [editInstructions, setEditInstructions] = useState("");
   const [editEmoji, setEditEmoji] = useState("");
   const [editColor, setEditColor] = useState(SPACE_COLORS[0]);
+  const [editSuggestions, setEditSuggestions] = useState<string[]>([]);
   const [editToolAllowlist, setEditToolAllowlist] = useState<string[] | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -177,6 +178,7 @@ export default function ProjectsPage() {
     setEditInstructions(project.instructions ?? "");
     setEditEmoji(project.emoji ?? "");
     setEditColor(project.color || SPACE_COLORS[0]);
+    setEditSuggestions(Array.isArray(project.suggestions) ? project.suggestions : []);
     setEditToolAllowlist(project.tool_allowlist ?? null);
   };
 
@@ -192,6 +194,7 @@ export default function ProjectsPage() {
           instructions: editInstructions.trim(),
           emoji: editEmoji.trim(),
           color: editColor,
+          suggestions: editSuggestions,
           // Send the allowlist only when it actually changed, so editing other
           // fields doesn't touch the column (keeps pre-021 edits working). null
           // is sent when cleared, so "Limit tools" can be turned back off.
@@ -321,6 +324,7 @@ export default function ProjectsPage() {
               The assistant follows these for every message in this space.
             </p>
           </div>
+          <SuggestionsEditor value={suggestions} onChange={setSuggestions} />
           <ToolAllowlistPicker
             catalog={toolCatalog}
             value={toolAllowlist}
@@ -451,6 +455,7 @@ export default function ProjectsPage() {
                     rows={4}
                     className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
                   />
+                  <SuggestionsEditor value={editSuggestions} onChange={setEditSuggestions} />
                   <ToolAllowlistPicker
                     catalog={toolCatalog}
                     value={editToolAllowlist}
@@ -512,6 +517,72 @@ function SpaceIdentity({ emoji, color }: { emoji: string | null; color: string |
       className="h-2.5 w-2.5 shrink-0 rounded-full"
       style={{ backgroundColor: color || SPACE_COLORS[0] }}
     />
+  );
+}
+
+/**
+ * Editor for a Space's starter prompts. These become the tap-to-send cards on
+ * the Space's home and the chips above the composer; without them a Space falls
+ * back to the General starters, which read wrong in a specialized Space. Up to 6.
+ */
+function SuggestionsEditor({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const MAX = 6;
+  const update = (index: number, text: string) =>
+    onChange(value.map((s, i) => (i === index ? text : s)));
+  const remove = (index: number) => onChange(value.filter((_, i) => i !== index));
+  const add = () => {
+    if (value.length < MAX) onChange([...value, ""]);
+  };
+
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">Starter prompts</p>
+      <p className="mb-2 text-xs text-zinc-400 dark:text-zinc-500">
+        Tap-to-send shortcuts on this space&apos;s home and above the composer. Up to {MAX}.
+      </p>
+      {value.length > 0 ? (
+        <div className="space-y-1.5">
+          {value.map((prompt, index) => (
+            <div key={index} className="flex items-center gap-1.5">
+              <Input
+                value={prompt}
+                onChange={(e) => update(index, e.target.value)}
+                placeholder="e.g. Summarize today's market news"
+                className="rounded-lg"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Remove starter"
+                className="h-8 w-8 shrink-0 text-zinc-400 hover:text-red-500"
+                onClick={() => remove(index)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {value.length < MAX ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2 rounded-lg"
+          onClick={add}
+        >
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Add starter
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
