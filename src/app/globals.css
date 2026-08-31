@@ -289,6 +289,15 @@ html[data-theme="light"] .gradient-text {
   }
 }
 
+/* Hide the scrollbar on thin horizontal chip rows while keeping them scrollable. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ── Respect reduced-motion: keep everything, just make it instant ── */
 @media (prefers-reduced-motion: reduce) {
   *,

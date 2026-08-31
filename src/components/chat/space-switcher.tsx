@@ -24,6 +24,8 @@ interface SpaceSwitcherProps {
   newSpaceHref: string;
   newSpaceLabel: string;
   switchAria: string;
+  /** Active Space accent (hex); tints the trigger so identity reads at a glance. */
+  accent?: string | null;
 }
 
 /**
@@ -67,12 +69,16 @@ export function SpaceSwitcher({
   newSpaceHref,
   newSpaceLabel,
   switchAria,
+  accent,
 }: SpaceSwitcherProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const activeSpace = activeId === null ? null : spaces.find((s) => s.id === activeId) ?? null;
   const activeName = activeSpace?.name ?? generalLabel;
+  // In a Space with an accent, tint the trigger (faint fill + border) so the
+  // header reads as "you're in this Space", not just a neutral switcher.
+  const tint = activeSpace && accent ? accent : null;
 
   useEffect(() => {
     if (!open) return;
@@ -107,6 +113,7 @@ export function SpaceSwitcher({
         aria-expanded={open}
         aria-label={switchAria}
         onClick={() => setOpen((v) => !v)}
+        style={tint ? { borderColor: `${tint}66`, backgroundColor: `${tint}14` } : undefined}
         className="flex max-w-[9rem] items-center gap-1.5 rounded-full border border-zinc-200/80 px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800/60 sm:max-w-[12rem] sm:text-sm"
       >
         <SpaceIdentity space={activeSpace} />

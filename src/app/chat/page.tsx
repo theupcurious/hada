@@ -21,6 +21,7 @@ import { WelcomeSpacesStrip } from "@/components/chat/welcome-spaces-strip";
 import { SpacesRail } from "@/components/chat/spaces-rail";
 import { CommandPalette, type CommandItem } from "@/components/chat/command-palette";
 import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
+import { ThreadStarters } from "@/components/chat/thread-starters";
 import type { TaskPlan, UserSettings } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
 import type { StreamingSegment } from "@/components/chat/streaming-message";
@@ -2724,6 +2725,7 @@ export default function ChatPage() {
               newSpaceHref="/projects?new=1"
               newSpaceLabel={copy.spacesNew}
               switchAria={copy.spacesSwitchAria}
+              accent={composerAccent}
             />
           </div>
           <div className="flex items-center justify-end gap-0.5 sm:gap-1.5">
@@ -2958,6 +2960,12 @@ export default function ChatPage() {
               showConversation ? "border-t border-border/50 bg-background/80 backdrop-blur-md" : ""
             }`}
           >
+            {/* Starters reachable from inside a thread: the active Space's prompts,
+                shown only when the composer is empty so they never compete with a
+                draft. Sending one starts a fresh line of work without going home. */}
+            {showConversation && input.trim() === "" && !isLoading && welcomeStarterActions.length > 0 ? (
+              <ThreadStarters actions={welcomeStarterActions} className="mb-1 px-0.5" />
+            ) : null}
             {inputForm}
           </div>
         </div>
