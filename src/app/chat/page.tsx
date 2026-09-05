@@ -651,11 +651,26 @@ function ChatPageContent() {
   const [segments, setSegments] = useState<SegmentListItem[]>([]);
   const [segmentsLoading, setSegmentsLoading] = useState(false);
   const [viewingSegment, setViewingSegment] = useState<{ id: string; title: string } | null>(null);
+  // Marks the end of the message list in the DOM. No longer the scroll target
+  // (scrollToBottom scrolls the document to scrollHeight); kept as a structural
+  // end marker.
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  // The message list container; observed for late height changes (entry
+  // animation settling, markdown/code highlighting, image loads, card/chip
+  // mounts) that land after the SSE-driven follow calls have run.
+  const messageListRef = useRef<HTMLDivElement>(null);
   // This is opt-in per response: streaming text follows the viewport until the
   // reader scrolls away. Tool and status updates never request a scroll.
   const shouldFollowStreamRef = useRef(false);
   const streamFollowRafRef = useRef<number | null>(null);
+  // Set when a follow is requested while a scroll rAF is already in flight, so
+  // the burst of terminal events (complete → message_saved → follow-up chips)
+  // and any post-commit height growth get one more pass instead of being dropped.
+  const streamFollowPendingRef = useRef(false);
+  // Tracks the last observed scrollY so the scroll listener can tell a genuine
+  // upward scroll (the reader taking control) from content growing below or our
+  // own programmatic bottom-scroll — neither of which decreases scrollY.
+  const lastScrollYRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const eventOrderRef = useRef(0);
   const backgroundJobPollersRef = useRef(new Map<string, number>());
@@ -683,20 +698,40 @@ function ChatPageContent() {
   const localeTag = toLocaleLanguageTag(locale);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
-    endOfMessagesRef.current?.scrollIntoView({ behavior, block: "end" });
+    // Scroll the document to its true bottom rather than the end-of-messages
+    // anchor: the anchor sits above the composer-clearing padding (pb-32), so
+    // aligning to it lands short of the bottom (which would disable following)
+    // and tucks the last line behind the sticky composer. This matches how the
+    // history-load paths scroll and keeps isNearPageBottom's frame consistent.
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
   }, []);
 
   const requestStreamFollow = useCallback(() => {
-    if (!shouldFollowStreamRef.current || streamFollowRafRef.current !== null) return;
+    if (!shouldFollowStreamRef.current) return;
+    if (streamFollowRafRef.current !== null) {
+      // A follow is already scheduled; record that more content landed so the
+      // in-flight pass re-arms itself instead of swallowing this request.
+      streamFollowPendingRef.current = true;
+      return;
+    }
 
     // Run after React commits the freshly drained text, so we follow the new
     // response content rather than repeatedly scrolling stale layout.
-    streamFollowRafRef.current = requestAnimationFrame(() => {
+    const run = () => {
       streamFollowRafRef.current = null;
-      if (shouldFollowStreamRef.current) {
-        scrollToBottom();
+      if (!shouldFollowStreamRef.current) {
+        streamFollowPendingRef.current = false;
+        return;
       }
-    });
+      scrollToBottom();
+      // Content that arrived (or grew) during this frame — terminal events and
+      // late-settling markdown/code/card height — gets one more follow pass.
+      if (streamFollowPendingRef.current) {
+        streamFollowPendingRef.current = false;
+        streamFollowRafRef.current = requestAnimationFrame(run);
+      }
+    };
+    streamFollowRafRef.current = requestAnimationFrame(run);
   }, [scrollToBottom]);
 
   const isNearPageBottom = () =>
@@ -1382,8 +1417,13 @@ function ChatPageContent() {
     setIsLoadingHistory(true);
     try {
       await loadHistory();
+      // Two frames: the first lets React commit the loaded messages, the second
+      // lands after markdown/code blocks settle their height so we reach the
+      // true bottom instead of stopping short.
       requestAnimationFrame(() =>
-        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }),
+        requestAnimationFrame(() =>
+          window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }),
+        ),
       );
     } finally {
       setIsLoadingHistory(false);
@@ -1409,15 +1449,41 @@ function ChatPageContent() {
       return;
     }
 
+    lastScrollYRef.current = window.scrollY;
     const handleWindowScroll = () => {
-      // A reader who scrolls away from the bottom takes control. Following
-      // resumes automatically with their next message or regeneration.
-      shouldFollowStreamRef.current = isNearPageBottom();
+      const y = window.scrollY;
+      const previous = lastScrollYRef.current;
+      lastScrollYRef.current = y;
+      // Only a genuine upward scroll hands control to the reader. Content
+      // growing below the viewport and our own programmatic bottom-scrolls
+      // never decrease scrollY, so they can no longer disable following (the
+      // old distance check did, because the anchor lands short of the bottom).
+      // A small threshold ignores momentum/rubber-band jitter.
+      if (y < previous - 4) {
+        shouldFollowStreamRef.current = false;
+      } else if (isNearPageBottom()) {
+        // Scrolling back down to the bottom re-arms following.
+        shouldFollowStreamRef.current = true;
+      }
     };
 
     window.addEventListener("scroll", handleWindowScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleWindowScroll);
   }, [showConversation]);
+
+  // Follow late height changes the SSE-driven calls can't see: the entry
+  // animation settling, markdown/code highlighting applied in effects, images
+  // loading, and card/chip mounts all grow the list after the last event. The
+  // observer can't self-trigger — scrolling doesn't resize the content — and
+  // requestStreamFollow is a no-op whenever the reader has taken control.
+  useEffect(() => {
+    if (!showConversation) return;
+    const el = messageListRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => requestStreamFollow());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [showConversation, requestStreamFollow]);
 
   const autosizeTextarea = () => {
     const el = textareaRef.current;
@@ -1747,6 +1813,9 @@ function ChatPageContent() {
         );
         currentAssistantId = realAssistantId;
         activeAssistantMessageIdRef.current = currentAssistantId;
+        // Cards, a confirmation prompt, and follow-up chips render below the
+        // streamed text, so follow past them to keep the newest content in view.
+        requestStreamFollow();
         // The response is fully finalized — unlock the composer now instead of
         // waiting for the stream to close, which lingers to deliver follow-up
         // suggestion chips.
@@ -1803,6 +1872,7 @@ function ChatPageContent() {
         );
         currentAssistantId = realAssistantId;
         activeAssistantMessageIdRef.current = currentAssistantId;
+        requestStreamFollow();
       } else if (event.type === "follow_up_suggestions") {
         const suggestions = Array.isArray(event.suggestions) ? (event.suggestions as string[]) : [];
         setMessages((prev) =>
@@ -1815,6 +1885,7 @@ function ChatPageContent() {
               : msg,
           ),
         );
+        requestStreamFollow();
       } else if (event.type === "error") {
         receivedTerminalEvent = true;
         pendingTokensRef.current.delete(currentAssistantId);
@@ -1978,8 +2049,12 @@ function ChatPageContent() {
         // Resume directly only if the Space was recently active; a stale/empty
         // Space opens on its welcome so you re-orient (and can "Continue").
         setShowConversation(!!loaded && loaded.length > 0 && isRecentlyActive(loaded));
+        // Two frames so the landing clears markdown/code height settling (see
+        // handleReturnToLatest) and reaches the true bottom.
         requestAnimationFrame(() =>
-          window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }),
+          requestAnimationFrame(() =>
+            window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" }),
+          ),
         );
       } finally {
         setIsLoadingHistory(false);
@@ -2796,7 +2871,7 @@ function ChatPageContent() {
 
           {/* Messages Area */}
           <div className="flex-1 py-4">
-            <div className={`min-w-0 w-full space-y-6 ${showConversation ? "pb-32" : "pb-4"}`}>
+            <div ref={messageListRef} className={`min-w-0 w-full space-y-6 ${showConversation ? "pb-32" : "pb-4"}`}>
               {isLoadingMore && (
                 <div className="flex justify-center py-2">
                   <span className="text-sm text-zinc-400">{copy.loadingEarlierMessages}</span>
