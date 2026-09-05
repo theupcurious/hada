@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { decodeIdentifierEntities } from "@/lib/docs/decode-entities";
 
 export async function GET(
   _request: NextRequest,
@@ -33,9 +34,9 @@ export async function PATCH(
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const updates: Record<string, unknown> = {};
-  if (typeof body.title === "string") updates.title = body.title.trim() || "Untitled";
+  if (typeof body.title === "string") updates.title = decodeIdentifierEntities(body.title.trim()) || "Untitled";
   if (typeof body.content === "string") updates.content = body.content;
-  if ("folder" in body) updates.folder = body.folder ? String(body.folder).trim() || null : null;
+  if ("folder" in body) updates.folder = body.folder ? decodeIdentifierEntities(String(body.folder).trim()) || null : null;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });

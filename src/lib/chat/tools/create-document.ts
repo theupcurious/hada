@@ -1,6 +1,7 @@
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
 import type { ToolContext } from "@/lib/chat/tools/types";
+import { decodeIdentifierEntities } from "@/lib/docs/decode-entities";
 
 export const createDocumentManifest: ToolManifest = {
   name: "create_document",
@@ -35,9 +36,11 @@ export function createCreateDocumentTool(context: ToolContext): AgentTool {
     description: createDocumentManifest.description,
     parameters: createDocumentManifest.parameters,
     async execute(args) {
-      const title = String(args.title ?? "Untitled").trim() || "Untitled";
+      const title = decodeIdentifierEntities(String(args.title ?? "Untitled").trim()) || "Untitled";
       const content = String(args.content ?? "");
-      const folder = args.folder ? String(args.folder).trim() || null : null;
+      const folder = args.folder
+        ? decodeIdentifierEntities(String(args.folder).trim()) || null
+        : null;
 
       const { data, error } = await context.supabase
         .from("documents")

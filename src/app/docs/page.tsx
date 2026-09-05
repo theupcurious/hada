@@ -189,12 +189,16 @@ function DashboardPageContent() {
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+  // Drawer/sidebar document search (client-side over the loaded list).
+  const [docSearch, setDocSearch] = useState("");
 
   // 4a/4c: Wiki graph view
   const [showGraph, setShowGraph] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
+
+  const LAST_DOC_KEY = "hada:docs:last-opened";
 
 
   const loadDocs = useCallback(async () => {
@@ -221,8 +225,11 @@ function DashboardPageContent() {
       const list = await loadDocs();
       if (!active) return;
       
-      // Handle deep-linking via ?id= query param
-      const initialId = searchParams.get("id");
+      // Handle deep-linking via ?id= query param, otherwise restore the last
+      // opened document so re-entering Docs lands where you left off.
+      const initialId =
+        searchParams.get("id") ||
+        (typeof window !== "undefined" ? window.localStorage.getItem(LAST_DOC_KEY) : null);
       if (initialId) {
         const found = list.find(d => d.id === initialId);
         if (found) {
@@ -262,6 +269,7 @@ function DashboardPageContent() {
     if (saveBeforeNavigate.current && !await saveBeforeNavigate.current()) return;
     setActiveDocId(id);
     setSidebarOpen(false);
+    try { window.localStorage.setItem(LAST_DOC_KEY, id); } catch { /* storage unavailable */ }
     await loadFullDoc(id);
   }, [loadFullDoc]);
 
@@ -415,22 +423,70 @@ function DashboardPageContent() {
   const rootDocs = docs.filter((d) => !d.folder);
   const wikiExists = docs.some((d) => d.folder === "wiki");
 
+  // Drawer search: a flat match list over title, folder, and preview text.
+  const searching = docSearch.trim().length > 0;
+  const searchResults = useMemo(() => {
+    const q = docSearch.trim().toLowerCase();
+    if (!q) return [] as DocListItem[];
+    return docs.filter(
+      (d) =>
+        d.title.toLowerCase().includes(q) ||
+        (d.folder ?? "").toLowerCase().includes(q) ||
+        (d.preview ?? "").toLowerCase().includes(q),
+    );
+  }, [docs, docSearch]);
+
   const sidebar = (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">Docs</span>
         <div className="flex items-center gap-0.5">
-          <button onClick={() => void createDoc(null)} className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="New document">
+          <button aria-label="New document" onClick={() => void createDoc(null)} className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="New document">
             <Plus className="h-3.5 w-3.5" />
           </button>
-          <label htmlFor="doc-upload" className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="Upload .md or .txt file">
+          <label htmlFor="doc-upload" aria-label="Upload a .md or .txt file" className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title="Upload .md or .txt file">
             <Upload className="h-3.5 w-3.5" />
           </label>
           <input ref={fileInputRef} id="doc-upload" type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={handleUpload} />
         </div>
       </div>
 
+      <div className="px-2 pb-1.5">
+        <label htmlFor="doc-search" className="sr-only">Search documents</label>
+        <input
+          id="doc-search"
+          type="search"
+          value={docSearch}
+          onChange={(e) => setDocSearch(e.target.value)}
+          placeholder="Search documents…"
+          className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-500/30 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"
+        />
+      </div>
+
       <div className="flex-1 overflow-y-auto px-1 pb-2">
+        {searching ? (
+          searchResults.length === 0 ? (
+            <p className="px-2 py-6 text-center text-xs text-zinc-400">No documents match “{docSearch.trim()}”.</p>
+          ) : (
+            searchResults.map((doc) => (
+              <DocItem
+                key={doc.id}
+                doc={doc}
+                isActive={activeDocId === doc.id}
+                onSelect={selectDoc}
+                onDelete={(id) => setPendingDeletion({ kind: "document", id })}
+                isRenaming={renamingDocId === doc.id}
+                renameValue={renameValue}
+                onRenameStart={startRename}
+                onRenameChange={setRenameValue}
+                onRenameCommit={commitRename}
+                onRenameCancel={() => setRenamingDocId(null)}
+                folderHint={doc.folder === "wiki" ? "Wiki" : doc.folder ?? undefined}
+              />
+            ))
+          )
+        ) : (
+          <>
         {folders.map((folder) => {
           const isWiki = folder === "wiki";
           const folderDocs = docs.filter((d) => d.folder === folder);
@@ -480,6 +536,8 @@ function DashboardPageContent() {
                 {isWiki && graphData && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowGraph((v) => !v); }}
+                    aria-label="Toggle wiki graph view"
+                    aria-pressed={showGraph}
                     className={cn(
                       "shrink-0 rounded p-1 transition-colors",
                       showGraph
@@ -498,6 +556,7 @@ function DashboardPageContent() {
                       setPendingDeletion({ kind: "folder", folder, docIds: folderDocs.map((doc) => doc.id) });
                     }}
                     className="shrink-0 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-950/40"
+                    aria-label={`Delete folder ${folder}`}
                     title={`Delete folder ${folder}`}
                   >
                     <Trash2 className="h-3.5 w-3.5 text-zinc-400 hover:text-red-500 dark:hover:text-red-400" />
@@ -545,6 +604,8 @@ function DashboardPageContent() {
             <button onClick={() => void createDoc(null)} className="mt-1 text-xs font-medium text-teal-500 hover:underline">Create your first one →</button>
           </div>
         )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -562,7 +623,7 @@ function DashboardPageContent() {
             <>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-20 bg-black/30 md:hidden" onClick={() => setSidebarOpen(false)} />
               <motion.div initial={{ x: -240 }} animate={{ x: 0 }} exit={{ x: -240 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="fixed inset-y-0 left-0 z-30 w-60 bg-white pt-28 shadow-xl dark:bg-zinc-900 md:hidden">
-                <button onClick={() => setSidebarOpen(false)} className="absolute right-2 top-28 rounded p-1 text-zinc-400 hover:text-zinc-600"><X className="h-4 w-4" /></button>
+                <button aria-label="Close document browser" onClick={() => setSidebarOpen(false)} className="absolute right-2 top-28 rounded p-1 text-zinc-400 hover:text-zinc-600"><X className="h-4 w-4" /></button>
                 {sidebar}
               </motion.div>
             </>
@@ -618,7 +679,12 @@ function DashboardPageContent() {
             />
             </EditorErrorBoundary>
           ) : (
-            <EmptyPane onCreate={() => void createDoc(null)} />
+            <EmptyPane
+              docs={docs}
+              onCreate={() => void createDoc(null)}
+              onSelect={(id) => void selectDoc(id)}
+              onBrowse={() => setSidebarOpen(true)}
+            />
           )}
         </div>
       </div>
@@ -1394,6 +1460,7 @@ function DocItem({
   doc, isActive, onSelect,
   onDelete,
   isRenaming, renameValue, onRenameStart, onRenameChange, onRenameCommit, onRenameCancel,
+  folderHint,
 }: {
   doc: DocListItem;
   isActive: boolean;
@@ -1405,6 +1472,7 @@ function DocItem({
   onRenameChange: (v: string) => void;
   onRenameCommit: () => void;
   onRenameCancel: () => void;
+  folderHint?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -1440,7 +1508,10 @@ function DocItem({
     >
       <button onClick={() => onSelect(doc.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
         <FileText className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-teal-500" : "text-zinc-400")} />
-        <span className="truncate">{doc.title}</span>
+        <span className="min-w-0 truncate">
+          {doc.title}
+          {folderHint ? <span className="ml-1.5 text-[10px] text-zinc-400">· {folderHint}</span> : null}
+        </span>
         {doc.shared ? (
           <span className="shrink-0 rounded-full bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-teal-600 dark:text-teal-400">
             Shared
@@ -1450,6 +1521,7 @@ function DocItem({
       <button
         onClick={(e) => { e.stopPropagation(); onRenameStart(doc); }}
         className="ml-auto shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+        aria-label={`Rename ${doc.title}`}
         title="Rename"
       >
         <svg className="h-3 w-3 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1460,6 +1532,7 @@ function DocItem({
       <button
         onClick={(e) => { e.stopPropagation(); void onDelete(doc.id); }}
         className="shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-950/40"
+        aria-label={`Delete ${doc.title}`}
         title="Delete"
       >
         <Trash2 className="h-3 w-3 text-zinc-400 hover:text-red-500 dark:hover:text-red-400" />
@@ -1468,19 +1541,80 @@ function DocItem({
   );
 }
 
-function EmptyPane({ onCreate }: { onCreate: () => void }) {
+function EmptyPane({
+  docs,
+  onCreate,
+  onSelect,
+  onBrowse,
+}: {
+  docs: DocListItem[];
+  onCreate: () => void;
+  onSelect: (id: string) => void;
+  onBrowse: () => void;
+}) {
+  // Docs arrive newest-first from the API; surface the most recent so existing
+  // work is visible on entry instead of an empty "select a document" screen.
+  const recent = docs.slice(0, 8);
+
+  if (recent.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 dark:border-zinc-700">
+          <FileText className="h-6 w-6 text-zinc-400" />
+        </div>
+        <div>
+          <p className="font-medium text-zinc-700 dark:text-zinc-300">Select a document</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">or create a new one to get started</p>
+        </div>
+        <Button size="sm" onClick={onCreate} className="mt-1 gap-1.5">
+          <Plus className="h-3.5 w-3.5" />New document
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 dark:border-zinc-700">
-        <FileText className="h-6 w-6 text-zinc-400" />
+    <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Your documents</h1>
+          <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+            Pick up where you left off, or start something new.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="md:hidden" onClick={onBrowse} aria-label="Browse all documents">
+            <FileText className="mr-1.5 h-3.5 w-3.5" />Browse
+          </Button>
+          <Button size="sm" onClick={onCreate} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" />New
+          </Button>
+        </div>
       </div>
-      <div>
-        <p className="font-medium text-zinc-700 dark:text-zinc-300">Select a document</p>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">or create a new one to get started</p>
-      </div>
-      <Button size="sm" onClick={onCreate} className="mt-1 gap-1.5">
-        <Plus className="h-3.5 w-3.5" />New document
-      </Button>
+      <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">Recent</p>
+      <ul className="space-y-1.5">
+        {recent.map((doc) => (
+          <li key={doc.id}>
+            <button
+              onClick={() => onSelect(doc.id)}
+              className="flex w-full items-start gap-3 rounded-xl border border-zinc-200 bg-white/70 px-3.5 py-2.5 text-left transition-colors hover:border-teal-500/40 dark:border-zinc-800 dark:bg-zinc-950/50"
+            >
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{doc.title}</span>
+                  {doc.folder ? (
+                    <span className="shrink-0 text-[10px] text-zinc-400">{doc.folder === "wiki" ? "Wiki" : doc.folder}</span>
+                  ) : null}
+                </span>
+                {doc.preview ? (
+                  <span className="mt-0.5 line-clamp-1 block text-xs text-zinc-500 dark:text-zinc-400">{doc.preview}</span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

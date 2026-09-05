@@ -1,6 +1,7 @@
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
 import type { ToolContext } from "@/lib/chat/tools/types";
+import { decodeIdentifierEntities } from "@/lib/docs/decode-entities";
 
 export const updateDocumentManifest: ToolManifest = {
   name: "update_document",
@@ -51,11 +52,11 @@ export function createUpdateDocumentTool(context: ToolContext): AgentTool {
       }
 
       if (typeof args.title === "string") {
-        updates.title = args.title.trim() || "Untitled";
+        updates.title = decodeIdentifierEntities(args.title.trim()) || "Untitled";
       }
 
       if (typeof args.folder === "string") {
-        updates.folder = args.folder.trim() || null;
+        updates.folder = decodeIdentifierEntities(args.folder.trim()) || null;
       }
 
       const { data, error } = await context.supabase

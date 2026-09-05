@@ -20,6 +20,7 @@ export async function executeWorkflow(supabase: SupabaseClient, task: ScheduledT
     const result = await processMessage({
       userId: task.user_id, message: task.description, source: "scheduled", supabase,
       projectId: task.project_id ?? undefined,
+      scheduledTaskId: task.id,
     });
     const resultUrl = `/chat?${new URLSearchParams({
       ...(task.project_id ? { project: task.project_id } : {}),

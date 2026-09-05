@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
     const cronExpression =
       typeof body?.cron_expression === "string" ? body.cron_expression.trim() : "";
     const runAt = typeof body?.run_at === "string" ? body.run_at : "";
+    const projectId = typeof body?.project_id === "string" && body.project_id.trim() ? body.project_id.trim() : null;
 
     if (!description) {
       return NextResponse.json({ error: "description is required" }, { status: 400 });
@@ -99,6 +100,9 @@ export async function POST(request: NextRequest) {
         run_at: type === "once" ? runAt : null,
         cron_expression: type === "recurring" ? cronExpression : null,
         enabled: true,
+        // Space this workflow runs in (migration 022). Only set when chosen, so
+        // General workflows insert cleanly. NULL = General.
+        ...(projectId ? { project_id: projectId } : {}),
       })
       .select("*")
       .single();

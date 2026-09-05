@@ -225,6 +225,10 @@ interface ChatLocaleCopy {
   historyMessageSuffix: string;
   historyClose: string;
   historyUntitled: string;
+  historyTopicsGroup: string;
+  historyMessagesGroup: string;
+  historyDocsGroup: string;
+  historySearching: string;
   viewingTopicPrefix: string;
   returnToLatest: string;
   activityLabel: string;
@@ -303,14 +307,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
       "Help me research a topic. First ask what topic I want to investigate, then use current sources and produce a concise source-backed brief with what matters most.",
     historyLabel: "History",
     historyAria: "Browse chat history",
-    historySearchPlaceholder: "Search topics…",
+    historySearchPlaceholder: "Search topics, messages, docs…",
     historyLoading: "Loading history…",
     historyEmpty: "No past topics yet.",
-    historyNoMatches: "No topics match your search.",
+    historyNoMatches: "Nothing matches your search.",
     historyCurrent: "Viewing",
     historyMessageSuffix: "messages",
     historyClose: "Close history",
     historyUntitled: "Untitled topic",
+    historyTopicsGroup: "Topics",
+    historyMessagesGroup: "In messages",
+    historyDocsGroup: "Documents",
+    historySearching: "Searching…",
     viewingTopicPrefix: "Viewing topic:",
     returnToLatest: "Return to latest",
     activityLabel: "Activity",
@@ -387,14 +395,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
       "특정 주제를 리서치하고 싶어요. 먼저 어떤 주제를 조사할지 물어보고, 최신 소스를 활용해 핵심만 담긴 간결한 근거 기반 브리프를 만들어 주세요.",
     historyLabel: "기록",
     historyAria: "대화 기록 보기",
-    historySearchPlaceholder: "주제 검색…",
+    historySearchPlaceholder: "주제, 메시지, 문서 검색…",
     historyLoading: "기록 불러오는 중…",
     historyEmpty: "아직 지난 주제가 없습니다.",
-    historyNoMatches: "검색과 일치하는 주제가 없습니다.",
+    historyNoMatches: "검색과 일치하는 항목이 없습니다.",
     historyCurrent: "보는 중",
     historyMessageSuffix: "개 메시지",
     historyClose: "기록 닫기",
     historyUntitled: "제목 없는 주제",
+    historyTopicsGroup: "주제",
+    historyMessagesGroup: "메시지에서",
+    historyDocsGroup: "문서",
+    historySearching: "검색 중…",
     viewingTopicPrefix: "보는 주제:",
     returnToLatest: "최신으로 돌아가기",
     activityLabel: "활동",
@@ -471,14 +483,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
       "何かの下書きを手伝ってください — メール、メッセージ、ドキュメント、投稿など。何を誰宛てに書くのかをまず確認し、私の口調で作成して確認できるようにしてください。私が承認するまで送信・公開しないでください。",
     historyLabel: "履歴",
     historyAria: "チャット履歴を見る",
-    historySearchPlaceholder: "トピックを検索…",
+    historySearchPlaceholder: "トピック・メッセージ・文書を検索…",
     historyLoading: "履歴を読み込み中…",
     historyEmpty: "まだ過去のトピックはありません。",
-    historyNoMatches: "検索に一致するトピックがありません。",
+    historyNoMatches: "検索に一致する項目がありません。",
     historyCurrent: "表示中",
     historyMessageSuffix: "件のメッセージ",
     historyClose: "履歴を閉じる",
     historyUntitled: "無題のトピック",
+    historyTopicsGroup: "トピック",
+    historyMessagesGroup: "メッセージ内",
+    historyDocsGroup: "ドキュメント",
+    historySearching: "検索中…",
     viewingTopicPrefix: "表示中のトピック:",
     returnToLatest: "最新に戻る",
     activityLabel: "アクティビティ",
@@ -555,14 +571,18 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
       "帮我起草一些内容 — 邮件、消息、文档或帖子。先问我写什么、给谁，然后用我的语气起草，让我审阅。在我确认之前不要发送或发布。",
     historyLabel: "历史",
     historyAria: "浏览聊天记录",
-    historySearchPlaceholder: "搜索话题…",
+    historySearchPlaceholder: "搜索话题、消息、文档…",
     historyLoading: "正在加载历史…",
     historyEmpty: "暂无过往话题。",
-    historyNoMatches: "没有匹配的搜索话题。",
+    historyNoMatches: "没有匹配的结果。",
     historyCurrent: "查看中",
     historyMessageSuffix: "条消息",
     historyClose: "关闭历史",
     historyUntitled: "未命名话题",
+    historyTopicsGroup: "话题",
+    historyMessagesGroup: "消息中",
+    historyDocsGroup: "文档",
+    historySearching: "搜索中…",
     viewingTopicPrefix: "正在查看话题：",
     returnToLatest: "返回最新",
     activityLabel: "活动",
@@ -2938,6 +2958,16 @@ function ChatPageContent() {
         activeSegmentId={viewingSegment?.id ?? null}
         onSelect={(segment) => void handleJumpToSegment(segment)}
         localeTag={localeTag}
+        onSearch={async (q) => {
+          const url = new URL("/api/search", window.location.origin);
+          url.searchParams.set("q", q);
+          const projectId = activeProjectIdRef.current;
+          if (projectId) url.searchParams.set("project", projectId);
+          const res = await fetch(url.toString(), { cache: "no-store" });
+          if (!res.ok) return { segments: [], documents: [] };
+          return (await res.json()) as { segments: { segmentId: string; snippet: string }[]; documents: { id: string; title: string; folder: string | null; snippet: string }[] };
+        }}
+        onSelectDocument={(id) => router.push(`/docs?id=${id}`)}
         copy={{
           title: copy.historyLabel,
           searchPlaceholder: copy.historySearchPlaceholder,
@@ -2948,6 +2978,10 @@ function ChatPageContent() {
           messageCountSuffix: copy.historyMessageSuffix,
           closeAria: copy.historyClose,
           untitled: copy.historyUntitled,
+          topicsGroup: copy.historyTopicsGroup,
+          messagesGroup: copy.historyMessagesGroup,
+          docsGroup: copy.historyDocsGroup,
+          searching: copy.historySearching,
         }}
       />
     </div>

@@ -43,6 +43,8 @@ export interface ProcessMessageOptions {
   assistantMessageId?: string;
   backgroundJobId?: string;
   projectId?: string;
+  /** Scheduled task that triggered this run, if any — recorded for run history. */
+  scheduledTaskId?: string;
 }
 
 export interface ProcessMessageResult {
@@ -113,6 +115,8 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       userId: options.userId,
       input: options.message,
       runId,
+      projectId: options.projectId ?? null,
+      scheduledTaskId: options.scheduledTaskId ?? null,
     }),
     options.userMessageId
       ? Promise.resolve({ id: options.userMessageId })
@@ -611,6 +615,8 @@ async function createAgentRunRecord(options: {
   userId: string;
   input: string;
   runId: string;
+  projectId?: string | null;
+  scheduledTaskId?: string | null;
 }): Promise<string | null> {
   try {
     const { data, error } = await options.supabase
@@ -624,6 +630,11 @@ async function createAgentRunRecord(options: {
         tool_calls: [],
         metadata: {
           runId: options.runId,
+          // Space this run belongs to (JSONB, no schema change). Lets Activity
+          // filter by Space and Space cards surface their most recent result.
+          ...(options.projectId ? { project_id: options.projectId } : {}),
+          // Scheduled task that triggered this run — powers per-workflow history.
+          ...(options.scheduledTaskId ? { scheduled_task_id: options.scheduledTaskId } : {}),
         },
       })
       .select("id")

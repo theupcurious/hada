@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { decodeIdentifierEntities } from "@/lib/docs/decode-entities";
 
 export async function GET() {
   const supabase = await createClient();
@@ -44,9 +45,9 @@ export async function POST(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-  const title = String(body.title ?? "Untitled").trim() || "Untitled";
+  const title = decodeIdentifierEntities(String(body.title ?? "Untitled").trim()) || "Untitled";
   const content = String(body.content ?? "");
-  const folder = body.folder ? String(body.folder).trim() || null : null;
+  const folder = body.folder ? decodeIdentifierEntities(String(body.folder).trim()) || null : null;
 
   const { data, error } = await supabase
     .from("documents")

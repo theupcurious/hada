@@ -6,6 +6,8 @@ Consolidated recommendations from the source review and signed-in design audit, 
 
 Checked items are implemented locally. Sections 1–3 have been implemented and verified as described in [the implementation notes](APP-IMPROVEMENTS-1-3.md). Workflow execution requires migration 023 to be applied before deployment; live workflow runs and email sending were not exercised.
 
+Sections 4–7 have been implemented as described in [the 4–7 implementation notes](APP-IMPROVEMENTS-4-7.md). Two items remain unchecked with stated reasons (named-timezone preservation and failed-run retry). No new required migration; live flows were static-verified (types, lint, tests) but not exercised in a browser this session.
+
 ## 1. Reliability and error handling — highest priority
 
 - [x] Fix the Docs editor crash when opening an existing document.
@@ -43,52 +45,52 @@ Checked items are implemented locally. Sections 1–3 have been implemented and 
 
 ## 4. Documents and search
 
-- [ ] Show recent documents and search immediately when entering Docs.
-- [ ] Add a clearly labeled **Browse documents** action on smaller screens.
-- [ ] Consider restoring the last opened document.
-- [ ] Add document search to the drawer.
-- [ ] Fix incorrectly encoded names such as `Health &amp; Fitness` at the appropriate data boundary.
-- [ ] Label drawer, upload, close, and other icon-only controls.
-- [ ] Extend conversation search beyond topic titles and summaries to message content.
-- [ ] Include saved outputs in search, with useful snippets and explicit search scope.
+- [x] Show recent documents and search immediately when entering Docs.
+- [x] Add a clearly labeled **Browse documents** action on smaller screens.
+- [x] Consider restoring the last opened document.
+- [x] Add document search to the drawer.
+- [x] Fix incorrectly encoded names such as `Health &amp; Fitness` at the appropriate data boundary.
+- [x] Label drawer, upload, close, and other icon-only controls.
+- [x] Extend conversation search beyond topic titles and summaries to message content.
+- [x] Include saved outputs in search, with useful snippets and explicit search scope.
 
 ## 5. Spaces
 
-- [ ] Add recent activity or a recent result to Space cards.
-- [ ] Explain the **Custom** badge or remove it when redundant.
-- [ ] Move Space deletion into an overflow menu.
-- [ ] Reorder configuration: **Purpose and instructions → Tools and memory scope → Starter prompts → Appearance**.
-- [ ] Use a dedicated configuration panel with readily accessible Save/Cancel controls.
-- [ ] Clearly explain what each Space shares and keeps separate.
-- [ ] Attach accessible labels to configuration fields.
+- [x] Add recent activity or a recent result to Space cards.
+- [x] Explain the **Custom** badge or remove it when redundant.
+- [x] Move Space deletion into an overflow menu.
+- [x] Reorder configuration: **Purpose and instructions → Tools and memory scope → Starter prompts → Appearance**.
+- [x] Use a dedicated configuration panel with readily accessible Save/Cancel controls.
+- [x] Clearly explain what each Space shares and keeps separate.
+- [x] Attach accessible labels to configuration fields.
 
 ## 6. Workflows
 
-- [ ] Add editable task instructions or topic fields to templates.
-- [ ] Allow users to choose the Space a workflow belongs to.
-- [ ] Show the timezone explicitly.
-- [ ] Preserve named timezone behavior across travel and daylight-saving changes.
-- [ ] Let users review the delivery destination.
-- [ ] Show a readable schedule and exact next run before creation.
-- [ ] Replace raw cron expressions with friendly schedules; retain cron under advanced details.
-- [ ] Add editing for existing workflows.
-- [ ] Add per-workflow run history.
-- [ ] Show active workflows before the template gallery.
-- [ ] Prioritize templates that work with current connections.
-- [ ] Offer a direct connection action for templates requiring Google.
-- [ ] Update the empty state to acknowledge both template creation and scheduling through chat.
-- [ ] Remove duplicated headings and introductory copy.
+- [x] Add editable task instructions or topic fields to templates.
+- [x] Allow users to choose the Space a workflow belongs to.
+- [x] Show the timezone explicitly.
+- [ ] Preserve named timezone behavior across travel and daylight-saving changes. _(Needs a `timezone` column + timezone-aware cron evaluation; timezone is now displayed. See notes.)_
+- [x] Let users review the delivery destination.
+- [x] Show a readable schedule and exact next run before creation.
+- [x] Replace raw cron expressions with friendly schedules; retain cron under advanced details.
+- [x] Add editing for existing workflows.
+- [x] Add per-workflow run history.
+- [x] Show active workflows before the template gallery.
+- [x] Prioritize templates that work with current connections.
+- [x] Offer a direct connection action for templates requiring Google.
+- [x] Update the empty state to acknowledge both template creation and scheduling through chat.
+- [x] Remove duplicated headings and introductory copy.
 
 ## 7. Activity and results
 
-- [ ] Link each run to its conversation, document, or other result.
-- [ ] Add retry for eligible failed runs.
-- [ ] Add Space and status filters.
-- [ ] Render clean excerpts instead of literal Markdown markers.
-- [ ] Combine repeated tool badges, such as **Searched the web ×3**.
-- [ ] Show each error once.
-- [ ] Distinguish **Completed**, **Completed with warnings**, and **Failed** where supported by actual execution status.
-- [ ] Use readable status labels alongside icons.
+- [x] Link each run to its conversation, document, or other result.
+- [ ] Add retry for eligible failed runs. _(No faithful re-run path: `input_preview` is truncated and web/telegram runs lack a re-issue endpoint; workflows already have Run now. See notes.)_
+- [x] Add Space and status filters.
+- [x] Render clean excerpts instead of literal Markdown markers.
+- [x] Combine repeated tool badges, such as **Searched the web ×3**.
+- [x] Show each error once.
+- [x] Distinguish **Completed**, **Completed with warnings**, and **Failed** where supported by actual execution status.
+- [x] Use readable status labels alongside icons.
 
 ## 8. Memory
 

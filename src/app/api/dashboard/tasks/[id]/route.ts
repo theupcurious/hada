@@ -38,6 +38,11 @@ export async function PATCH(
       updates.cron_expression = body.cron_expression.trim();
     }
 
+    // Space reassignment (migration 022): a string id moves it, null → General.
+    if ("project_id" in body && (typeof body.project_id === "string" || body.project_id === null)) {
+      updates.project_id = typeof body.project_id === "string" && body.project_id.trim() ? body.project_id.trim() : null;
+    }
+
     if (!Object.keys(updates).length) {
       return NextResponse.json(
         { error: "At least one field is required" },

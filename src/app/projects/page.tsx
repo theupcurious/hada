@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FolderKanban, MessageSquare, Plus, Sliders, Trash2, X } from "lucide-react";
+import { ArrowLeft, FolderKanban, Info, MessageSquare, MoreHorizontal, Plus, Sliders, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
-import type { Project } from "@/lib/types/database";
+import type { AgentRun, Project } from "@/lib/types/database";
 import { SPACE_TEMPLATES, SPACE_COLORS, SPACE_EMOJIS } from "@/lib/space-templates";
 import { ALWAYS_ON_TOOL_NAMES } from "@/lib/chat/tools/tool-registry";
 
@@ -21,6 +21,9 @@ interface GateableTool {
   requiresIntegration?: string;
   isConnected: boolean;
 }
+
+/** Most recent run for a Space, shown on its card. */
+type RecentResult = { at: string; excerpt: string };
 
 /** Friendly section labels for the tool categories shown in the picker. */
 const TOOL_CATEGORY_LABELS: Record<string, string> = {
@@ -38,6 +41,33 @@ function allowlistEqual(a: string[] | null, b: string[] | null): boolean {
   if (a.length !== b.length) return false;
   const set = new Set(a);
   return b.every((name) => set.has(name));
+}
+
+/** Strip Markdown markers so a card preview reads as plain text. */
+function cleanExcerpt(text: string): string {
+  return text
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function relativeTime(value: string): string {
+  const then = Date.parse(value);
+  if (!Number.isFinite(then)) return "";
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function ProjectsPage() {
@@ -58,6 +88,8 @@ export default function ProjectsPage() {
   const [toolAllowlist, setToolAllowlist] = useState<string[] | null>(null);
   const [toDelete, setToDelete] = useState<Project | null>(null);
   const [toolCatalog, setToolCatalog] = useState<GateableTool[]>([]);
+  // Most recent result per Space id (from Activity), shown on the cards.
+  const [recent, setRecent] = useState<Record<string, RecentResult>>({});
 
   // Inline per-space editor (description + instructions only — editing the name
   // would re-derive the folder and orphan the space's documents).
@@ -93,6 +125,28 @@ export default function ProjectsPage() {
     void load();
   }, [load]);
 
+  // Fetch recent activity once to surface each Space's latest result on its card.
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/dashboard/activity?limit=100", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { runs?: (AgentRun & { project?: { id: string } | null })[] } | null) => {
+        if (cancelled || !data?.runs) return;
+        const map: Record<string, RecentResult> = {};
+        for (const run of data.runs) {
+          const pid = run.project?.id;
+          if (!pid || map[pid]) continue; // runs are newest-first, so first wins
+          const excerpt = cleanExcerpt(run.output_preview ?? run.input_preview ?? "");
+          if (excerpt) map[pid] = { at: run.started_at, excerpt };
+        }
+        setRecent(map);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Fetch the gateable tool catalog once for the allowlist pickers. Core
   // always-on tools are filtered out — they can't be restricted.
   useEffect(() => {
@@ -103,9 +157,7 @@ export default function ProjectsPage() {
         if (!res.ok) return;
         const data = (await res.json()) as { tools?: GateableTool[] };
         if (cancelled) return;
-        setToolCatalog(
-          (data.tools ?? []).filter((t) => !ALWAYS_ON_TOOL_NAMES.has(t.name)),
-        );
+        setToolCatalog((data.tools ?? []).filter((t) => !ALWAYS_ON_TOOL_NAMES.has(t.name)));
       } catch {
         // Non-fatal: the picker simply shows nothing to limit.
       }
@@ -230,7 +282,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-3xl px-5 py-8">
-      <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link href="/chat">
             <Button variant="ghost" size="icon" aria-label="Back to chat" className="rounded-xl">
@@ -253,84 +305,111 @@ export default function ProjectsPage() {
         </Button>
       </div>
 
+      {/* What each Space shares vs. keeps separate. */}
+      <div className="mb-6 flex items-start gap-2 rounded-xl border border-zinc-200 bg-zinc-50/60 px-3.5 py-2.5 text-xs leading-5 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal-500" />
+        <p>
+          Each Space keeps its own <strong className="font-medium text-zinc-700 dark:text-zinc-300">chat history, memory, and instructions</strong> separate from other Spaces and from General.
+          Your <strong className="font-medium text-zinc-700 dark:text-zinc-300">documents and integrations</strong> (like Google and Telegram) are shared across all of them.
+        </p>
+      </div>
+
       {showForm ? (
-        <div className="mb-6 space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
-          <div>
-            <p className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              Start from a template
-            </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {SPACE_TEMPLATES.map((template) => {
-                const active = template.name
-                  ? name === template.name && instructions === template.instructions
-                  : false;
-                return (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => applyTemplate(template)}
-                    className={cn(
-                      "flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-colors",
-                      active
-                        ? "border-teal-500/60 bg-teal-500/5"
-                        : "border-zinc-200 bg-white hover:border-teal-500/50 dark:border-zinc-700 dark:bg-zinc-950",
-                    )}
-                  >
-                    <span className="text-lg leading-none" aria-hidden>
-                      {template.icon}
-                    </span>
-                    <span className="text-xs font-medium text-zinc-800 dark:text-zinc-100">
-                      {template.label}
-                    </span>
-                  </button>
-                );
-              })}
+        <div className="mb-6 rounded-2xl border border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-900/40">
+          <div className="space-y-4 p-4">
+            <div>
+              <p className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">Start from a template</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {SPACE_TEMPLATES.map((template) => {
+                  const active = template.name
+                    ? name === template.name && instructions === template.instructions
+                    : false;
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => applyTemplate(template)}
+                      className={cn(
+                        "flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-colors",
+                        active
+                          ? "border-teal-500/60 bg-teal-500/5"
+                          : "border-zinc-200 bg-white hover:border-teal-500/50 dark:border-zinc-700 dark:bg-zinc-950",
+                      )}
+                    >
+                      <span className="text-lg leading-none" aria-hidden>
+                        {template.icon}
+                      </span>
+                      <span className="text-xs font-medium text-zinc-800 dark:text-zinc-100">{template.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 1. Purpose & instructions */}
+            <div>
+              <label htmlFor="new-space-name" className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Name
+              </label>
+              <Input
+                id="new-space-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Space name (e.g. Investing)"
+                className="rounded-xl"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void createProject();
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <label htmlFor="new-space-description" className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Description
+              </label>
+              <textarea
+                id="new-space-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What is this space about? (optional — the assistant uses this as context)"
+                rows={2}
+                className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              />
+            </div>
+            <div>
+              <label htmlFor="new-space-instructions" className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Instructions
+              </label>
+              <textarea
+                id="new-space-instructions"
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="Instructions — the space's role and style (e.g. 'You are a markets analyst. Be terse, always cite a source.')"
+                rows={3}
+                className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              />
+              <p className="mt-1 px-1 text-xs text-zinc-400 dark:text-zinc-500">
+                The assistant follows these for every message in this space.
+              </p>
+            </div>
+
+            {/* 2. Tools & memory scope */}
+            <ToolAllowlistPicker catalog={toolCatalog} value={toolAllowlist} onChange={setToolAllowlist} />
+
+            {/* 3. Starter prompts */}
+            <SuggestionsEditor value={suggestions} onChange={setSuggestions} idPrefix="new" />
+
+            {/* 4. Appearance */}
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">Icon &amp; color</p>
+              <IdentityPicker emoji={emoji} color={color} onEmoji={setEmoji} onColor={setColor} />
             </div>
           </div>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Space name (e.g. Investing)"
-            className="rounded-xl"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void createProject();
-              }
-            }}
-          />
-          <div>
-            <p className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              Icon &amp; color
-            </p>
-            <IdentityPicker emoji={emoji} color={color} onEmoji={setEmoji} onColor={setColor} />
-          </div>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="What is this space about? (optional — the assistant uses this as context)"
-            rows={2}
-            className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-          />
-          <div>
-            <textarea
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Instructions — the space's role and style (e.g. 'You are a markets analyst. Be terse, always cite a source.')"
-              rows={3}
-              className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-            />
-            <p className="mt-1 px-1 text-xs text-zinc-400 dark:text-zinc-500">
-              The assistant follows these for every message in this space.
-            </p>
-          </div>
-          <SuggestionsEditor value={suggestions} onChange={setSuggestions} />
-          <ToolAllowlistPicker
-            catalog={toolCatalog}
-            value={toolAllowlist}
-            onChange={setToolAllowlist}
-          />
-          <div className="flex gap-2">
+
+          {/* Persistent Save/Cancel controls. */}
+          <div className="sticky bottom-0 flex gap-2 rounded-b-2xl border-t border-zinc-200 bg-zinc-50/95 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
             <Button
               size="sm"
               variant="brand"
@@ -376,15 +455,24 @@ export default function ProjectsPage() {
                     {project.instructions?.trim() ? (
                       <span
                         className="rounded-full bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-medium text-teal-600 dark:text-teal-400"
-                        title="This space has custom instructions"
+                        title="Custom instructions: this space has its own role and style for the assistant."
                       >
-                        Custom
+                        Custom instructions
                       </span>
                     ) : null}
                   </h2>
                   {project.description ? (
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
                       {project.description}
+                    </p>
+                  ) : null}
+                  {recent[project.id] ? (
+                    <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-5 text-zinc-400 dark:text-zinc-500">
+                      <MessageSquare className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="text-zinc-500 dark:text-zinc-400">{recent[project.id].excerpt}</span>
+                        <span className="ml-1">· {relativeTime(recent[project.id].at)}</span>
+                      </span>
                     </p>
                   ) : null}
                 </div>
@@ -401,67 +489,70 @@ export default function ProjectsPage() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    aria-label="Customize space"
+                    aria-label={editingId === project.id ? "Close customization" : "Customize space"}
                     className={cn(
                       "h-8 w-8 text-zinc-400 hover:text-teal-600",
                       editingId === project.id && "text-teal-600",
                     )}
-                    onClick={() =>
-                      editingId === project.id ? setEditingId(null) : startEditing(project)
-                    }
+                    onClick={() => (editingId === project.id ? setEditingId(null) : startEditing(project))}
                   >
                     <Sliders className="h-4 w-4" />
                   </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-label="Delete space"
-                    className="h-8 w-8 text-zinc-400 hover:text-red-500"
-                    onClick={() => setToDelete(project)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <OverflowMenu onDelete={() => setToDelete(project)} spaceName={project.name} />
                 </div>
               </div>
 
               {editingId === project.id ? (
-                <div className="mt-3 space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-                  <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                    Icon &amp; color
-                  </label>
-                  <IdentityPicker
-                    emoji={editEmoji}
-                    color={editColor}
-                    onEmoji={setEditEmoji}
-                    onColor={setEditColor}
-                  />
-                  <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                    Description
-                  </label>
-                  <textarea
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
-                    placeholder="What is this space about?"
-                    rows={2}
-                    className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                  />
-                  <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                    Instructions
-                  </label>
-                  <textarea
-                    value={editInstructions}
-                    onChange={(e) => setEditInstructions(e.target.value)}
-                    placeholder="The space's role and style — the assistant follows these every message."
-                    rows={4}
-                    className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                  />
-                  <SuggestionsEditor value={editSuggestions} onChange={setEditSuggestions} />
-                  <ToolAllowlistPicker
-                    catalog={toolCatalog}
-                    value={editToolAllowlist}
-                    onChange={setEditToolAllowlist}
-                  />
-                  <div className="flex gap-2">
+                <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+                  <div className="space-y-3">
+                    {/* 1. Purpose & instructions */}
+                    <div>
+                      <label
+                        htmlFor={`edit-instructions-${project.id}`}
+                        className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400"
+                      >
+                        Instructions
+                      </label>
+                      <textarea
+                        id={`edit-instructions-${project.id}`}
+                        value={editInstructions}
+                        onChange={(e) => setEditInstructions(e.target.value)}
+                        placeholder="The space's role and style — the assistant follows these every message."
+                        rows={4}
+                        className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={`edit-description-${project.id}`}
+                        className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400"
+                      >
+                        Description
+                      </label>
+                      <textarea
+                        id={`edit-description-${project.id}`}
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="What is this space about?"
+                        rows={2}
+                        className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                      />
+                    </div>
+
+                    {/* 2. Tools & memory scope */}
+                    <ToolAllowlistPicker catalog={toolCatalog} value={editToolAllowlist} onChange={setEditToolAllowlist} />
+
+                    {/* 3. Starter prompts */}
+                    <SuggestionsEditor value={editSuggestions} onChange={setEditSuggestions} idPrefix={`edit-${project.id}`} />
+
+                    {/* 4. Appearance */}
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">Icon &amp; color</p>
+                      <IdentityPicker emoji={editEmoji} color={editColor} onEmoji={setEditEmoji} onColor={setEditColor} />
+                    </div>
+                  </div>
+
+                  <div className="sticky bottom-0 z-10 mt-3 flex gap-2 border-t border-zinc-200 bg-white/95 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
                     <Button
                       size="sm"
                       variant="brand"
@@ -471,12 +562,7 @@ export default function ProjectsPage() {
                     >
                       {savingEdit ? "Saving…" : "Save"}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl"
-                      onClick={() => setEditingId(null)}
-                    >
+                    <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setEditingId(null)}>
                       Cancel
                     </Button>
                   </div>
@@ -499,6 +585,60 @@ export default function ProjectsPage() {
           if (toDelete) return deleteProject(toDelete);
         }}
       />
+    </div>
+  );
+}
+
+/** Overflow menu keeping destructive delete away from routine card actions. */
+function OverflowMenu({ onDelete, spaceName }: { onDelete: () => void; spaceName: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        size="icon"
+        variant="ghost"
+        aria-label={`More actions for ${spaceName}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="h-8 w-8 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </Button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-9 z-20 w-40 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <button
+            role="menuitem"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete space
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -528,13 +668,14 @@ function SpaceIdentity({ emoji, color }: { emoji: string | null; color: string |
 function SuggestionsEditor({
   value,
   onChange,
+  idPrefix,
 }: {
   value: string[];
   onChange: (value: string[]) => void;
+  idPrefix: string;
 }) {
   const MAX = 6;
-  const update = (index: number, text: string) =>
-    onChange(value.map((s, i) => (i === index ? text : s)));
+  const update = (index: number, text: string) => onChange(value.map((s, i) => (i === index ? text : s)));
   const remove = (index: number) => onChange(value.filter((_, i) => i !== index));
   const add = () => {
     if (value.length < MAX) onChange([...value, ""]);
@@ -553,6 +694,7 @@ function SuggestionsEditor({
               <Input
                 value={prompt}
                 onChange={(e) => update(index, e.target.value)}
+                aria-label={`Starter prompt ${index + 1}`}
                 placeholder="e.g. Summarize today's market news"
                 className="rounded-lg"
               />
@@ -560,7 +702,7 @@ function SuggestionsEditor({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Remove starter"
+                aria-label={`Remove starter prompt ${index + 1}`}
                 className="h-8 w-8 shrink-0 text-zinc-400 hover:text-red-500"
                 onClick={() => remove(index)}
               >
@@ -571,13 +713,7 @@ function SuggestionsEditor({
         </div>
       ) : null}
       {value.length < MAX ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="mt-2 rounded-lg"
-          onClick={add}
-        >
+        <Button type="button" variant="outline" size="sm" className="mt-2 rounded-lg" onClick={add} id={`${idPrefix}-add-starter`}>
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           Add starter
         </Button>
@@ -626,7 +762,7 @@ function ToolAllowlistPicker({
       <label className="flex cursor-pointer items-start justify-between gap-3">
         <span className="min-w-0">
           <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-200">
-            Limit tools in this space
+            Limit tools &amp; memory scope in this space
           </span>
           <span className="mt-0.5 block text-xs text-zinc-400 dark:text-zinc-500">
             {limited
@@ -636,6 +772,7 @@ function ToolAllowlistPicker({
         </span>
         <input
           type="checkbox"
+          aria-label="Limit tools and memory scope in this space"
           checked={limited}
           // On → preselect all gateable tools (uncheck to remove). Off → unrestricted.
           onChange={(e) => onChange(e.target.checked ? catalog.map((t) => t.name) : null)}
@@ -661,6 +798,7 @@ function ToolAllowlistPicker({
                     >
                       <input
                         type="checkbox"
+                        aria-label={tool.displayName}
                         checked={selected.has(tool.name)}
                         onChange={() => toggleTool(tool.name)}
                         className="h-4 w-4 shrink-0 accent-teal-600"
@@ -708,6 +846,7 @@ function IdentityPicker({
             <button
               key={choice}
               type="button"
+              aria-label={`Icon ${choice}`}
               aria-pressed={active}
               // Click a selected emoji again to clear it (fall back to a dot).
               onClick={() => onEmoji(active ? "" : choice)}
