@@ -741,27 +741,386 @@ create policy "Users can delete own segment artifacts"
 -- ====================================================================
 -- BEGIN 015_conversation_segments_rls.sql
 -- ====================================================================
-
 alter table public.conversation_segments enable row level security;
 
+drop policy if exists "Users can read own conversation segments" on public.conversation_segments;
 create policy "Users can read own conversation segments"
   on public.conversation_segments
   for select
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can create own conversation segments" on public.conversation_segments;
 create policy "Users can create own conversation segments"
   on public.conversation_segments
   for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can update own conversation segments" on public.conversation_segments;
 create policy "Users can update own conversation segments"
   on public.conversation_segments
   for update
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can delete own conversation segments" on public.conversation_segments;
 create policy "Users can delete own conversation segments"
   on public.conversation_segments
   for delete
   using (auth.uid() = user_id);
 
 -- END 015_conversation_segments_rls.sql
+
+-- ====================================================================
+-- BEGIN 016_projects.sql
+-- ====================================================================
+-- projects: user-visible containers that bundle a docs folder, chat segments,
+-- and artifacts under one named workspace.
+-- Segments are tagged to a project via conversation_segments.metadata->>'project_id'
+-- (no schema change required on that table). Documents are bound by matching folder.
+
+create table if not exists projects (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  name text not null,
+  folder text not null,
+  description text,
+  archived boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_projects_user on projects (user_id, created_at desc);
+create unique index if not exists idx_projects_user_folder on projects (user_id, folder);
+
+create or replace function update_projects_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create trigger projects_updated_at
+  before update on projects
+  for each row execute procedure update_projects_updated_at();
+
+alter table projects enable row level security;
+
+create policy "Users can read own projects"
+  on projects for select
+  using (auth.uid() = user_id);
+
+create policy "Users can create own projects"
+  on projects for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update own projects"
+  on projects for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete own projects"
+  on projects for delete
+  using (auth.uid() = user_id);
+
+-- Helps the project detail view query "segments in this project" efficiently.
+create index if not exists idx_conversation_segments_project
+  on conversation_segments ((metadata->>'project_id'));
+
+-- END 016_projects.sql
+
+-- ====================================================================
+-- BEGIN 017_project_conversations.sql
+-- ====================================================================
+-- Per-project conversations ("Spaces").
+--
+-- Until now every user had a single conversation and all channels shared it,
+-- so distinct topics (markets, health, …) piled into one messy thread. This
+-- gives each project its own conversation; the pre-existing conversation keeps
+-- project_id = NULL and becomes the default "General" space. Telegram/cron keep
+-- landing on General because they pass no project.
+--
+-- Segments, documents, artifacts already scope to a project via
+-- conversation_segments.metadata->>'project_id' and the docs folder; this simply
+-- adds the missing scope on the messages/conversation thread itself.
+
+alter table conversations
+  add column if not exists project_id uuid references projects(id) on delete cascade;
+
+-- Exactly one conversation per (user, project). NULL project_id collapses to a
+-- fixed sentinel so the "General" space is also unique per user (a plain unique
+-- index would treat every NULL as distinct and allow duplicates).
+--
+-- NOTE: if a user somehow already has more than one conversation row, this index
+-- will fail to create. Inspect with:
+--   select user_id, count(*) from conversations group by 1 having count(*) > 1;
+-- and consolidate before applying.
+create unique index if not exists idx_conversations_user_project
+  on conversations (user_id, coalesce(project_id, '00000000-0000-0000-0000-000000000000'::uuid));
+
+-- Helps resolve "this project's conversation" quickly.
+create index if not exists idx_conversations_project
+  on conversations (project_id)
+  where project_id is not null;
+
+-- END 017_project_conversations.sql
+
+-- ====================================================================
+-- BEGIN 018_space_instructions_and_scoped_memory.sql
+-- ====================================================================
+-- Slice 2: per-space identity + scoped memory.
+--
+-- Part 1 — per-space instructions: a free-text directive attached to a project
+-- ("you are a markets analyst, be terse, always cite a source"). It layers into
+-- the system prompt via buildProjectContextSection so each space behaves like a
+-- distinct assistant while General stays generic.
+--
+-- Part 2 — scoped memory: until now every memory was global, so a Health fact
+-- could surface mid-markets conversation. Each memory now carries an optional
+-- project_id. A NULL project_id is a *global* fact (visible in every space); a
+-- set project_id is a *space* fact (visible only in that space). Recall filters
+-- to `project_id IS NULL OR project_id = <active>`.
+--
+-- Prereq: migration 017 (conversations.project_id) must be applied first.
+--
+-- VERIFY AFTER APPLYING (both `if exists` drops below fail SILENTLY if their
+-- name/signature doesn't match, leaving the feature broken while reporting
+-- success). Run these two and confirm the expected result:
+--   -- must return ZERO rows (old unique(user_id, topic) is gone):
+--   select conname from pg_constraint
+--     where conrelid = 'public.user_memories'::regclass and contype = 'u';
+--   -- must return exactly 1 (no leftover RPC overload → no PGRST203):
+--   select count(*) from pg_proc where proname = 'match_user_memories';
+
+-- Wrapped in a transaction so it's all-or-nothing: if any step errors (e.g. the
+-- unique index), the drop constraint above it rolls back too, so the table is
+-- never left without uniqueness protection. None of these use CONCURRENTLY, so
+-- they're all transaction-safe.
+begin;
+
+-- Part 1 -----------------------------------------------------------------------
+alter table projects
+  add column if not exists instructions text;
+
+-- Part 2 -----------------------------------------------------------------------
+alter table user_memories
+  add column if not exists project_id uuid references projects(id) on delete cascade;
+
+-- The old unique(user_id, topic) would collide the same topic across spaces
+-- (a Markets "diet" vs a Health "diet"), silently no-opping scoped writes.
+-- Drop it and replace with a (user, space, topic) uniqueness that treats NULL
+-- project_id as a fixed sentinel so global topics stay unique per user.
+alter table user_memories
+  drop constraint if exists user_memories_user_id_topic_key;
+
+create unique index if not exists idx_user_memories_user_project_topic
+  on user_memories (
+    user_id,
+    coalesce(project_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    topic
+  );
+
+create index if not exists idx_user_memories_project
+  on user_memories (project_id)
+  where project_id is not null;
+
+-- Recall RPC: scope semantic matches to the active space plus globals.
+-- NOTE: CREATE OR REPLACE with a new argument list creates a *second* overload
+-- (PGRST203 ambiguity on call), so drop the old 4-arg signature explicitly first.
+drop function if exists public.match_user_memories(vector, uuid, float, int);
+
+create or replace function public.match_user_memories(
+  query_embedding vector(1536),
+  match_user_id uuid,
+  match_project_id uuid default null,
+  match_threshold float default 0.3,
+  match_count int default 20
+)
+returns table (
+  id uuid,
+  topic text,
+  content text,
+  updated_at timestamptz,
+  similarity float
+)
+language sql
+stable
+as $$
+  select
+    um.id,
+    um.topic,
+    um.content,
+    um.updated_at,
+    1 - (um.embedding <=> query_embedding) as similarity
+  from public.user_memories um
+  where um.user_id = match_user_id
+    and (um.project_id is null or um.project_id = match_project_id)
+    and um.embedding is not null
+    and 1 - (um.embedding <=> query_embedding) > match_threshold
+  order by um.embedding <=> query_embedding
+  limit match_count;
+$$;
+
+commit;
+
+-- END 018_space_instructions_and_scoped_memory.sql
+
+-- ====================================================================
+-- BEGIN 019_space_persona.sql
+-- ====================================================================
+-- Slice 3: per-space persona (visual identity).
+--
+-- Each space can carry an emoji and an accent color so it reads as a distinct
+-- assistant at a glance — in the space switcher, the chat header, and the
+-- spaces list. Both are optional; when unset the UI falls back to the existing
+-- hashed-hue dot, so pre-existing spaces keep working with no backfill.
+--
+--   emoji — a single emoji character, e.g. '📈' (NULL = no emoji, show a dot).
+--   color — an accent as a hex string, e.g. '#14b8a6' (NULL = hashed fallback).
+--
+-- Purely additive: two nullable columns, no drops, no data movement. Safe to
+-- re-run (add column if not exists).
+
+begin;
+
+alter table projects add column if not exists emoji text;
+alter table projects add column if not exists color text;
+
+commit;
+
+-- VERIFY AFTER APPLYING — both columns should now exist:
+--   select column_name from information_schema.columns
+--   where table_name = 'projects' and column_name in ('emoji', 'color');
+--   -- expect two rows: color, emoji
+
+-- END 019_space_persona.sql
+
+-- ====================================================================
+-- BEGIN 020_space_suggestions.sql
+-- ====================================================================
+-- Slice 4: per-space starter suggestions.
+--
+-- Each space can carry a short list of starter prompts, prefilled from its
+-- template at creation. The chat home renders them as the empty-state cards
+-- when you're inside that space, so a space reads as a specialized assistant
+-- (its own suggestions) rather than General with a colored dot.
+--
+--   suggestions — text[] of short prompts, e.g. ARRAY['Summarize today''s macro news'].
+--                 NULL or empty = fall back to the general starter cards.
+--
+-- Purely additive: one nullable array column, no drops, no data movement. Safe
+-- to re-run (add column if not exists). Existing spaces keep working (NULL →
+-- general starters); only spaces created from a template after this migration
+-- carry suggestions.
+
+begin;
+
+alter table projects add column if not exists suggestions text[];
+
+commit;
+
+-- VERIFY AFTER APPLYING — the column should now exist:
+--   select column_name, data_type from information_schema.columns
+--   where table_name = 'projects' and column_name = 'suggestions';
+--   -- expect one row: suggestions | ARRAY
+
+-- END 020_space_suggestions.sql
+
+-- ====================================================================
+-- BEGIN 021_space_tool_allowlist.sql
+-- ====================================================================
+-- Slice 6: per-space tool allowlist.
+--
+-- Each space can restrict which optional tools its assistant may use, so an
+-- "Investing" space can be prevented from touching Gmail, or a "Reading" space
+-- from scheduling tasks. This is the capability half of a space's identity:
+-- alongside its instructions and memory scope, it now also decides what the
+-- assistant is allowed to *do*.
+--
+--   tool_allowlist — text[] of gateable tool names the space may use.
+--                    NULL  = unrestricted (all tools) — the default, and what
+--                            every existing space keeps.
+--                    []    = no gateable tools (chat + core essentials only).
+--                    [...] = exactly those gateable tools, plus the always-on
+--                            core tools (memory, planning, cards) which are
+--                            never gated.
+--
+-- Purely additive: one nullable array column, no drops, no data movement. Safe
+-- to re-run (add column if not exists). Existing spaces keep working (NULL →
+-- all tools). Enforcement lives in tool-registry.getAvailable; a missing column
+-- degrades to unrestricted, so chat never breaks if this hasn't been applied.
+
+begin;
+
+alter table projects add column if not exists tool_allowlist text[];
+
+commit;
+
+-- VERIFY AFTER APPLYING — the column should now exist:
+--   select column_name, data_type from information_schema.columns
+--   where table_name = 'projects' and column_name = 'tool_allowlist';
+--   -- expect one row: tool_allowlist | ARRAY
+
+-- END 021_space_tool_allowlist.sql
+
+-- ====================================================================
+-- BEGIN 022_scheduled_task_spaces.sql
+-- ====================================================================
+-- Proactivity: Space-scoped scheduled tasks.
+--
+-- A scheduled task can belong to a Space, so a recurring briefing or reminder
+-- created inside a Space runs as *that* assistant — its instructions, scoped
+-- memory, tool allowlist, and its own conversation thread — rather than as
+-- General. This is what turns Spaces from a passive filing system into
+-- proactive, specialized assistants ("every Monday, summarize the market open"
+-- scheduled in the Investing Space runs with the Investing persona).
+--
+--   project_id — nullable FK to projects. NULL = General (the default, and what
+--                every existing task keeps). ON DELETE SET NULL so deleting a
+--                Space demotes its tasks to General rather than dropping them.
+--
+-- Purely additive: one nullable column. Safe to re-run. The cron worker reads
+-- the column off the row and degrades to NULL (General) when it's absent, so
+-- scheduling and execution keep working before this migration is applied.
+
+begin;
+
+alter table public.scheduled_tasks
+  add column if not exists project_id uuid references public.projects(id) on delete set null;
+
+create index if not exists idx_scheduled_tasks_project
+  on public.scheduled_tasks(project_id);
+
+commit;
+
+-- VERIFY AFTER APPLYING:
+--   select column_name, data_type from information_schema.columns
+--   where table_name = 'scheduled_tasks' and column_name = 'project_id';
+--   -- expect one row: project_id | uuid
+
+-- END 022_scheduled_task_spaces.sql
+
+-- ====================================================================
+-- BEGIN 023_workflow_execution_claims.sql
+-- ====================================================================
+-- Atomically claim a workflow across manual and cron workers.
+ALTER TABLE public.scheduled_tasks
+  ADD COLUMN IF NOT EXISTS execution_token uuid,
+  ADD COLUMN IF NOT EXISTS execution_started_at timestamptz;
+
+CREATE OR REPLACE FUNCTION public.claim_workflow_execution(
+  task_id uuid, owner_id uuid, claim_token uuid, expected_last_run timestamptz
+) RETURNS boolean
+LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$
+  WITH claimed AS (
+    UPDATE scheduled_tasks
+       SET execution_token = claim_token, execution_started_at = now()
+     WHERE id = task_id AND user_id = owner_id
+       AND last_run_at IS NOT DISTINCT FROM expected_last_run
+       AND (execution_token IS NULL OR execution_started_at < now() - interval '10 minutes')
+    RETURNING id
+  ) SELECT EXISTS(SELECT 1 FROM claimed);
+$$;
+REVOKE ALL ON FUNCTION public.claim_workflow_execution(uuid, uuid, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_workflow_execution(uuid, uuid, uuid, timestamptz) TO service_role;
+
+-- END 023_workflow_execution_claims.sql

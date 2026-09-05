@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,8 @@ export interface FirstRunSetupValues {
 }
 
 export interface FirstRunSetupProps {
+  saving?: boolean;
+  error?: string | null;
   initialValues?: Partial<FirstRunSetupValues>;
   onComplete: (values: FirstRunSetupValues) => void;
   onSkip: () => void;
@@ -165,16 +167,13 @@ const REMEMBER_ITEMS: Array<{
   },
 ];
 
-export function FirstRunSetup({ initialValues, onComplete, onSkip, className }: FirstRunSetupProps) {
+export function FirstRunSetup({ saving, error, initialValues, onComplete, onSkip, className }: FirstRunSetupProps) {
   const [step, setStep] = useState(0);
   const [projectInput, setProjectInput] = useState("");
   const [values, setValues] = useState<FirstRunSetupValues>(() => mergeInitialValues(initialValues));
 
   const previewSentence = useMemo(() => buildPreviewSentence(values), [values]);
 
-  useEffect(() => {
-    setValues(mergeInitialValues(initialValues));
-  }, [initialValues]);
 
   const goNext = () => setStep((current) => Math.min(current + 1, 2));
   const goBack = () => setStep((current) => Math.max(current - 1, 0));
@@ -504,6 +503,7 @@ export function FirstRunSetup({ initialValues, onComplete, onSkip, className }: 
         </AnimatePresence>
       </CardContent>
 
+      {error && <p role="alert" className="px-6 text-sm text-red-600 dark:text-red-400">{error}</p>}
       <CardFooter className="flex flex-col items-stretch gap-3 border-t border-zinc-200/70 bg-zinc-50/70 px-6 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/40 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-zinc-500 dark:text-zinc-400">
           {step === 2 ? "You are one click away from a personalized workspace." : "These preferences can be edited later."}
@@ -521,8 +521,8 @@ export function FirstRunSetup({ initialValues, onComplete, onSkip, className }: 
               Continue
             </Button>
           ) : (
-            <Button type="button" variant="brand" onClick={() => onComplete(values)} className="rounded-xl">
-              Finish setup
+            <Button type="button" variant="brand" disabled={saving} onClick={() => onComplete(values)} className="rounded-xl">
+              {saving ? "Saving…" : "Finish setup"}
             </Button>
           )}
         </div>

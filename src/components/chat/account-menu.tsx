@@ -6,6 +6,7 @@ import { LogOut, Moon, Settings2, Sun } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface AccountMenuProps {
+  projectId?: string;
   name?: string | null;
   email?: string | null;
   accountAria: string;
@@ -31,6 +32,7 @@ function initials(name?: string | null, email?: string | null): string {
  * Mirrors the SpaceSwitcher popover pattern (outside-click + Escape close).
  */
 export function AccountMenu({
+  projectId,
   name,
   email,
   accountAria,
@@ -126,10 +128,12 @@ export function AccountMenu({
             <span className="min-w-0 flex-1 truncate">{themeLabel}</span>
           </button>
 
-          <Link href="/settings" role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
+          <Link href={projectId ? `/settings?project=${encodeURIComponent(projectId)}` : "/settings"} role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
             <Settings2 className="h-4 w-4 shrink-0" />
             <span className="min-w-0 flex-1 truncate">{settingsLabel}</span>
           </Link>
+
+          <Link href={`/chat?setup=1${projectId ? `&project=${encodeURIComponent(projectId)}` : ""}`} role="menuitem" className={itemClass} onClick={() => setOpen(false)}>Personalize Hada</Link>
 
           <button
             type="button"

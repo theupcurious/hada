@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +40,9 @@ export function TasksTab() {
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(new Set<string>());
+  const [pending, setPending] = useState<Record<string, string>>({});
+  const [outcomes, setOutcomes] = useState<Record<string, { message: string; resultUrl?: string; failed?: boolean }>>({});
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
@@ -64,38 +68,52 @@ export function TasksTab() {
     void loadTasks();
   }, [loadTasks]);
 
-  const handleToggle = async (task: DashboardTask) => {
-    const response = await fetch(`/api/dashboard/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: !task.enabled }),
-    });
-    if (response.ok) void loadTasks();
-  };
-
-  const handleDelete = async (taskId: string) => {
-    const response = await fetch(`/api/dashboard/tasks/${taskId}`, { method: "DELETE" });
-    if (response.ok) {
-      setTaskToDelete(null);
-      void loadTasks();
-    } else {
-      setError(copy.failedToLoadTasks);
+  const mutateTask = async (taskId: string, action: "run" | "pause" | "resume" | "delete") => {
+    if (busyRef.current.has(taskId)) return;
+    busyRef.current.add(taskId);
+    setPending((prev) => ({ ...prev, [taskId]: action }));
+    setError(null);
+    setOutcomes((prev) => { const next = { ...prev }; delete next[taskId]; return next; });
+    try {
+      const response = await fetch(`/api/dashboard/tasks/${taskId}${action === "run" ? "/run" : ""}`, {
+        method: action === "run" ? "POST" : action === "delete" ? "DELETE" : "PATCH",
+        ...(action === "pause" || action === "resume" ? {
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: action === "resume" }),
+        } : {}),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string; message?: string; resultUrl?: string };
+      if (!response.ok) {
+        setOutcomes((prev) => ({ ...prev, [taskId]: {
+          message: payload.error || `Couldn’t ${action} this workflow. Try again.`,
+          resultUrl: payload.resultUrl, failed: true,
+        } }));
+        return;
+      }
+      if (action === "delete") setTaskToDelete(null);
+      else setOutcomes((prev) => ({ ...prev, [taskId]: { message: payload.message || (action === "pause" ? "Workflow paused." : "Workflow resumed."), resultUrl: payload.resultUrl } }));
+      await loadTasks();
+    } catch {
+      setOutcomes((prev) => ({ ...prev, [taskId]: { message: "Connection lost. Refresh to check the workflow before trying again.", failed: true } }));
+    } finally {
+      busyRef.current.delete(taskId);
+      setPending((prev) => { const next = { ...prev }; delete next[taskId]; return next; });
+      if (action === "delete") setTaskToDelete(null);
     }
   };
+  useEffect(() => {
+    if (!tasks.some((task) => task.execution_token)) return;
+    const timer = window.setInterval(() => { void loadTasks(); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [tasks, loadTasks]);
 
-  const handleRunNow = async (taskId: string) => {
-    const response = await fetch(`/api/dashboard/tasks/${taskId}/run`, { method: "POST" });
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    void loadTasks();
-    if (!response.ok) {
-      setError(payload?.message || copy.runFailedWithStatus(response.status));
-    }
-  };
+  const handleToggle = (task: DashboardTask) => mutateTask(task.id, task.enabled ? "pause" : "resume");
+  const handleDelete = (taskId: string) => mutateTask(taskId, "delete");
+  const handleRunNow = (taskId: string) => mutateTask(taskId, "run");
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold">{copy.title}</h2>
+        <h1 className="text-2xl font-semibold">{copy.title}</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           {copy.subtitle}
         </p>
@@ -167,13 +185,15 @@ export function TasksTab() {
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={Boolean(pending[task.id]) || Boolean(task.execution_token && task.execution_started_at && Date.now() - new Date(task.execution_started_at).getTime() < 600_000)}
                   onClick={() => void handleRunNow(task.id)}
                 >
-                  {copy.runNow}
+                  {pending[task.id] === "run" || Boolean(task.execution_token && task.execution_started_at && Date.now() - new Date(task.execution_started_at).getTime() < 600_000) ? "Running…" : copy.runNow}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={Boolean(pending[task.id])}
                   onClick={() => void handleToggle(task)}
                 >
                   {task.enabled ? copy.pause : copy.resume}
@@ -182,6 +202,7 @@ export function TasksTab() {
                   variant="ghost"
                   size="sm"
                   className="text-red-500 hover:text-red-600 dark:text-red-400"
+                  disabled={Boolean(pending[task.id])}
                   onClick={() => setTaskToDelete(task.id)}
                 >
                   {copy.delete}
@@ -189,6 +210,12 @@ export function TasksTab() {
               </div>
             </div>
           </CardHeader>
+          {(pending[task.id] || outcomes[task.id]) && <CardContent className="pt-0">
+            <p role={outcomes[task.id]?.failed ? "alert" : "status"} className={outcomes[task.id]?.failed ? "text-sm text-red-600 dark:text-red-400" : "text-sm text-zinc-500"}>
+              {pending[task.id] === "run" ? "Running your workflow. This can take a few minutes…" : pending[task.id] ? "Updating workflow…" : outcomes[task.id]?.message}
+            </p>
+            {!pending[task.id] && outcomes[task.id]?.resultUrl && <Link className="mt-2 inline-block text-sm text-teal-700 underline dark:text-teal-300" href={outcomes[task.id].resultUrl!}>Open result</Link>}
+          </CardContent>}
         </Card>
       ))}
 
@@ -206,6 +233,7 @@ export function TasksTab() {
         confirmLabel={copy.delete}
         cancelLabel={copy.cancel}
         destructive
+        busy={Boolean(taskToDelete && pending[taskToDelete])}
         onOpenChange={(open) => !open && setTaskToDelete(null)}
         onConfirm={() => {
           if (taskToDelete) return handleDelete(taskToDelete);

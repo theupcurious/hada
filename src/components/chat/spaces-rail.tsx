@@ -75,7 +75,7 @@ export function SpacesRail({
   return (
     <aside
       aria-label={heading}
-      className="sticky top-[57px] hidden h-[calc(100vh-57px)] w-60 shrink-0 flex-col overflow-y-auto border-r border-zinc-200/80 bg-white/50 px-2.5 py-4 dark:border-zinc-800/60 dark:bg-zinc-950/30 md:flex"
+      className="sticky top-[100px] hidden h-[calc(100vh-100px)] w-60 shrink-0 flex-col overflow-y-auto border-r border-zinc-200/80 bg-white/50 px-2.5 py-4 dark:border-zinc-800/60 dark:bg-zinc-950/30 md:flex"
     >
       <button
         type="button"

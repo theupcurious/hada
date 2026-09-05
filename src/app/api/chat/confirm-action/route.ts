@@ -77,7 +77,18 @@ export async function POST(request: NextRequest) {
 
   const toolName = confirmation.function.name;
   const baseArgs = confirmation.function.arguments ?? {};
-  const args = editedArgs ? { ...baseArgs, ...editedArgs } : baseArgs;
+  const args = { ...baseArgs };
+  if (editedArgs && decision === "approve") {
+    if (toolName !== "gmail_send" && toolName !== "send_email") return jsonError("This action cannot be edited", 400);
+    for (const key of ["to", "subject", "body", "message", "cc", "bcc"]) {
+      if (!(key in editedArgs)) continue;
+      if (typeof editedArgs[key] !== "string") return jsonError("Email fields must be text", 400);
+      args[key] = editedArgs[key];
+    }
+    if (!String(args.to ?? "").trim() || !String(args.subject ?? "").trim() || !String(args.body ?? args.message ?? "").trim()) {
+      return jsonError("Recipient, subject, and body are required", 400);
+    }
+  }
 
   const resolvedMetadata: MessageMetadata = {
     ...(message.metadata ?? {}),
@@ -90,12 +101,17 @@ export async function POST(request: NextRequest) {
     },
   };
 
-  // Mark the proposal resolved regardless of outcome so the card stops showing.
-  await admin
+  // Claim the pending proposal atomically: concurrent approvals must not send twice.
+  const { data: claimed, error: claimError } = await admin
     .from("messages")
     .update({ metadata: resolvedMetadata })
     .eq("id", message.id)
-    .eq("conversation_id", conversation.id);
+    .eq("conversation_id", conversation.id)
+    .eq("metadata->confirmation->>pending", "true")
+    .select("id")
+    .maybeSingle();
+  if (claimError) return jsonError("Could not confirm the action. Try again.", 500);
+  if (!claimed) return jsonError("This action has already been resolved. Refresh the conversation.", 409);
 
   if (decision === "reject") {
     const cancelled = await saveMessage(

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
-import { processMessage } from "@/lib/chat/process-message";
-import { sendTelegramToUser } from "@/lib/telegram/send";
+import { executeWorkflow, WorkflowBusyError } from "@/lib/workflows/execute-workflow";
+import type { ScheduledTask } from "@/lib/types/database";
 
 export const maxDuration = 300;
 
@@ -21,7 +21,7 @@ export async function POST(
 
     const { data: task, error } = await supabase
       .from("scheduled_tasks")
-      .select("id, description, enabled, type, run_at, cron_expression")
+      .select("*")
       .eq("id", id)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -37,36 +37,11 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    // Execute the workflow now, mirroring the scheduled (cron) pipeline: run the
-    // task prompt through the agent, deliver to Telegram if linked, and stamp
-    // last_run_at. The assistant reply is also persisted to the user's chat.
-    const admin = createAdminClient();
-    const result = await processMessage({
-      userId: user.id,
-      message: task.description,
-      source: "scheduled",
-      supabase: admin,
-    });
-
-    await sendTelegramToUser({
-      supabase: admin,
-      userId: user.id,
-      text: result.response,
-    }).catch((err) => console.error("Run-now Telegram delivery failed", err));
-
-    await admin
-      .from("scheduled_tasks")
-      .update({ last_run_at: new Date().toISOString() })
-      .eq("id", task.id)
-      .eq("user_id", user.id);
-
-    return NextResponse.json({
-      success: true,
-      message: "Workflow ran — the result is in your chat (and Telegram if connected).",
-      response: result.response,
-    });
+    const result = await executeWorkflow(createAdminClient(), task as ScheduledTask, "manual");
+    return NextResponse.json(result, { status: result.success ? 200 : 502 });
   } catch (error) {
+    if (error instanceof WorkflowBusyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error("Dashboard task run API error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Could not start the workflow. Check service status and try again." }, { status: 500 });
   }
 }

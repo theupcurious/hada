@@ -230,6 +230,8 @@ export interface ScheduledTask {
   description: string;
   enabled: boolean;
   last_run_at: string | null;
+  execution_token?: string | null;
+  execution_started_at?: string | null;
   /** Space this task runs in (migration 022). NULL = General. */
   project_id: string | null;
   created_at: string;

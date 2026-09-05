@@ -9,7 +9,7 @@ export interface ActionApprovalCardProps {
   functionName: string;
   args: Record<string, unknown>;
   disabled?: boolean;
-  onDecision: (decision: "approve" | "reject") => Promise<void> | void;
+  onDecision: (decision: "approve" | "reject", editedArgs?: Record<string, unknown>) => Promise<void> | void;
 }
 
 interface ActionDescriptor {
@@ -20,14 +20,22 @@ interface ActionDescriptor {
 
 export function ActionApprovalCard({ functionName, args, disabled, onDecision }: ActionApprovalCardProps) {
   const [submitting, setSubmitting] = useState<"approve" | "reject" | null>(null);
-  const descriptor = describeAction(functionName, args);
+  const isEmail = functionName === "gmail_send" || functionName === "send_email";
+  const [editing, setEditing] = useState(false);
+  const [edited, setEdited] = useState<Record<string, unknown>>(args);
+  const [error, setError] = useState<string | null>(null);
+  const descriptor = describeAction(functionName, edited);
+  const bodyKey = typeof args.body === "string" ? "body" : "message";
   const busy = disabled || submitting !== null;
 
   const handle = async (decision: "approve" | "reject") => {
     if (busy) return;
+    setError(null);
     setSubmitting(decision);
     try {
-      await onDecision(decision);
+      await onDecision(decision, isEmail ? edited : undefined);
+    } catch {
+      setError("Couldn’t confirm this action. Check its status before trying again.");
     } finally {
       setSubmitting(null);
     }
@@ -62,7 +70,7 @@ export function ActionApprovalCard({ functionName, args, disabled, onDecision }:
                 <dt className="w-24 shrink-0 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                   {detail.label}
                 </dt>
-                <dd className="min-w-0 flex-1 break-words text-zinc-800 dark:text-zinc-200 [overflow-wrap:anywhere]">
+                <dd className="min-w-0 flex-1 whitespace-pre-wrap break-words text-zinc-800 dark:text-zinc-200 [overflow-wrap:anywhere]">
                   {detail.value}
                 </dd>
               </div>
@@ -70,14 +78,25 @@ export function ActionApprovalCard({ functionName, args, disabled, onDecision }:
           </dl>
         ) : null}
 
+        {isEmail && editing && <div className="space-y-3">
+          {["to", "subject", bodyKey, ...["cc", "bcc"].filter((key) => key in args)].map((key) => <label key={key} className="block text-sm">
+            <span className="mb-1 block font-medium">{key === bodyKey ? "Body" : key === "to" ? "To" : key === "subject" ? "Subject" : key.toUpperCase()}</span>
+            <textarea value={String(edited[key] ?? "")} rows={key === bodyKey ? 8 : 1} disabled={busy}
+              className="w-full rounded-lg border border-zinc-300 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-950"
+              onChange={(event) => setEdited((prev) => ({ ...prev, [key]: event.target.value }))} />
+          </label>)}
+          <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Review changes</Button>
+        </div>}
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex flex-wrap gap-2 pt-0.5">
+          {isEmail && !editing && <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(true)}>Edit email</Button>}
           <Button
             type="button"
             size="sm"
             variant="brand"
             className="rounded-full"
             onClick={() => handle("approve")}
-            disabled={busy}
+            disabled={busy || editing || (isEmail && !String(edited.to ?? "").trim())}
           >
             {submitting === "approve" ? "Working…" : `Approve · ${descriptor.verb}`}
           </Button>
@@ -112,7 +131,9 @@ function describeAction(functionName: string, args: Record<string, unknown>): Ac
         details: compact([
           ["To", str("to")],
           ["Subject", str("subject")],
-          ["Body", truncate(str("body") || str("message"), 400)],
+          ["Cc", str("cc")],
+          ["Bcc", str("bcc")],
+          ["Body", str("body") || str("message")],
         ]),
       };
     case "delete_calendar_event":

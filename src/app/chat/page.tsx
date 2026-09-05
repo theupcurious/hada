@@ -15,6 +15,8 @@ import { AttachMenu } from "@/components/chat/attach-menu";
 import { HistoryPanel } from "@/components/chat/history-panel";
 import { SpaceSwitcher, type Space } from "@/components/chat/space-switcher";
 import type { SegmentListItem } from "@/lib/db/segments";
+import { continueTitle } from "@/lib/chat/continue-title";
+import { AppHeader } from "@/components/app/app-header";
 import { FirstRunSetup, type FirstRunSetupValues } from "@/components/chat/first-run-setup";
 import { WelcomeHome, type WelcomeSpaceIdentity } from "@/components/chat/welcome-home";
 import { WelcomeSpacesStrip } from "@/components/chat/welcome-spaces-strip";
@@ -33,11 +35,10 @@ import {
   type AppLocale,
 } from "@/lib/i18n";
 import { motion, AnimatePresence } from "framer-motion";
-import Image from "next/image";
-import { Activity, Calendar, FileText, FolderKanban, History, LayoutDashboard, Mail, Octagon, PenLine, Plus, Search, Settings2, Sparkles } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { Activity, Calendar, FileText, FolderKanban, History, Mail, Octagon, PenLine, Plus, Search, Settings2, Sparkles } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useState, useRef, useCallback, useMemo, type MutableRefObject } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, Suspense, type MutableRefObject } from "react";
 
 interface Message {
   id: string;
@@ -592,7 +593,7 @@ function isRecentlyActive(messages: { created_at?: string }[]): boolean {
   return Number.isFinite(t) && Date.now() - t < SPACE_STALE_AFTER_MS;
 }
 
-export default function ChatPage() {
+function ChatPageContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -601,6 +602,9 @@ export default function ChatPage() {
   const [user, setUser] = useState<{ email?: string; name?: string; id?: string } | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showFirstRunSetup, setShowFirstRunSetup] = useState(false);
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupDismissed, setSetupDismissed] = useState(false);
   const [greetingText, setGreetingText] = useState("Hello");
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [recentRuns, setRecentRuns] = useState<RecentRunSummary[]>([]);
@@ -648,6 +652,10 @@ export default function ChatPage() {
   const pendingTokensRef = useRef<Map<string, string>>(new Map());
   const drainRafRef = useRef<number | null>(null);
   const router = useRouter();
+  const chatSearchParams = useSearchParams();
+  useEffect(() => {
+    if (chatSearchParams.get("setup") === "1") { setShowFirstRunSetup(true); setShowConversation(false); }
+  }, [chatSearchParams]);
   const supabase = createClient();
   const { status: connectionStatus } = useHealthStatus(30000); // Poll every 30s
   const locale = useMemo(() => normalizeLocale(userSettings?.locale), [userSettings]);
@@ -1242,6 +1250,8 @@ export default function ChatPage() {
     try {
       const url = new URL("/api/conversations/messages", window.location.origin);
       url.searchParams.set("limit", "25");
+      const targetMessage = new URL(window.location.href).searchParams.get("message");
+      if (targetMessage && !before) url.searchParams.set("message", targetMessage);
       if (before) {
         url.searchParams.set("before", before);
       }
@@ -1448,7 +1458,8 @@ export default function ChatPage() {
       }
 
       setUserSettings(nextSettings);
-      setShowFirstRunSetup(nextSettings.onboarding_completed !== true);
+      // First use starts with a useful task. Preferences are opt-in after a result.
+      setShowFirstRunSetup(new URL(window.location.href).searchParams.get("setup") === "1");
 
       // Load message history + home surface data in parallel.
       const [initialMessages] = await Promise.all([
@@ -1937,6 +1948,7 @@ export default function ChatPage() {
         } else {
           url.searchParams.delete("project");
         }
+        url.searchParams.delete("message");
         window.history.replaceState({}, document.title, url.toString());
       }
 
@@ -2238,21 +2250,13 @@ export default function ChatPage() {
   const handleConfirmAction = async (
     messageId: string,
     decision: "approve" | "reject",
+    editedArgs?: Record<string, unknown>,
   ) => {
-    // Optimistically resolve the card so it stops accepting input.
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId && m.confirmation
-          ? { ...m, confirmation: { ...m.confirmation, pending: false } }
-          : m,
-      ),
-    );
-
     try {
       const response = await fetch("/api/chat/confirm-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageId, decision }),
+        body: JSON.stringify({ messageId, decision, editedArgs }),
       });
 
       if (!response.ok) {
@@ -2264,6 +2268,8 @@ export default function ChatPage() {
         message?: { id?: string; content?: string; created_at?: string };
       };
 
+      setMessages((prev) => prev.map((m) => m.id === messageId && m.confirmation
+        ? { ...m, confirmation: { ...m.confirmation, pending: false } } : m));
       if (data.message?.id) {
         const appended: Message = {
           id: data.message.id,
@@ -2277,14 +2283,7 @@ export default function ChatPage() {
       }
     } catch (error) {
       console.error("Confirm action error:", error);
-      // Re-open the card so the user can retry.
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId && m.confirmation
-            ? { ...m, confirmation: { ...m.confirmation, pending: true } }
-            : m,
-        ),
-      );
+      throw error;
     }
   };
 
@@ -2341,6 +2340,8 @@ export default function ChatPage() {
       return;
     }
 
+    setSetupSaving(true);
+    setSetupError(null);
     const nextSettings: UserSettings = {
       ...(userSettings || {}),
       onboarding_completed: true,
@@ -2360,42 +2361,31 @@ export default function ChatPage() {
       },
     };
 
-    const { error } = await supabase
-      .from("users")
-      .update({ settings: nextSettings })
-      .eq("id", user.id);
-
-    if (error) {
-      console.error("Failed to save onboarding settings:", error);
-      return;
-    }
-
-    setUserSettings(nextSettings);
-    setShowFirstRunSetup(false);
+    try {
+      const { error } = await supabase.from("users").update({ settings: nextSettings }).eq("id", user.id);
+      if (error) throw error;
+      setUserSettings(nextSettings);
+      setShowFirstRunSetup(false);
+      const url = new URL(window.location.href); url.searchParams.delete("setup"); window.history.replaceState({}, "", url);
+    } catch {
+      setSetupError("Couldn’t save your preferences. Try again, or skip setup and keep chatting.");
+    } finally { setSetupSaving(false); }
   };
 
   const handleFirstRunSkip = async () => {
-    if (!user?.id) {
-      return;
-    }
-
-    const nextSettings: UserSettings = {
-      ...(userSettings || {}),
-      onboarding_completed: true,
-    };
-
-    const { error } = await supabase
-      .from("users")
-      .update({ settings: nextSettings })
-      .eq("id", user.id);
-
-    if (error) {
-      console.error("Failed to skip onboarding:", error);
-      return;
-    }
-
-    setUserSettings(nextSettings);
     setShowFirstRunSetup(false);
+    setSetupDismissed(true);
+    setSetupError(null);
+    const url = new URL(window.location.href); url.searchParams.delete("setup"); window.history.replaceState({}, "", url);
+    if (!user?.id) return;
+    const nextSettings = { ...(userSettings || {}), onboarding_completed: true };
+    try {
+      const { error } = await supabase.from("users").update({ settings: nextSettings }).eq("id", user.id);
+      if (error) throw error;
+      setUserSettings(nextSettings);
+    } catch {
+      setSetupError("You can keep chatting. Your choice to skip wasn’t saved; you may see the setup suggestion next time.");
+    }
   };
 
   const inSpace = activeProject !== null;
@@ -2489,8 +2479,7 @@ export default function ChatPage() {
       }
     : {
         label:
-          [...messages].reverse().find((m) => m.role === "user")?.content?.slice(0, 80) ||
-          copy.welcomeContinueLastWorkspace,
+          continueTitle(messages, copy.welcomeContinueLastWorkspace),
         actionLabel: hasLastChat ? copy.actionContinue : copy.actionOpenChat,
         onContinue: () => {
           if (hasLastChat) {
@@ -2504,6 +2493,11 @@ export default function ChatPage() {
   // Persona accent: tint the composer's send button with the active Space's color
   // so context is signalled persistently, not just on the empty state.
   const composerAccent = activeProject?.color?.trim() || null;
+
+  const spaceHref = useCallback((path: string) => {
+    if (!activeProject?.id) return path;
+    return `${path}${path.includes("?") ? "&" : "?"}project=${encodeURIComponent(activeProject.id)}`;
+  }, [activeProject?.id]);
 
   // Command palette (⌘K) entries: switch to any space, plus quick navigation.
   const commandItems = useMemo<CommandItem[]>(() => {
@@ -2547,32 +2541,32 @@ export default function ChatPage() {
         label: copy.docsLabel,
         group: copy.commandGroupGoTo,
         glyph: <FileText className="h-4 w-4" />,
-        onSelect: () => router.push("/docs"),
+        onSelect: () => router.push(spaceHref("/docs")),
       },
       {
         id: "go-spaces",
         label: copy.projectsLabel,
         group: copy.commandGroupGoTo,
         glyph: <FolderKanban className="h-4 w-4" />,
-        onSelect: () => router.push("/projects"),
+        onSelect: () => router.push(spaceHref("/projects")),
       },
       {
         id: "go-activity",
         label: copy.activityLabel,
         group: copy.commandGroupGoTo,
         glyph: <Activity className="h-4 w-4" />,
-        onSelect: () => router.push("/settings?tab=tasks"),
+        onSelect: () => router.push(spaceHref("/workflows")),
       },
       {
         id: "go-settings",
         label: copy.settingsLabel,
         group: copy.commandGroupGoTo,
         glyph: <Settings2 className="h-4 w-4" />,
-        onSelect: () => router.push("/settings"),
+        onSelect: () => router.push(spaceHref("/settings")),
       },
     ];
     return items;
-  }, [spaces, copy, switchSpace, router]);
+  }, [spaces, copy, switchSpace, router, spaceHref]);
   const inputForm = (
     <form onSubmit={handleSubmit} className="w-full flex flex-col min-w-0">
       <div className="glass w-full min-w-0 max-w-full rounded-2xl overflow-hidden transition-colors duration-300 focus-within:border-teal-500/40">
@@ -2591,6 +2585,7 @@ export default function ChatPage() {
             void sendMessage();
           }}
           placeholder={copy.inputPlaceholder}
+          aria-label={copy.inputPlaceholder}
           rows={1}
           className="w-full resize-none bg-transparent px-4 py-3 text-sm leading-6 outline-none placeholder:text-zinc-400 disabled:opacity-60"
           disabled={isLoading}
@@ -2695,6 +2690,11 @@ export default function ChatPage() {
     
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      if (url.searchParams.get("message")) {
+        hasProcessedQuery.current = true;
+        setShowConversation(true);
+        return;
+      }
       const draft = url.searchParams.get("draft");
       const q = url.searchParams.get("q");
       if (draft) {
@@ -2722,135 +2722,21 @@ export default function ChatPage() {
     <div lang={localeTag} className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
 
-      <header className="sticky top-0 z-30 border-b border-zinc-200/80 bg-white/80 px-3 py-3 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80 sm:px-4">
-        <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
-          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg overflow-hidden shadow-md shadow-teal-500/20">
-              <Image src="/hada-logo.png" alt="Hada" width={24} height={24} className="h-6 w-6 object-cover" />
-            </div>
-            <span className="truncate font-semibold">Hada</span>
-            <Link
-              href="/settings"
-              className="flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200/70 px-2 py-1 text-[11px] text-zinc-400 transition-colors hover:text-zinc-600 dark:border-zinc-800/70 dark:hover:text-zinc-300 sm:text-xs"
-              title={`${copy.statusPrefix}: ${getConnectionStatusLabel(connectionStatus, copy)}`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  connectionStatus === "connected"
-                    ? "bg-green-500"
-                    : connectionStatus === "degraded"
-                    ? "bg-yellow-500"
-                    : connectionStatus === "connecting"
-                    ? "bg-yellow-500 animate-pulse"
-                    : "bg-red-500"
-                }`}
-              />
-              <span className="hidden sm:inline">
-                {connectionStatus === "connected" && copy.statusOnline}
-                {connectionStatus === "degraded" && copy.statusFallback}
-                {connectionStatus === "connecting" && copy.statusConnecting}
-                {connectionStatus === "disconnected" && copy.statusOffline}
-              </span>
-            </Link>
-            <SpaceSwitcher
-              spaces={spaces}
-              activeId={activeProject?.id ?? null}
-              onSwitch={(space) => void switchSpace(space)}
-              generalLabel={copy.spacesGeneral}
-              newSpaceHref="/projects?new=1"
-              newSpaceLabel={copy.spacesNew}
-              switchAria={copy.spacesSwitchAria}
-              accent={composerAccent}
-            />
-          </div>
-          <div className="flex items-center justify-end gap-0.5 sm:gap-1.5">
-            {/* ⌘K command palette trigger — desktop only (keyboard-first). */}
-            <button
-              type="button"
-              onClick={() => setCommandOpen(true)}
-              aria-label={copy.commandOpenLabel}
-              className="mr-1 hidden items-center gap-2 rounded-lg border border-border/70 bg-background/40 px-2.5 py-1.5 text-xs text-zinc-500 transition-colors hover:border-border hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 lg:inline-flex"
-            >
-              <Search className="h-3.5 w-3.5" />
-              <span>{copy.commandOpenLabel}</span>
-              <kbd className="rounded border border-border/70 px-1 text-[10px] font-sans">⌘K</kbd>
-            </button>
-            {/* Primary nav — icon-only on mobile, labeled on desktop. */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="sm:hidden"
-              aria-label={copy.historyAria}
-              onClick={() => void openHistory()}
-            >
-              <History className="h-4 w-4" />
-            </Button>
+      <AppHeader space={activeProject} spaceControl={<SpaceSwitcher spaces={spaces} activeId={activeProject?.id ?? null} onSwitch={(space) => void switchSpace(space)} generalLabel={copy.spacesGeneral} newSpaceHref="/projects?new=1" newSpaceLabel={copy.spacesNew} switchAria={copy.spacesSwitchAria} accent={composerAccent} />}>
+        <Link href="/settings?tab=status" aria-label={`Service status: ${getConnectionStatusLabel(connectionStatus, copy)}`} className="hidden px-2 text-xs text-zinc-500 lg:block">{getConnectionStatusLabel(connectionStatus, copy)}</Link>
+        <button type="button" onClick={() => setCommandOpen(true)} aria-label={copy.commandOpenLabel} className="hidden rounded-md px-2 py-2 text-xs text-zinc-500 lg:block">{copy.commandOpenLabel} ⌘K</button>
+        <Button variant="ghost" size="sm" onClick={() => void openHistory()} aria-label={copy.historyAria}><History className="h-4 w-4" /><span className="ml-1 hidden sm:inline">{copy.historyLabel}</span></Button>
+        <AccountMenu projectId={activeProject?.id} name={user?.name} email={user?.email} accountAria={copy.accountAria} settingsLabel={copy.settingsLabel} signOutLabel={copy.signOutLabel} themeLabel={copy.themeLabel} onSignOut={handleSignOut} />
+      </AppHeader>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              className="hidden px-2.5 sm:inline-flex"
-              onClick={() => void openHistory()}
-            >
-              <History className="mr-2 h-4 w-4" />
-              {copy.historyLabel}
-            </Button>
 
-            <Link href="/docs" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label={copy.openDocsAria}>
-                <LayoutDashboard className="h-4 w-4" />
-              </Button>
-            </Link>
-
-            <Link href="/docs" className="hidden sm:block">
-              <Button variant="ghost" size="sm" className="px-2.5">
-                <LayoutDashboard className="mr-2 h-4 w-4" />
-                {copy.docsLabel}
-              </Button>
-            </Link>
-
-            <Link href="/projects" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label={copy.openProjectsAria}>
-                <FolderKanban className="h-4 w-4" />
-              </Button>
-            </Link>
-
-            <Link href="/projects" className="hidden sm:block">
-              <Button variant="ghost" size="sm" className="px-2.5">
-                <FolderKanban className="mr-2 h-4 w-4" />
-                {copy.projectsLabel}
-              </Button>
-            </Link>
-
-            <Link href="/activity" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label={copy.openActivityAria}>
-                <Activity className="h-4 w-4" />
-              </Button>
-            </Link>
-
-            <Link href="/activity" className="hidden sm:block">
-              <Button variant="ghost" size="sm" className="px-2.5">
-                <Activity className="mr-2 h-4 w-4" />
-                {copy.activityLabel}
-              </Button>
-            </Link>
-
-            {/* Account overflow — theme, settings, sign out, and the user's email. */}
-            <div className="ml-0.5 sm:ml-1">
-              <AccountMenu
-                name={user?.name}
-                email={user?.email}
-                accountAria={copy.accountAria}
-                settingsLabel={copy.settingsLabel}
-                signOutLabel={copy.signOutLabel}
-                themeLabel={copy.themeLabel}
-                onSignOut={handleSignOut}
-              />
-            </div>
-          </div>
+      {!showFirstRunSetup && setupError && <p role="alert" className="mx-auto max-w-3xl px-4 py-2 text-sm text-red-600 dark:text-red-400">{setupError}</p>}
+      {!showFirstRunSetup && !setupDismissed && userSettings?.onboarding_completed !== true && !isLoading && messages.some((message) => message.role === "assistant" && !message.isError && !message.isStreaming && message.content.trim()) && (
+        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+          <span className="text-zinc-500">Make future answers fit your style.</span>
+          <div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => { setShowFirstRunSetup(true); setShowConversation(false); }}>Personalize Hada</Button><Button size="sm" variant="ghost" onClick={() => void handleFirstRunSkip()}>Skip</Button></div>
         </div>
-      </header>
-
+      )}
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1">
         {/* Persistent desktop Spaces rail — hidden when an artifact panel is open
@@ -2913,6 +2799,8 @@ export default function ChatPage() {
                 >
                   {showFirstRunSetup ? (
                     <FirstRunSetup
+                      saving={setupSaving}
+                      error={setupError}
                       className="w-full max-w-4xl"
                       initialValues={buildInitialSetupValues(userSettings)}
                       onComplete={(values) => void handleFirstRunComplete(values)}
@@ -2936,9 +2824,9 @@ export default function ChatPage() {
                               ? copy.viewTasks
                               : undefined,
                           onAction: recentDocuments.length > 0
-                            ? () => router.push("/docs")
+                            ? () => router.push(spaceHref("/docs"))
                             : dueTodayCount > 0
-                            ? () => router.push("/settings?tab=tasks")
+                            ? () => router.push(spaceHref("/workflows"))
                             : undefined,
                         }}
                       />
@@ -2998,7 +2886,7 @@ export default function ChatPage() {
             {/* Starters reachable from inside a thread: the active Space's prompts,
                 shown only when the composer is empty so they never compete with a
                 draft. Sending one starts a fresh line of work without going home. */}
-            {showConversation && input.trim() === "" && !isLoading && welcomeStarterActions.length > 0 ? (
+            {showConversation && input.trim() === "" && !isLoading && !messages.some((message) => message.role === "assistant" && message.followUpSuggestions?.length && !message.isError) && welcomeStarterActions.length > 0 ? (
               <ThreadStarters actions={welcomeStarterActions} className="mb-1 px-0.5" />
             ) : null}
             {inputForm}
@@ -3180,39 +3068,39 @@ function buildWelcomeStatusText(
 function buildDocAndReviewStatusText(documentCount: number, dueTodayCount: number, locale: AppLocale): string {
   if (locale === "ko") {
     if (documentCount > 0 && dueTodayCount > 0) {
-      return `진행 중인 문서 ${documentCount}개 • 오늘 검토 ${dueTodayCount}건`;
+      return `저장된 문서 ${documentCount}개 • 오늘 검토 ${dueTodayCount}건`;
     }
     if (documentCount > 0) {
-      return `진행 중인 문서 ${documentCount}개`;
+      return `저장된 문서 ${documentCount}개`;
     }
     return `오늘 검토 ${dueTodayCount}건`;
   }
 
   if (locale === "ja") {
     if (documentCount > 0 && dueTodayCount > 0) {
-      return `進行中ドキュメント ${documentCount} 件 • 本日レビュー ${dueTodayCount} 件`;
+      return `保存済みドキュメント ${documentCount} 件 • 本日レビュー ${dueTodayCount} 件`;
     }
     if (documentCount > 0) {
-      return `進行中ドキュメント ${documentCount} 件`;
+      return `保存済みドキュメント ${documentCount} 件`;
     }
     return `本日レビュー ${dueTodayCount} 件`;
   }
 
   if (locale === "zh") {
     if (documentCount > 0 && dueTodayCount > 0) {
-      return `进行中的文档 ${documentCount} 份 • 今天待复查 ${dueTodayCount} 项`;
+      return `已保存的文档 ${documentCount} 份 • 今天待复查 ${dueTodayCount} 项`;
     }
     if (documentCount > 0) {
-      return `进行中的文档 ${documentCount} 份`;
+      return `已保存的文档 ${documentCount} 份`;
     }
     return `今天待复查 ${dueTodayCount} 项`;
   }
 
   if (documentCount > 0 && dueTodayCount > 0) {
-    return `${documentCount} docs in progress • ${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
+    return `${documentCount} saved docs • ${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
   }
   if (documentCount > 0) {
-    return `${documentCount} doc${documentCount === 1 ? "" : "s"} in progress`;
+    return `${documentCount} saved doc${documentCount === 1 ? "" : "s"}`;
   }
   return `${dueTodayCount} review${dueTodayCount === 1 ? "" : "s"} due today`;
 }
@@ -3306,4 +3194,8 @@ function isAbortError(error: unknown): boolean {
   }
 
   return (error as { name?: string }).name === "AbortError";
+}
+
+export default function ChatPage() {
+  return <Suspense><ChatPageContent /></Suspense>;
 }

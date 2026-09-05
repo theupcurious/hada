@@ -1,5 +1,7 @@
 "use client";
 
+import { MessageError } from "@/components/chat/message-error";
+import { isChatFailure } from "@/lib/chat/user-facing-error";
 import { useState, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CalendarEventCard } from "@/components/chat/calendar-event-card";
@@ -77,7 +79,7 @@ interface ChatMessageRowProps {
   onSaveToDoc: (messageId: string, content: string) => void;
   onOpenArtifact: (messageId: string, content: string) => void;
   onDelete: (messageId: string) => void;
-  onConfirmAction: (messageId: string, decision: "approve" | "reject") => Promise<void>;
+  onConfirmAction: (messageId: string, decision: "approve" | "reject", editedArgs?: Record<string, unknown>) => Promise<void>;
 }
 
 function isCalendarEventData(value: unknown): value is CalendarEventCardData {
@@ -230,6 +232,7 @@ export function ChatMessageRow({
   const handleOpenArtifact = () => onOpenArtifact(message.id, message.content);
   const handleDelete = () => onDelete(message.id);
 
+  const failed = message.role === "assistant" && !message.isStreaming && (message.isError || isChatFailure(message.content));
   const isLong = message.content.length > 900;
 
   return (
@@ -287,7 +290,7 @@ export function ChatMessageRow({
               <span>Starting…</span>
             </div>
           ) : null}
-          {message.role === "assistant" ? (
+          {failed ? <MessageError details={message.content} busy={isLoading || message.isFinalizing} onRetry={handleRegenerate} onDelete={handleDelete} /> : message.role === "assistant" ? (
             message.isStreaming && !message.content && message.streamSegments?.length ? (
               <StreamingMessage segments={message.streamSegments} />
             ) : (
@@ -392,12 +395,12 @@ export function ChatMessageRow({
               functionName={message.confirmation.function.name}
               args={message.confirmation.function.arguments ?? {}}
               disabled={isLoading}
-              onDecision={(decision) => onConfirmAction(message.id, decision)}
+              onDecision={(decision, editedArgs) => onConfirmAction(message.id, decision, editedArgs)}
             />
           )}
 
         {/* Message actions */}
-        {message.role === "assistant" && message.content.trim().length > 0 && (
+        {message.role === "assistant" && !failed && message.content.trim().length > 0 && (
           <div className="mt-2 min-h-[32px]">
             <div
               className={`inline-flex items-center gap-2 transition-opacity duration-150 ${
@@ -424,7 +427,7 @@ export function ChatMessageRow({
 
         {/* Follow-up chips */}
         {message.role === "assistant" &&
-          !message.isStreaming &&
+          !message.isStreaming && !failed &&
           message.followUpSuggestions?.length ? (
           <FollowUpChips
             suggestions={message.followUpSuggestions}

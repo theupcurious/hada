@@ -50,6 +50,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // A workflow result link opens that message and its preceding context.
+    const targetId = searchParams.get('message');
+    if (targetId) {
+      const { data: target } = await supabase.from('messages').select('*')
+        .eq('id', targetId).eq('conversation_id', conversationId).maybeSingle();
+      if (!target) return NextResponse.json({ error: 'Message not found' }, { status: 404 });
+      const previous = await getRecentMessages(supabase, conversationId, Math.max(1, limit - 1), targetId);
+      return NextResponse.json({ messages: [...previous.messages, target], hasMore: previous.hasMore, conversationId });
+    }
+
     // Jump-to-topic: load a single segment's full history (no pagination).
     if (segment) {
       const segmentMessages = await getSegmentMessages(

@@ -123,6 +123,8 @@ Existing database upgrades:
 19. `019_space_persona.sql`
 20. `020_space_suggestions.sql`
 21. `021_space_tool_allowlist.sql`
+22. `022_scheduled_task_spaces.sql`
+23. `023_workflow_execution_claims.sql`
 
 Important:
 
@@ -144,6 +146,7 @@ Open:
 - `http://localhost:3000/projects`
 - `http://localhost:3000/docs`
 - `http://localhost:3000/settings`
+- `http://localhost:3000/workflows`
 
 ## Verification
 
@@ -169,7 +172,7 @@ npm run build
 - `GET /api/dashboard/activity`
 - `GET /api/dashboard/analytics`
 - `GET|POST /api/dashboard/memories`, `PATCH|DELETE /api/dashboard/memories/[id]`
-- `GET /api/dashboard/tasks`, `PATCH|DELETE /api/dashboard/tasks/[id]`, `POST /api/dashboard/tasks/[id]/run` (currently returns 501 intentionally)
+- `GET /api/dashboard/tasks`, `PATCH|DELETE /api/dashboard/tasks/[id]`, `POST /api/dashboard/tasks/[id]/run` (runs in the workflow’s Space with a database claim preventing overlapping execution)
 - `GET|DELETE /api/integrations/google`
 - `GET|POST /api/integrations/telegram/link`
 - `GET /api/openrouter/models`

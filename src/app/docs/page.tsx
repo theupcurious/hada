@@ -2,13 +2,10 @@
 
 export const dynamic = "force-dynamic";
 
-import Image from "next/image";
-import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowRight,
   BookOpen,
   Check,
   ChevronDown,
@@ -18,10 +15,8 @@ import {
   FileText,
   Folder,
   Link2,
-  MessageSquare,
   Network,
   Plus,
-  Settings2,
   Share2,
   Trash2,
   Upload,
@@ -39,6 +34,9 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
+import { useDocumentDraft } from "@/lib/docs/use-document-draft";
+import { AppHeader } from "@/components/app/app-header";
+import { EditorErrorBoundary } from "@/components/docs/editor-error-boundary";
 import type { Document } from "@/lib/types/database";
 
 type DocListItem = Pick<Document, "id" | "title" | "folder" | "updated_at"> & {
@@ -208,11 +206,13 @@ function DashboardPageContent() {
     return list;
   }, []);
 
+  const documentRequest = useRef(0);
   const loadFullDoc = useCallback(async (id: string) => {
+    const requestId = ++documentRequest.current;
     const response = await fetch(`/api/documents/${id}`);
     if (!response.ok) return;
     const data = (await response.json()) as { document?: Document };
-    if (data.document) setActiveDoc(data.document);
+    if (data.document && requestId === documentRequest.current) setActiveDoc(data.document);
   }, []);
 
   useEffect(() => {
@@ -256,13 +256,17 @@ function DashboardPageContent() {
     return () => { active = false; };
   }, [loadDocs, loadFullDoc, searchParams]);
 
+  const saveBeforeNavigate = useRef<(() => Promise<boolean>) | null>(null);
+
   const selectDoc = useCallback(async (id: string) => {
+    if (saveBeforeNavigate.current && !await saveBeforeNavigate.current()) return;
     setActiveDocId(id);
     setSidebarOpen(false);
     await loadFullDoc(id);
   }, [loadFullDoc]);
 
   const createDoc = useCallback(async (folder?: string | null) => {
+    if (saveBeforeNavigate.current && !await saveBeforeNavigate.current()) return;
     const response = await fetch("/api/documents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -547,33 +551,18 @@ function DashboardPageContent() {
 
   return (
     <div className="flex h-dvh flex-col bg-zinc-50 dark:bg-zinc-950">
-      <header className="shrink-0 border-b border-zinc-200/80 bg-white/80 px-3 py-2.5 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/80">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <button className="rounded-md p-1 text-zinc-500 md:hidden hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => setSidebarOpen(!sidebarOpen)}>
-              <FileText className="h-4 w-4" />
-            </button>
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg overflow-hidden shadow-sm shadow-teal-500/20">
-              <Image src="/hada-logo.png" alt="Hada" width={24} height={24} className="h-6 w-6 object-cover" />
-            </div>
-            <span className="font-semibold">Docs</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <ThemeToggle />
-            <Link href="/settings"><Button variant="ghost" size="icon" aria-label="Settings"><Settings2 className="h-4 w-4" /></Button></Link>
-            <Link href="/chat"><Button variant="ghost" size="sm" className="hidden gap-1.5 sm:inline-flex">Chat <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
-            <Link href="/chat" className="sm:hidden"><Button variant="ghost" size="icon" aria-label="Chat"><MessageSquare className="h-4 w-4" /></Button></Link>
-          </div>
-        </div>
-      </header>
+      <AppHeader>
+        <Button variant="ghost" size="sm" aria-label="Browse documents" className="md:hidden" onClick={() => setSidebarOpen(!sidebarOpen)}><FileText className="mr-1 h-4 w-4" />Browse</Button>
+        <ThemeToggle />
+      </AppHeader>
 
       <div className="flex flex-1 overflow-hidden">
         <AnimatePresence>
           {sidebarOpen && (
             <>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-20 bg-black/30 md:hidden" onClick={() => setSidebarOpen(false)} />
-              <motion.div initial={{ x: -240 }} animate={{ x: 0 }} exit={{ x: -240 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="fixed inset-y-0 left-0 z-30 w-60 bg-white pt-14 shadow-xl dark:bg-zinc-900 md:hidden">
-                <button onClick={() => setSidebarOpen(false)} className="absolute right-2 top-16 rounded p-1 text-zinc-400 hover:text-zinc-600"><X className="h-4 w-4" /></button>
+              <motion.div initial={{ x: -240 }} animate={{ x: 0 }} exit={{ x: -240 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="fixed inset-y-0 left-0 z-30 w-60 bg-white pt-28 shadow-xl dark:bg-zinc-900 md:hidden">
+                <button onClick={() => setSidebarOpen(false)} className="absolute right-2 top-28 rounded p-1 text-zinc-400 hover:text-zinc-600"><X className="h-4 w-4" /></button>
                 {sidebar}
               </motion.div>
             </>
@@ -597,7 +586,9 @@ function DashboardPageContent() {
               onClose={() => setShowGraph(false)}
             />
           ) : activeDoc ? (
+            <EditorErrorBoundary key={activeDoc.id}>
             <WysiwygPane
+              registerSave={(save) => { saveBeforeNavigate.current = save; }}
               key={activeDoc.id}
               doc={activeDoc}
               isSaving={isSaving}
@@ -612,7 +603,7 @@ function DashboardPageContent() {
                   if (!response.ok) return false;
 
                   const data = (await response.json()) as { document?: Document };
-                  if (data.document) setActiveDoc(data.document);
+                  if (data.document) setActiveDoc((current) => current?.id === data.document?.id ? data.document ?? current : current);
                   await loadDocs();
                   return true;
                 } finally {
@@ -625,6 +616,7 @@ function DashboardPageContent() {
               onNavigateToDoc={(id) => void selectDoc(id)}
               wikiExists={wikiExists}
             />
+            </EditorErrorBoundary>
           ) : (
             <EmptyPane onCreate={() => void createDoc(null)} />
           )}
@@ -655,6 +647,7 @@ function DashboardPageContent() {
 
 
 function WysiwygPane({
+  registerSave,
   doc,
   isSaving,
   onSave,
@@ -664,6 +657,7 @@ function WysiwygPane({
   onNavigateToDoc,
   wikiExists,
 }: {
+  registerSave: (save: (() => Promise<boolean>) | null) => void;
   doc: Document;
   isSaving: boolean;
   onSave: (title: string, content: string, folder: string) => Promise<boolean>;
@@ -673,9 +667,17 @@ function WysiwygPane({
   onNavigateToDoc: (id: string) => void;
   wikiExists: boolean;
 }) {
-  const [title, setTitle] = useState(doc.title);
-  const [folder, setFolder] = useState(doc.folder ?? "");
-  const [isDirty, setIsDirty] = useState(false);
+  const { draft, update, flush, status, recovered, storageError } = useDocumentDraft(
+    `hada:document-draft:${doc.user_id}:${doc.id}`,
+    { title: doc.title, content: doc.content, folder: doc.folder ?? "" },
+    (value) => onSave(value.title, value.content, value.folder),
+  );
+  const { title, folder } = draft;
+  const isDirty = status !== "saved";
+  useEffect(() => {
+    registerSave(flush);
+    return () => registerSave(null);
+  }, [registerSave, flush]);
   const [shareInfo, setShareInfo] = useState<DocShareInfo | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [isPreparingShare, setIsPreparingShare] = useState(false);
@@ -687,6 +689,7 @@ function WysiwygPane({
   const ingestStatusTimerRef = useRef<number | null>(null);
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit,
       MarkdownExtension.configure({ html: false, transformPastedText: true }),
@@ -702,8 +705,17 @@ function WysiwygPane({
         class: "outline-none min-h-full px-5 py-5 sm:px-8 wysiwyg-editor",
       },
     },
-    onUpdate: () => setIsDirty(true),
+    onUpdate: ({ editor: updated }) => {
+      const storage = updated.storage as unknown as Record<string, { getMarkdown?: () => string }>;
+      update({ content: storage.markdown?.getMarkdown?.() ?? updated.getText() });
+    },
   });
+
+  useEffect(() => {
+    if (editor && recovered) editor.commands.setContent(draft.content, { emitUpdate: false });
+    // Restore once when the saved recovery draft is loaded, not on each keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, recovered]);
 
   // 4b: Handle clicks on [[wikilink]] spans inside the editor
   const handleEditorClick = useCallback(async (e: React.MouseEvent<HTMLDivElement>) => {
@@ -726,12 +738,7 @@ function WysiwygPane({
     return storage.markdown?.getMarkdown?.() ?? editor.getText();
   };
 
-  const handleSave = async () => {
-    const md = getMarkdownContent();
-    const saved = await onSave(title, md, folder);
-    if (saved) setIsDirty(false);
-    return saved;
-  };
+  const handleSave = flush;
 
   const handleDownload = () => {
     const blob = new Blob([getMarkdownContent()], { type: "text/markdown;charset=utf-8" });
@@ -980,13 +987,15 @@ function WysiwygPane({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <input
             value={title}
-            onChange={(e) => { setTitle(e.target.value); setIsDirty(true); }}
+            onChange={(e) => update({ title: e.target.value })}
+            aria-label="Document title"
             placeholder="Document title"
             className="min-w-0 flex-1 bg-transparent text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-50"
           />
           <select
             value={folder}
-            onChange={(e) => { setFolder(e.target.value); setIsDirty(true); }}
+            onChange={(e) => update({ folder: e.target.value })}
+            aria-label="Document folder"
             className="shrink-0 rounded border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
           >
             <option value="">No folder</option>
@@ -1028,6 +1037,11 @@ function WysiwygPane({
         </div>
       </div>
 
+      <div aria-live="polite" className="flex flex-wrap items-center gap-2 px-4 py-2 text-xs text-zinc-500">
+        {status === "error" ? <><span role="alert" className="text-red-600 dark:text-red-400">Couldn’t save changes.</span><Button size="sm" variant="outline" onClick={() => void flush()}>Retry save</Button></> : status === "saving" ? "Saving…" : status === "pending" ? "Unsaved changes" : "Saved"}
+        {recovered && <span>Recovered your local draft. Review it, then save to keep these changes.</span>}
+        {storageError && <span role="alert">Local recovery is unavailable. Keep this page open until changes are saved.</span>}
+      </div>
       {/* WYSIWYG editor */}
       <div className="flex-1 overflow-y-auto">
         <style>{`

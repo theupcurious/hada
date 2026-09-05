@@ -79,6 +79,8 @@ function createSupabaseStub(settings: { locale?: string; timezone?: string }) {
             return {
               eq() {
                 return {
+                  is() { return this; },
+                  or() { return this; },
                   order() {
                     return {
                       order: async () => ({

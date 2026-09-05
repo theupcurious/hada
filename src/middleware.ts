@@ -9,6 +9,9 @@ export const config = {
   matcher: [
     "/auth/:path*",
     "/chat/:path*",
+    "/workflows/:path*",
+    "/projects/:path*",
+    "/activity/:path*",
     "/dashboard/:path*",
     "/docs/:path*",
     "/settings/:path*",

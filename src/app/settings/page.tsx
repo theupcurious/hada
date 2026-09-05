@@ -13,8 +13,8 @@ import { HelpTab } from "@/components/settings/help-tab";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import type { AppLocale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type ComponentType } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 
 type SettingsTabId = "integrations" | "account" | "memory" | "tasks" | "help" | "status" | "debug";
 
@@ -79,6 +79,8 @@ function SettingsContent() {
   const locale = useResolvedLocale();
   const copy = SETTINGS_PAGE_COPY[locale];
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const contentRef = useRef<HTMLDivElement>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -87,7 +89,7 @@ function SettingsContent() {
       .catch(() => {});
   }, []);
 
-  const baseTabs = SETTINGS_TABS_BY_LOCALE[locale];
+  const baseTabs = SETTINGS_TABS_BY_LOCALE[locale].filter((tab) => tab.id !== "tasks");
   const tabs: SettingsTabDescriptor[] = [
     ...baseTabs,
     ...(isAdmin
@@ -100,10 +102,24 @@ function SettingsContent() {
     return tab && tabs.some((t) => t.id === tab) ? (tab as SettingsTabId) : "integrations";
   })();
 
-  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
+  const activeTab = initialTab;
+  const setActiveTab = (tab: SettingsTabId) => {
+    const query = new URLSearchParams(searchParams.toString());
+    query.set("tab", tab);
+    router.push(`/settings?${query}`, { scroll: false });
+  };
+  useEffect(() => {
+    contentRef.current?.querySelectorAll<HTMLElement>("[data-settings-scroll]").forEach((node) => { node.scrollTop = 0; });
+  }, [activeTab]);
+  useEffect(() => {
+    if (searchParams.get("tab") !== "tasks") return;
+    const query = new URLSearchParams(searchParams.toString());
+    query.delete("tab");
+    router.replace(`/workflows${query.size ? `?${query}` : ""}`);
+  }, [router, searchParams]);
 
   return (
-    <div className="h-full">
+    <div ref={contentRef} className="h-full">
       <div className="flex h-full flex-col md:hidden">
         <div className="border-b border-border/60 bg-card/80 px-3 py-3 backdrop-blur-sm">
           <div className="-mx-3 overflow-x-auto px-3 pb-1">
@@ -133,7 +149,7 @@ function SettingsContent() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-3">
+        <div data-settings-scroll className="min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-3">
           <div className="mx-auto max-w-3xl">
             <div className="mb-4">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">{copy.title}</p>
@@ -180,7 +196,7 @@ function SettingsContent() {
           </TabsList>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-6 pt-4 sm:px-4 md:p-6">
+        <div data-settings-scroll className="min-h-0 flex-1 overflow-y-auto px-3 pb-6 pt-4 sm:px-4 md:p-6">
           <div className="max-w-3xl">
             <TabsContent value="integrations" className="mt-0">
               <IntegrationsTab />
