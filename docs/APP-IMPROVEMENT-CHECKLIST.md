@@ -8,6 +8,8 @@ Checked items are implemented locally. Sections 1–3 have been implemented and 
 
 Sections 4–7 have been implemented as described in [the 4–7 implementation notes](APP-IMPROVEMENTS-4-7.md). Two items remain unchecked with stated reasons (named-timezone preservation and failed-run retry). No new required migration; live flows were static-verified (types, lint, tests) but not exercised in a browser this session.
 
+Sections 8–10 have been implemented as described in [the 8–10 implementation notes](APP-IMPROVEMENTS-8-10.md). Several items remain unchecked with stated reasons: memory archive (needs a column), theme consistency (landing is an intentional fixed-light brand surface), app-wide visual standardization, complete localization of Spaces/Docs/Activity, and the two contrast/keyboard verification items. No new migration; static-verified (types, lint, 126 tests) but not exercised in a browser.
+
 ## 1. Reliability and error handling — highest priority
 
 - [x] Fix the Docs editor crash when opening an existing document.
@@ -94,32 +96,32 @@ Sections 4–7 have been implemented as described in [the 4–7 implementation n
 
 ## 8. Memory
 
-- [ ] Show whether each memory belongs to General or a specific Space.
-- [ ] Add filtering by Space.
-- [ ] Replace machine-style keys with friendly titles.
-- [ ] Move the large explanatory section into expandable help.
-- [ ] Add a review/archive flow for outdated or time-specific memories.
-- [ ] Keep the explanation that clearing chat history does not clear memory.
-- [ ] Add a persistent accessible search label.
+- [x] Show whether each memory belongs to General or a specific Space.
+- [x] Add filtering by Space.
+- [x] Replace machine-style keys with friendly titles.
+- [x] Move the large explanatory section into expandable help.
+- [ ] Add a review/archive flow for outdated or time-specific memories. _(Needs an `archived` column; `user_memories` has no JSONB escape hatch. Deleting outdated memories works today. See notes.)_
+- [x] Keep the explanation that clearing chat history does not clear memory.
+- [x] Add a persistent accessible search label.
 
 ## 9. Integrations and visual consistency
 
-- [ ] Prioritize available integrations; move planned integrations into a smaller secondary section.
-- [ ] Keep theme behavior consistent between landing, authentication, and the app.
-- [ ] Standardize primary buttons, headers, spacing, and page titles.
-- [ ] Remove repeated headings and excessive explanatory copy throughout Settings.
-- [ ] Shorten the landing hero on smaller screens and bring the product demonstration higher.
-- [ ] Preserve the current teal identity, restrained cards, and open chat layout.
+- [x] Prioritize available integrations; move planned integrations into a smaller secondary section.
+- [ ] Keep theme behavior consistent between landing, authentication, and the app. _(Auth + app are already theme-aware; the landing is an intentional fixed-light brand surface. Making it theme-aware is a redesign. See notes.)_
+- [ ] Standardize primary buttons, headers, spacing, and page titles. _(Standardized within the Settings surfaces touched; an app-wide spacing/title sweep is a separate pass. See notes.)_
+- [x] Remove repeated headings and excessive explanatory copy throughout Settings.
+- [x] Shorten the landing hero on smaller screens and bring the product demonstration higher.
+- [x] Preserve the current teal identity, restrained cards, and open chat layout.
 
 ## 10. Accessibility and localization
 
-- [ ] Add missing accessible names to inputs and icon buttons.
-- [ ] Add proper focus trapping and focus restoration to drawers/dialogs.
-- [ ] Ensure visible keyboard focus and practical touch targets.
-- [ ] Respect reduced-motion preferences consistently.
-- [ ] Complete localization across Spaces, Docs, Activity, onboarding, workflows, and approval cards.
-- [ ] Measure muted-text and control contrast in both themes.
-- [ ] Verify keyboard navigation, screen-reader announcements, zoom, and responsive layouts.
+- [x] Add missing accessible names to inputs and icon buttons.
+- [x] Add proper focus trapping and focus restoration to drawers/dialogs.
+- [x] Ensure visible keyboard focus and practical touch targets.
+- [x] Respect reduced-motion preferences consistently.
+- [ ] Complete localization across Spaces, Docs, Activity, onboarding, workflows, and approval cards. _(Onboarding/approval/chat are localized; Spaces, Docs, Activity have no locale wiring and workflow-gallery is English-only by convention. Scoped remaining work — half-localizing is worse than either endpoint. See notes.)_
+- [ ] Measure muted-text and control contrast in both themes. _(Measurement task; dev server unavailable this session.)_
+- [ ] Verify keyboard navigation, screen-reader announcements, zoom, and responsive layouts. _(Verification task requiring a running app + assistive tech.)_
 
 ## Evidence and verification limits
 

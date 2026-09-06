@@ -151,14 +151,11 @@ function SettingsContent() {
 
         <div data-settings-scroll className="min-h-0 flex-1 overflow-y-auto px-3 pb-8 pt-3">
           <div className="mx-auto max-w-3xl">
+            {/* Page context only. Each tab body renders its own <h2> title and
+                subtitle, so repeating the label + description here (as this block
+                used to) produced two identical headings stacked on mobile. */}
             <div className="mb-4">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">{copy.title}</p>
-              <h1 className="mt-1 text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-                {tabs.find((tab) => tab.id === activeTab)?.label}
-              </h1>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                {tabs.find((tab) => tab.id === activeTab)?.description}
-              </p>
             </div>
             {activeTab === "integrations" ? <IntegrationsTab /> : null}
             {activeTab === "account" ? <AccountTab /> : null}

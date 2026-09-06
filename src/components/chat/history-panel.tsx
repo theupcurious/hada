@@ -61,17 +61,40 @@ export function HistoryPanel({
   const [results, setResults] = useState<HistorySearchResults | null>(null);
   const [searching, setSearching] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) return;
 
+    // Restore focus to whatever opened the drawer when it closes, so keyboard
+    // users are not dropped at the top of the document.
+    const previousFocus = document.activeElement as HTMLElement | null;
     const frame = window.requestAnimationFrame(() => {
       setQuery("");
       setResults(null);
       searchRef.current?.focus();
     });
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      // Trap Tab within the drawer while it is modal.
+      const focusables = panelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusables?.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panelRef.current?.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -80,6 +103,7 @@ export function HistoryPanel({
       window.cancelAnimationFrame(frame);
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
     };
   }, [open, onClose]);
 
@@ -169,6 +193,7 @@ export function HistoryPanel({
             onMouseDown={onClose}
           />
           <motion.aside
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-label={copy.title}

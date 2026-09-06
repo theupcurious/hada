@@ -132,6 +132,19 @@ html[data-theme="light"] {
   * {
     @apply border-border outline-ring/50;
   }
+  /* Visible keyboard focus for raw interactive elements. The Button component
+     (data-slot="button") ships its own focus-visible ring, so it is excluded
+     here to avoid a double indicator; this covers icon-only <button>s, links,
+     <summary>, and custom controls that would otherwise focus invisibly. */
+  a:not([data-slot="button"]):focus-visible,
+  summary:focus-visible,
+  [tabindex]:not([tabindex="-1"]):not([data-slot="button"]):focus-visible,
+  button:not([data-slot="button"]):focus-visible,
+  [role="button"]:not([data-slot="button"]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
   html {
     width: 100%;
     max-width: 100%;

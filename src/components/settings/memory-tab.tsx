@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useResolvedLocale } from "@/lib/hooks/use-resolved-locale";
 import { toLocaleLanguageTag, type AppLocale } from "@/lib/i18n";
+import { formatTopicTitle } from "@/lib/memory/format-topic";
 import type { UserMemory } from "@/lib/types/database";
 
 type MemoryResponse = {
@@ -26,13 +27,22 @@ type MemoryDraft = {
   content: string;
 };
 
+type MemorySpace = {
+  id: string;
+  name: string;
+  emoji: string | null;
+};
+
 export function MemoryTab() {
   const locale = useResolvedLocale();
   const copy = MEMORY_COPY[locale];
   const localeTag = toLocaleLanguageTag(locale);
   const [memories, setMemories] = useState<UserMemory[]>([]);
+  const [spaces, setSpaces] = useState<MemorySpace[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  // "all" | "general" | a Space id. Combines with the text query.
+  const [spaceFilter, setSpaceFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [newMemoryOpen, setNewMemoryOpen] = useState(false);
@@ -44,20 +54,65 @@ export function MemoryTab() {
 
   useEffect(() => {
     void loadMemories();
+    void loadSpaces();
   }, []);
+
+  // Space id → label lookup for badges. Archived Spaces are still labeled here
+  // (a memory can outlive its Space) even though they aren't offered as filters.
+  const spacesById = useMemo(() => {
+    const map = new Map<string, MemorySpace>();
+    for (const space of spaces) map.set(space.id, space);
+    return map;
+  }, [spaces]);
 
   const filteredMemories = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return memories;
-    }
 
     return memories.filter((memory) => {
+      if (spaceFilter === "general" && memory.project_id !== null) return false;
+      if (spaceFilter !== "all" && spaceFilter !== "general" && memory.project_id !== spaceFilter) {
+        return false;
+      }
+
+      if (!normalizedQuery) return true;
+
+      // Match the raw key, the humanized title, and the content so "work hours"
+      // finds a memory stored under the "work-hours" key.
       const topic = memory.topic.toLowerCase();
+      const title = formatTopicTitle(memory.topic).toLowerCase();
       const content = memory.content.toLowerCase();
-      return topic.includes(normalizedQuery) || content.includes(normalizedQuery);
+      return (
+        topic.includes(normalizedQuery) ||
+        title.includes(normalizedQuery) ||
+        content.includes(normalizedQuery)
+      );
     });
-  }, [memories, query]);
+  }, [memories, query, spaceFilter]);
+
+  function spaceBadgeLabel(projectId: string | null): string {
+    if (projectId === null) return copy.general;
+    const space = spacesById.get(projectId);
+    if (!space) return copy.spaceFallback;
+    return `${space.emoji?.trim() ? `${space.emoji.trim()} ` : ""}${space.name}`;
+  }
+
+  async function loadSpaces() {
+    try {
+      const response = await fetch("/api/projects", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = (await response.json().catch(() => ({}))) as {
+        projects?: { id: string; name: string; emoji: string | null; archived?: boolean }[];
+      };
+      const list = Array.isArray(data.projects) ? data.projects : [];
+      setSpaces(
+        list
+          .filter((p) => p.archived !== true)
+          .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji ?? null })),
+      );
+    } catch (fetchError) {
+      console.error("Failed to load spaces for memory filter:", fetchError);
+    }
+  }
 
   async function loadMemories() {
     setLoading(true);
@@ -191,14 +246,26 @@ export function MemoryTab() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{copy.howMemoryWorks}</CardTitle>
-          <CardDescription>{copy.memorySeparateFromChat}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-          <p>{copy.memoryExplanationOne}</p>
-          <p>{copy.memoryExplanationTwo}</p>
-        </CardContent>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-6 py-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
+            <span>
+              {copy.howMemoryWorks}
+              <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">
+                {copy.memorySeparateFromChat}
+              </span>
+            </span>
+            <span
+              aria-hidden
+              className="shrink-0 text-zinc-400 transition-transform group-open:rotate-180"
+            >
+              ▾
+            </span>
+          </summary>
+          <div className="space-y-2 px-6 pb-4 text-sm text-zinc-600 dark:text-zinc-400">
+            <p>{copy.memoryExplanationOne}</p>
+            <p>{copy.memoryExplanationTwo}</p>
+          </div>
+        </details>
       </Card>
 
       <Card>
@@ -214,11 +281,41 @@ export function MemoryTab() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={copy.searchMemories}
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <label htmlFor="memory-search" className="sr-only">
+                {copy.searchMemories}
+              </label>
+              <Input
+                id="memory-search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={copy.searchMemories}
+                aria-label={copy.searchMemories}
+              />
+            </div>
+            <div>
+              <label htmlFor="memory-space-filter" className="sr-only">
+                {copy.filterBySpace}
+              </label>
+              <select
+                id="memory-space-filter"
+                aria-label={copy.filterBySpace}
+                value={spaceFilter}
+                onChange={(event) => setSpaceFilter(event.target.value)}
+                className="w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-400 sm:w-auto dark:border-zinc-800 dark:focus:border-zinc-600"
+              >
+                <option value="all">{copy.allSpaces}</option>
+                <option value="general">{copy.general}</option>
+                {spaces.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.emoji?.trim() ? `${space.emoji.trim()} ` : ""}
+                    {space.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           {newMemoryOpen ? (
             <div className="space-y-3 rounded-xl border border-zinc-200/70 bg-zinc-50/60 p-4 dark:border-zinc-800/70 dark:bg-zinc-950/40">
@@ -305,9 +402,17 @@ export function MemoryTab() {
                     ) : (
                       <div className="space-y-3">
                         <div>
-                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                            {memory.topic}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                              {formatTopicTitle(memory.topic)}
+                            </p>
+                            <span
+                              className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
+                              title={memory.project_id === null ? copy.generalScopeHint : copy.spaceScopeHint}
+                            >
+                              {spaceBadgeLabel(memory.project_id)}
+                            </span>
+                          </div>
                           <p className="mt-1 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
                             {memory.content}
                           </p>
@@ -390,6 +495,12 @@ const MEMORY_COPY: Record<
     addMemory: string;
     cancel: string;
     searchMemories: string;
+    filterBySpace: string;
+    allSpaces: string;
+    general: string;
+    spaceFallback: string;
+    generalScopeHint: string;
+    spaceScopeHint: string;
     topic: string;
     memoryContent: string;
     saving: string;
@@ -423,6 +534,12 @@ const MEMORY_COPY: Record<
     addMemory: "Add memory",
     cancel: "Cancel",
     searchMemories: "Search memories",
+    filterBySpace: "Filter by Space",
+    allSpaces: "All Spaces",
+    general: "General",
+    spaceFallback: "Space",
+    generalScopeHint: "Available in every Space.",
+    spaceScopeHint: "Scoped to this Space only.",
     topic: "Topic",
     memoryContent: "Memory content",
     saving: "Saving...",
@@ -455,6 +572,12 @@ const MEMORY_COPY: Record<
     addMemory: "메모리 추가",
     cancel: "취소",
     searchMemories: "메모리 검색",
+    filterBySpace: "스페이스로 필터",
+    allSpaces: "모든 스페이스",
+    general: "일반",
+    spaceFallback: "스페이스",
+    generalScopeHint: "모든 스페이스에서 사용됩니다.",
+    spaceScopeHint: "이 스페이스에서만 사용됩니다.",
     topic: "주제",
     memoryContent: "메모리 내용",
     saving: "저장 중...",
@@ -487,6 +610,12 @@ const MEMORY_COPY: Record<
     addMemory: "メモリ追加",
     cancel: "キャンセル",
     searchMemories: "メモリを検索",
+    filterBySpace: "スペースで絞り込み",
+    allSpaces: "すべてのスペース",
+    general: "一般",
+    spaceFallback: "スペース",
+    generalScopeHint: "すべてのスペースで利用できます。",
+    spaceScopeHint: "このスペースのみで利用されます。",
     topic: "トピック",
     memoryContent: "メモリ内容",
     saving: "保存中...",
@@ -519,6 +648,12 @@ const MEMORY_COPY: Record<
     addMemory: "添加记忆",
     cancel: "取消",
     searchMemories: "搜索记忆",
+    filterBySpace: "按空间筛选",
+    allSpaces: "所有空间",
+    general: "通用",
+    spaceFallback: "空间",
+    generalScopeHint: "在所有空间中可用。",
+    spaceScopeHint: "仅在此空间中使用。",
     topic: "主题",
     memoryContent: "记忆内容",
     saving: "保存中...",

@@ -167,6 +167,9 @@ export type MemoryKind = 'profile' | 'project' | 'preference' | 'archive';
 export interface UserMemory {
   id: string;
   user_id: string;
+  // NULL project_id is a global fact (visible in every Space); a set project_id
+  // scopes the memory to that Space. See migration 018.
+  project_id: string | null;
   topic: string;
   content: string;
   embedding: string | null;

@@ -151,6 +151,9 @@ export function IntegrationsTab() {
       )}
 
       <div className="grid gap-4">
+        <h3 className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+          {copy.availableHeading}
+        </h3>
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -223,33 +226,26 @@ export function IntegrationsTab() {
           </CardHeader>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+          {copy.plannedHeading}
+        </h3>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            { name: "WhatsApp" },
+            { name: "Microsoft" },
+          ].map((planned) => (
+            <div
+              key={planned.name}
+              className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-zinc-200 px-4 py-3 dark:border-zinc-800"
+            >
               <div>
-                <CardTitle className="text-base">WhatsApp</CardTitle>
-                <CardDescription>{copy.plannedIntegration}</CardDescription>
+                <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">{planned.name}</p>
+                <p className="text-xs text-zinc-400">{copy.plannedIntegration}</p>
               </div>
-              <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled>
-                {copy.comingSoon}
-              </Button>
+              <span className="shrink-0 text-xs text-zinc-400">{copy.comingSoon}</span>
             </div>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-base">Microsoft</CardTitle>
-                <CardDescription>{copy.plannedIntegration}</CardDescription>
-              </div>
-              <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled>
-                {copy.comingSoon}
-              </Button>
-            </div>
-          </CardHeader>
-        </Card>
+          ))}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -278,6 +274,8 @@ const INTEGRATIONS_COPY: Record<
     googleDescription: string;
     telegramDescription: string;
     lastSynced: string;
+    availableHeading: string;
+    plannedHeading: string;
     plannedIntegration: string;
     comingSoon: string;
     openTelegramLink: string;
@@ -302,6 +300,8 @@ const INTEGRATIONS_COPY: Record<
     googleDescription: "Connect Google for Calendar, Gmail (read, draft & send), and Drive document access.",
     telegramDescription: "Link Telegram to chat with Hada from your phone and receive scheduled updates.",
     lastSynced: "Last synced",
+    availableHeading: "Available",
+    plannedHeading: "Planned",
     plannedIntegration: "Planned integration.",
     comingSoon: "Coming Soon",
     openTelegramLink: "Open Telegram link",
@@ -334,6 +334,8 @@ const INTEGRATIONS_COPY: Record<
     googleDescription: "캘린더, Gmail(읽기·초안·보내기), Drive 문서 접근을 위해 Google을 연결합니다.",
     telegramDescription: "Telegram을 연결해 휴대폰에서도 Hada와 대화하고 예약 업데이트를 받으세요.",
     lastSynced: "마지막 동기화",
+    availableHeading: "사용 가능",
+    plannedHeading: "예정",
     plannedIntegration: "추후 연동 예정입니다.",
     comingSoon: "곧 제공",
     openTelegramLink: "Telegram 링크 열기",
@@ -366,6 +368,8 @@ const INTEGRATIONS_COPY: Record<
     googleDescription: "カレンダー、Gmail（閲覧・下書き・送信）、Drive のドキュメント連携のために Google を連携します。",
     telegramDescription: "Telegram を連携して、スマホから Hada と会話し、定期更新を受け取れます。",
     lastSynced: "最終同期",
+    availableHeading: "利用可能",
+    plannedHeading: "予定",
     plannedIntegration: "今後対応予定です。",
     comingSoon: "近日公開",
     openTelegramLink: "Telegram リンクを開く",
@@ -398,6 +402,8 @@ const INTEGRATIONS_COPY: Record<
     googleDescription: "连接 Google 以使用日历、Gmail（阅读、草稿和发送）和云端硬盘文档访问。",
     telegramDescription: "连接 Telegram，这样你可以在手机上和 Hada 聊天并接收定时更新。",
     lastSynced: "上次同步",
+    availableHeading: "可用",
+    plannedHeading: "计划中",
     plannedIntegration: "计划中的集成。",
     comingSoon: "即将推出",
     openTelegramLink: "打开 Telegram 链接",

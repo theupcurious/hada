@@ -598,6 +598,16 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
 };
 
 const STREAM_FOLLOW_BOTTOM_THRESHOLD_PX = 160;
+
+/** Whether the viewer asked the OS to minimize non-essential motion. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 const FINALIZATION_RECOVERY_ATTEMPTS = 16;
 const FINALIZATION_RECOVERY_INTERVAL_MS = 500;
 
@@ -703,7 +713,9 @@ function ChatPageContent() {
     // aligning to it lands short of the bottom (which would disable following)
     // and tucks the last line behind the sticky composer. This matches how the
     // history-load paths scroll and keeps isNearPageBottom's frame consistent.
-    window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
+    // Honor reduced-motion: a requested smooth scroll falls back to instant.
+    const resolved = behavior === "smooth" && prefersReducedMotion() ? "auto" : behavior;
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: resolved });
   }, []);
 
   const requestStreamFollow = useCallback(() => {

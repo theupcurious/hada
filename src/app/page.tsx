@@ -477,7 +477,7 @@ export default function Home() {
       </header>
 
       <main>
-        <section className="px-4 pb-12 pt-14 sm:px-6 sm:pb-16 sm:pt-20 lg:px-8">
+        <section className="px-4 pb-12 pt-9 sm:px-6 sm:pb-16 sm:pt-20 lg:px-8">
           <div className="mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
             <motion.div
               initial={reduceMotion ? false : { opacity: 0, y: 14 }}
@@ -495,7 +495,9 @@ export default function Home() {
               </h1>
               <p className="mt-6 max-w-lg text-base leading-7 text-zinc-600">{copy.heroDescription}</p>
 
-              <div className="mt-5 flex max-w-lg items-start gap-3 text-sm leading-6 text-zinc-600">
+              {/* Trust note deferred to sm+ so the smallest screens reach the
+                  CTAs and product preview sooner (shorter mobile hero). */}
+              <div className="mt-5 hidden max-w-lg items-start gap-3 text-sm leading-6 text-zinc-600 sm:flex">
                 <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-700/10 text-teal-700">
                   <ShieldCheck className="h-4 w-4" />
                 </span>

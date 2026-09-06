@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { LocaleProvider } from "@/components/i18n/locale-provider";
+import { MotionProvider } from "@/components/motion/motion-provider";
 import { ThemeBootstrap } from "@/components/theme/theme-bootstrap";
 import { LOCALE_COOKIE_NAME, resolveRequestLocale } from "@/lib/i18n";
 import "./globals.css";
@@ -40,7 +41,9 @@ export default async function RootLayout({
         className={`${dmSans.variable} ${plusJakarta.variable} font-sans antialiased`}
       >
         <ThemeBootstrap />
-        <LocaleProvider locale={locale}>{children}</LocaleProvider>
+        <MotionProvider>
+          <LocaleProvider locale={locale}>{children}</LocaleProvider>
+        </MotionProvider>
       </body>
     </html>
   );
