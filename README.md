@@ -28,6 +28,8 @@ Hada is a multi-channel assistant app built around an in-app agent loop. It supp
 - Multimodal text ingest: upload PDF / Word / Excel / CSV / text files in chat (parsed to text server-side)
 - Telegram account linking and webhook-based chat
 - Scheduled tasks (`once`, `recurring`) processed by `/api/cron`
+- Workflows (`/workflows`): templated, Space-scoped automations over `scheduled_tasks` — friendly schedules, a Space picker, per-workflow run history, and manual **Run now**; both triggers share one execution path with an atomic DB claim (`claim_workflow_execution`) so a workflow can't double-run
+- Space-scoped scheduling (proactivity): a workflow runs as its Space's assistant (its instructions, scoped memory, tools, conversation), delivered to Telegram labeled with the Space
 - Dashboard APIs for activity, analytics, tasks, and memories
 - App locale support for `en`, `ko`, `ja`, and `zh`, with per-turn language override based on the latest user message
 
@@ -193,6 +195,14 @@ npm run build
 
 ## Docs
 
-- `docs/ARCHITECTURE.md`
-- `docs/DATABASE.md`
-- `docs/SETUP.md`
+Reference:
+
+- `docs/ARCHITECTURE.md` — runtime, agent loop, Spaces, Workflows, UI surfaces
+- `docs/DATABASE.md` — schema, migration chain, RPCs, RLS
+- `docs/SETUP.md` — local setup and environment
+- `docs/PROMPT_GUIDE.md` — writing effective prompts for Hada's runtime
+- `docs/PRODUCT_DESIGN_AND_DEVELOPMENT_PROCESS.md` — product rationale and process
+
+Audit / point-in-time (not living reference):
+
+- `docs/APP-IMPROVEMENT-CHECKLIST.md` and `docs/APP-IMPROVEMENTS-{1-3,4-7,8-10}.md` — the Sept 2026 improvement pass. Their evidence links point at `ux-audit-output/`, which is not committed, so those links only resolve in the working tree where the audit ran.

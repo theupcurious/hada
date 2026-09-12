@@ -33,6 +33,8 @@ Current migration chain:
 19. `019_space_persona.sql` — `projects.emoji`, `projects.color`
 20. `020_space_suggestions.sql` — `projects.suggestions`
 21. `021_space_tool_allowlist.sql` — `projects.tool_allowlist`
+22. `022_scheduled_task_spaces.sql` — `scheduled_tasks.project_id` (Space-scoped tasks/workflows)
+23. `023_workflow_execution_claims.sql` — `scheduled_tasks.execution_token`/`execution_started_at` + `claim_workflow_execution` RPC (atomic claim so manual "Run now" and cron can't double-run a workflow)
 
 ## High-Level Relationships
 
@@ -209,17 +211,24 @@ Used to persist research memos, analysis outputs, and other long responses so la
 
 ### `scheduled_tasks`
 
-Scheduled assistant runs.
+Scheduled assistant runs. This is also the table behind **Workflows** (`/workflows`) — a workflow is a `scheduled_tasks` row created from a template.
 
 - `id`
 - `user_id`
 - `type` (`once` | `recurring`)
-- `cron_expression` (required for `recurring`)
+- `cron_expression` (required for `recurring`; stored in UTC)
 - `run_at` (required for `once`)
-- `description`
+- `description` — the prompt the run executes
 - `enabled`
 - `last_run_at`
+- `project_id` (nullable FK to `projects`; migration 022) — the Space the run executes in (its instructions, scoped memory, tool allowlist, and conversation). `NULL` = General. `ON DELETE SET NULL`
+- `execution_token uuid` (nullable; migration 023) — set while a run is claimed
+- `execution_started_at timestamptz` (nullable; migration 023) — claim time; a claim older than 10 minutes is considered stale and reclaimable
 - `created_at`
+
+Notes:
+
+- Both triggers — cron and manual **Run now** (`POST /api/dashboard/tasks/[id]/run`) — go through `executeWorkflow`, which first calls the `claim_workflow_execution` RPC to take an atomic claim, so a workflow can't double-run across workers. See [ARCHITECTURE.md §9](ARCHITECTURE.md#9-workflows).
 
 ### `documents`
 
@@ -289,7 +298,7 @@ Per-run telemetry used by dashboard/activity.
 - `input_preview`, `output_preview`
 - `tool_calls jsonb`
 - `error`
-- `metadata`
+- `metadata` — JSONB; carries `project_id` (the Space this run belongs to) and, for a workflow run, `scheduled_task_id`. No schema change: Activity filters by Space and builds per-workflow history from these.
 - `created_at`
 
 ### `background_jobs`
@@ -339,7 +348,11 @@ Returns nearest matches from `user_memories` with cosine similarity.
 
 Used by the `recall_memory` tool before text fallback.
 
-## RLS Coverage
+### `claim_workflow_execution(task_id, owner_id, claim_token, expected_last_run)`
+
+Added in `023_workflow_execution_claims.sql`. `SECURITY DEFINER`, granted to `service_role` only (revoked from `anon`/`authenticated`) — so only a service-role client (cron and the Run-now route both use one) can claim.
+
+Atomically claims a `scheduled_tasks` row: sets `execution_token`/`execution_started_at` and returns `true` only if the caller owns the task, `last_run_at` still matches `expected_last_run` (optimistic concurrency), and no live claim exists (`execution_token IS NULL` or the claim is older than 10 minutes). Returns `false` when another worker already holds it. `executeWorkflow` treats an RPC error as "migration 023 not applied" and surfaces an actionable message.
 
 RLS is enabled on:
 

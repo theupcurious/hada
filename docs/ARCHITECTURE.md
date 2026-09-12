@@ -16,7 +16,7 @@ Design priorities in the current implementation:
 
 ```text
 Users
-  ├─ Web UI (/, /chat, /docs, /settings)
+  ├─ Web UI (/, /chat, /projects, /docs, /workflows, /activity, /settings)
   ├─ Telegram Bot
   └─ Cron Scheduler
 
@@ -94,8 +94,9 @@ Long-job trigger (current code):
 ### Scheduled Runs (`/api/cron`)
 
 - Optional auth with `x-cron-secret` if `CRON_SECRET` is configured.
-- Executes due `scheduled_tasks` (`once` + cron-like `recurring`).
-- Sends scheduled output to Telegram when linked.
+- Selects due `scheduled_tasks` (`once` past `run_at` + cron-like `recurring` matching the current minute) and runs each through `executeWorkflow(..., "cron")` — the same path as manual **Run now** (see [9. Workflows](#9-workflows)).
+- Each run executes in its task's Space (`project_id`), so a scheduled briefing carries that Space's instructions, scoped memory, tools, and conversation.
+- Delivers the result to Telegram when linked, prefixed with the Space's emoji + name so a Space briefing reads as that assistant.
 - Also processes queued background jobs.
 
 ## Runtime Layers
@@ -246,7 +247,21 @@ Spaces turn the single assistant into several specialized ones — each with its
 - **Docs binding**: a space's `folder` still binds it to `documents` with the same folder value; its turns tag `conversation_segment.metadata.project_id`, so a space transitively owns its segments and their `segment_artifacts`.
 - **Surfaces**: `/projects` (list/create/delete + per-space identity / instructions / tool pickers + "Open in chat"), a top-bar Space switcher and a persistent desktop Spaces rail in `/chat`, and `GET /api/projects/[id]` returns the space with its documents and segments.
 
+### 9. Workflows
+
+Workflows are recurring/one-time automations — the user-facing proactivity surface. A workflow **is a `scheduled_tasks` row**; there is no separate table. Promoted from a Settings tab to a top-level destination (`/workflows`).
+
+- **Templates** (`src/lib/workflows/templates.ts`): curated starters (morning email digest, day-ahead briefing, meeting prep, weekly review, follow-up nudge, industry scan) with editable instructions, a friendly frequency (`daily` / `weekdays` / `weekly_monday`), and a Space picker. `localScheduleToCron` converts the choice to a UTC cron expression.
+- **Human-readable schedules** (`src/lib/workflows/schedule.ts`): timezone-aware helpers turn the stored UTC cron back into a readable schedule and the exact next run in the viewer's timezone, so a workflow can be reviewed before creation. Raw cron stays available under advanced details.
+- **Execution** (`src/lib/workflows/execute-workflow.ts`): `executeWorkflow(supabase, task, trigger)` is the single path for both cron and manual **Run now**. It (1) takes an atomic `claim_workflow_execution` claim (migration 023) so overlapping workers can't double-run — a lost claim raises `WorkflowBusyError` (HTTP 409); (2) runs `processMessage` with the task's `projectId` (Space-scoped) and `scheduledTaskId`; (3) delivers to Telegram with the Space label; (4) returns a `resultUrl` deep-linking the produced message. On a gateway error it returns `success: false` with an "Open result" link. A claim RPC error surfaces as "apply migration 023".
+- **History**: each run tags `agent_runs.metadata.scheduled_task_id`, powering per-workflow run history; Space cards and Activity filter on `agent_runs.metadata.project_id`.
+- **Surfaces**: `/workflows` (active workflows first, then the template gallery; create/edit/pause/resume/delete + Run now), and `POST /api/dashboard/tasks/[id]/run` (Run now — authenticates user-scoped, executes service-role).
+
 ## UI Architecture
+
+### Navigation shell
+
+A shared header (`src/components/app/app-header.tsx`) gives Chat, Spaces, Docs, Workflows, and Activity one consistent navigation shell (labeled primary destinations, a **More** menu on narrow screens), keeping the active Space visible across surfaces. Account preferences and integrations stay in `/settings`.
 
 ### `/chat`
 
@@ -281,9 +296,18 @@ Tab surfaces:
 
 - Integrations
 - Account/profile + provider/persona/preferences
-- Memory management
-- Workflows (templated scheduled automations + active workflow management)
+- Memory management (per-Space filtering, friendly titles)
 - Runtime status
+
+Tabs sync with the URL (`?tab=`). Workflows were promoted out of Settings to the top-level [`/workflows`](#9-workflows) destination.
+
+### `/workflows`
+
+Templated scheduled automations — see [9. Workflows](#9-workflows). Active workflows first, then the template gallery; create / edit / pause / resume / delete + **Run now**, with friendly schedules and the next run shown before creation.
+
+### `/activity`
+
+Run history from `agent_runs`: each run links to its conversation/document/result, with Space and status filters, combined tool badges, and readable status labels.
 
 ### `/` (home)
 
