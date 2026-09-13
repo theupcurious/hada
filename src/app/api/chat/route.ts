@@ -6,9 +6,13 @@ import { processMessage } from "@/lib/chat/process-message";
 import { getOrCreateConversation, getConversationMessagesForRegeneration } from "@/lib/db/conversations";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import type { AgentEvent } from "@/lib/types/database";
 
 export const maxDuration = 300;
+
+// Generous for pasted text, but keeps a single turn from stuffing the context.
+const MAX_MESSAGE_CHARS = 32_000;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -22,8 +26,19 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const limit = await checkRateLimit(RATE_LIMITS.chat, user.id);
+  if (!limit.allowed) {
+    return rateLimitedResponse(limit);
+  }
+
   const body = await request.json().catch(() => ({}));
   const message = typeof body?.message === "string" ? body.message.trim() : "";
+  if (message.length > MAX_MESSAGE_CHARS) {
+    return new Response(JSON.stringify({ error: `Message is too long (max ${MAX_MESSAGE_CHARS} characters)` }), {
+      status: 413,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const regenerateAssistantMessageId =
     typeof body?.regenerateAssistantMessageId === "string"
       ? body.regenerateAssistantMessageId

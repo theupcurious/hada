@@ -1,4 +1,5 @@
 import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { decryptSecret, encryptSecret, isEncrypted, isEncryptionConfigured } from "@/lib/crypto/secrets";
 import { GOOGLE_OAUTH_CONFIG } from "./config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -29,9 +30,35 @@ export async function getGoogleTokens(
     return null;
   }
 
+  let accessToken: string;
+  let refreshToken: string;
+  try {
+    accessToken = decryptSecret(data.access_token);
+    refreshToken = decryptSecret(data.refresh_token);
+  } catch (err) {
+    console.error("Failed to decrypt Google tokens:", err instanceof Error ? err.message : err);
+    return null;
+  }
+
+  // Rows written before INTEGRATION_ENCRYPTION_KEY existed are plaintext —
+  // upgrade them in place the first time they're read.
+  if (isEncryptionConfigured() && (!isEncrypted(data.access_token) || !isEncrypted(data.refresh_token))) {
+    void supabase
+      .from("integrations")
+      .update({
+        access_token: encryptSecret(accessToken),
+        refresh_token: encryptSecret(refreshToken),
+      })
+      .eq("user_id", userId)
+      .eq("provider", "google")
+      .then(({ error: upgradeError }) => {
+        if (upgradeError) console.error("Failed to re-encrypt Google tokens:", upgradeError.message);
+      });
+  }
+
   return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+    accessToken,
+    refreshToken,
     expiresAt: new Date(data.expires_at),
     scopes: data.scopes,
   };
@@ -100,7 +127,7 @@ export async function updateGoogleTokens(
   const { error } = await supabase
     .from("integrations")
     .update({
-      access_token: accessToken,
+      access_token: encryptSecret(accessToken),
       expires_at: expiresAt.toISOString(),
       updated_at: new Date().toISOString(),
     })

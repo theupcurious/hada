@@ -25,6 +25,9 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
         if (!mermaidInitialized) {
           mermaid.initialize({
             startOnLoad: false,
+            // Default in v11, pinned so an upgrade can't quietly re-enable
+            // click handlers / raw HTML in the SVG we inject below.
+            securityLevel: "strict",
             theme: "dark",
             themeVariables: {
               darkMode: true,

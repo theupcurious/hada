@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface SharedDocumentRow {
   share_id: string;
   created_at: string;
+  expires_at: string | null;
   documents: {
     id: string;
     title: string;
@@ -18,6 +21,9 @@ export async function GET(
   { params }: { params: Promise<{ shareId: string }> },
 ) {
   const { shareId } = await params;
+  if (!UUID_RE.test(shareId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
@@ -25,6 +31,7 @@ export async function GET(
     .select(`
       share_id,
       created_at,
+      expires_at,
       documents!inner (
         id,
         title,
@@ -44,6 +51,9 @@ export async function GET(
   if (!shared.documents) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if (shared.expires_at && new Date(shared.expires_at).getTime() < Date.now()) {
+    return NextResponse.json({ error: "This share link has expired" }, { status: 410 });
+  }
 
   return NextResponse.json({
     document: {
@@ -56,6 +66,13 @@ export async function GET(
     share: {
       shareId: shared.share_id,
       createdAt: shared.created_at,
+      expiresAt: shared.expires_at,
+    },
+  }, {
+    headers: {
+      // Public-by-link content: keep it out of shared caches and search indexes.
+      "Cache-Control": "private, no-store",
+      "X-Robots-Tag": "noindex, nofollow",
     },
   });
 }

@@ -1,6 +1,9 @@
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
 import type { ToolContext } from "@/lib/chat/tools/types";
+import { assertPublicUrl, UnsafeUrlError } from "@/lib/net/safe-url";
+
+const MCP_TIMEOUT_MS = 20_000;
 
 export const mcpCallManifest: ToolManifest = {
   name: "mcp_call",
@@ -8,13 +11,15 @@ export const mcpCallManifest: ToolManifest = {
   description:
     "Call a tool on a Model Context Protocol (MCP) server. Use this to access external capabilities not built into Hada.",
   category: "custom",
-  riskLevel: "medium",
+  // High: the model chooses the destination *and* the payload, so an injected
+  // instruction could exfiltrate conversation data. Always requires approval.
+  riskLevel: "high",
   parameters: {
     type: "object",
     properties: {
       serverUrl: {
         type: "string",
-        description: "The URL of the MCP server (e.g., http://localhost:3001).",
+        description: "The public HTTPS URL of the MCP server (e.g., https://mcp.example.com).",
       },
       toolName: {
         type: "string",
@@ -44,9 +49,21 @@ export function createMcpCallTool(context: ToolContext): AgentTool {
         return "Error: serverUrl and toolName are required.";
       }
 
+      let base: URL;
       try {
-        const response = await fetch(`${serverUrl}/call`, {
+        base = await assertPublicUrl(serverUrl);
+      } catch (error) {
+        return `Error: ${error instanceof UnsafeUrlError ? error.message : "invalid server URL"}`;
+      }
+      if (base.protocol !== "https:") {
+        return "Error: MCP server URL must use HTTPS.";
+      }
+
+      try {
+        const response = await fetch(new URL("call", base.href.endsWith("/") ? base : `${base.href}/`), {
           method: "POST",
+          signal: AbortSignal.timeout(MCP_TIMEOUT_MS),
+          redirect: "error",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             method: "tools/call",

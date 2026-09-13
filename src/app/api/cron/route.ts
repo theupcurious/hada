@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processQueuedBackgroundJobs } from "@/lib/background-jobs";
 import { executeWorkflow, WorkflowBusyError } from "@/lib/workflows/execute-workflow";
+import { verifySharedSecret } from "@/lib/auth/shared-secret";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { ScheduledTask } from "@/lib/types/database";
 
 export async function POST(request: NextRequest) {
-  const configuredSecret = process.env.CRON_SECRET;
-  if (configuredSecret) {
-    const headerSecret = request.headers.get("x-cron-secret") || "";
-    if (headerSecret !== configuredSecret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const verdict = verifySharedSecret(process.env.CRON_SECRET, request.headers.get("x-cron-secret"));
+  if (verdict === "not_configured") {
+    console.error("CRON_SECRET is not set; refusing cron request");
+    return NextResponse.json({ error: "Cron not configured" }, { status: 500 });
+  }
+  if (verdict === "unauthorized") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createAdminClient();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { buildTelegramDeepLink, createTelegramLinkToken } from "@/lib/telegram/linking";
 
 export async function GET() {
@@ -37,6 +38,11 @@ export async function POST() {
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const limit = await checkRateLimit(RATE_LIMITS.telegramLink, user.id);
+    if (!limit.allowed) {
+      return rateLimitedResponse(limit);
     }
 
     const { token, expiresAt } = await createTelegramLinkToken({

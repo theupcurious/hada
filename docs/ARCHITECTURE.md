@@ -87,13 +87,13 @@ Long-job trigger (current code):
 ### Telegram
 
 - Webhook endpoint: `POST /api/webhooks/telegram`.
-- Verifies `x-telegram-bot-api-secret-token` when `TELEGRAM_WEBHOOK_SECRET` is set.
+- Verifies `x-telegram-bot-api-secret-token` against `TELEGRAM_WEBHOOK_SECRET` (constant-time). Refuses all requests (500) if the secret is unset.
 - `/start <token>` links chat to a user via `telegram_link_tokens` + `integrations`.
 - Regular text messages run through `processMessage(source="telegram")`.
 
 ### Scheduled Runs (`/api/cron`)
 
-- Optional auth with `x-cron-secret` if `CRON_SECRET` is configured.
+- Requires `x-cron-secret` to match `CRON_SECRET` (constant-time). Refuses all requests (500) if the secret is unset.
 - Selects due `scheduled_tasks` (`once` past `run_at` + cron-like `recurring` matching the current minute) and runs each through `executeWorkflow(..., "cron")` — the same path as manual **Run now** (see [9. Workflows](#9-workflows)).
 - Each run executes in its task's Space (`project_id`), so a scheduled briefing carries that Space's instructions, scoped memory, tools, and conversation.
 - Delivers the result to Telegram when linked, prefixed with the Space's emoji + name so a Space briefing reads as that assistant.
@@ -334,7 +334,7 @@ Live-only state (not relationally normalized):
 - RLS on user-owned tables (`auth.uid() = user_id` semantics).
 - Service-role client is used in trusted server contexts (cron/webhook/background processing).
 - Telegram webhook optionally protected with shared secret header.
-- Cron endpoint optionally protected with `CRON_SECRET` header.
+- Cron endpoint requires the `CRON_SECRET` header (fails closed when unset).
 
 ## Current Constraints / Intentional Gaps
 

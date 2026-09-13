@@ -12,7 +12,7 @@ import { generateFollowUpSuggestions } from "@/lib/chat/follow-up-suggestions";
 import { extractMemoriesFromTurn } from "@/lib/chat/memory-extraction";
 import { resolveProviderSelection, type OpenRouterReasoningConfig } from "@/lib/chat/providers";
 import { resolveRunBudget } from "@/lib/chat/runtime-budgets";
-import { DEFAULT_POLICY } from "@/lib/chat/tool-permissions";
+import { policyForSource } from "@/lib/chat/tool-permissions";
 import { createTools } from "@/lib/chat/tools";
 import type { ToolContext } from "@/lib/chat/tools/types";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -210,7 +210,7 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       reasoning,
       timeout: runBudget.timeoutMs,
       idleTimeout: runBudget.idleTimeoutMs,
-      permissionPolicy: DEFAULT_POLICY,
+      permissionPolicy: policyForSource(options.source),
     })) {
       if (event.type === "tool_call") {
         toolCallArgs.set(event.callId, event.args);

@@ -50,4 +50,8 @@ next-env.d.ts
 
 # supabase local
 supabase/.temp/
+
 .gstack/
+
+# claude code (machine-local)
+.claude/settings.local.json

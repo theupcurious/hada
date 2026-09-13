@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
+import { encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secrets";
 
 /**
  * Handle Google OAuth callback
@@ -19,6 +20,13 @@ export async function GET(request: NextRequest) {
   const settingsUrl = new URL("/settings", baseUrl);
 
   try {
+    // Refuse to store long-lived Google tokens in plaintext.
+    if (!isEncryptionConfigured()) {
+      console.error("INTEGRATION_ENCRYPTION_KEY is not set; cannot store Google tokens");
+      settingsUrl.searchParams.set("error", "encryption_not_configured");
+      return NextResponse.redirect(settingsUrl.toString());
+    }
+
     // Handle OAuth errors (user denied permission, etc.)
     if (error) {
       settingsUrl.searchParams.set("error", "google_oauth_denied");
@@ -94,8 +102,8 @@ export async function GET(request: NextRequest) {
         {
           user_id: user.id,
           provider: "google",
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
+          access_token: encryptSecret(tokenData.access_token),
+          refresh_token: encryptSecret(tokenData.refresh_token),
           expires_at: expiresAt.toISOString(),
           scopes: tokenData.scope ? tokenData.scope.split(" ") : GOOGLE_OAUTH_CONFIG.scopes,
           updated_at: new Date().toISOString(),

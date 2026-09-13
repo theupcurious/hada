@@ -1,6 +1,7 @@
 import type { AgentTool } from "@/lib/chat/agent-loop";
 
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
+import { assertPublicUrl, fetchPublicUrl, UnsafeUrlError } from "@/lib/net/safe-url";
 
 const MAX_FETCH_CHARS = 24_000;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -36,13 +37,12 @@ export function createWebFetchTool(): AgentTool {
 
       let url: URL;
       try {
-        url = new URL(rawUrl);
-      } catch {
-        return JSON.stringify({ success: false, error: "invalid URL" });
-      }
-
-      if (!/^https?:$/i.test(url.protocol)) {
-        return JSON.stringify({ success: false, error: "only HTTP(S) URLs are allowed" });
+        url = await assertPublicUrl(rawUrl);
+      } catch (error) {
+        return JSON.stringify({
+          success: false,
+          error: error instanceof UnsafeUrlError ? error.message : "invalid URL",
+        });
       }
 
       try {
@@ -50,9 +50,10 @@ export function createWebFetchTool(): AgentTool {
         if (options?.signal) signals.push(options.signal);
         const signal = AbortSignal.any(signals);
 
-        const response = await fetch(url.toString(), {
+        // Redirects are re-validated per hop so a public URL can't bounce to an
+        // internal address.
+        const response = await fetchPublicUrl(url.toString(), {
           signal,
-          redirect: "follow",
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -84,6 +85,9 @@ export function createWebFetchTool(): AgentTool {
           truncated: extracted.length > MAX_FETCH_CHARS,
         });
       } catch (error) {
+        if (error instanceof UnsafeUrlError) {
+          return JSON.stringify({ success: false, error: error.message });
+        }
         if (isAbortError(error)) {
           // Re-throw only if the agent itself was cancelled, not a local timeout.
           if (options?.signal?.aborted) throw error;

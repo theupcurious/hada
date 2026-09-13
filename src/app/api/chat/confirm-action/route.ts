@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { saveMessage } from "@/lib/db/conversations";
 import { getProjectToolAllowlist } from "@/lib/db/projects";
 import { createTools } from "@/lib/chat/tools";
@@ -31,6 +32,11 @@ export async function POST(request: NextRequest) {
 
   if (authError || !user) {
     return jsonError("Unauthorized", 401);
+  }
+
+  const limit = await checkRateLimit(RATE_LIMITS.confirmAction, user.id);
+  if (!limit.allowed) {
+    return rateLimitedResponse(limit);
   }
 
   const body = (await request.json().catch(() => ({}))) as ConfirmActionBody;

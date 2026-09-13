@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { extractTextFromFile, isSupportedAttachment } from "@/lib/attachments/extract";
 
@@ -20,6 +21,11 @@ export async function POST(request: NextRequest) {
   const { user, error: authError } = await getAuthenticatedUser(supabase);
   if (authError || !user) {
     return jsonError("Unauthorized", 401);
+  }
+
+  const limit = await checkRateLimit(RATE_LIMITS.attachmentExtract, user.id);
+  if (!limit.allowed) {
+    return rateLimitedResponse(limit);
   }
 
   let formData: FormData;

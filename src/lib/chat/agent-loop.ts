@@ -10,6 +10,7 @@ import {
 import { compactMessagesInPlace } from "@/lib/chat/context-manager";
 import {
   checkPermission,
+  UNTRUSTED_OUTPUT_TOOLS,
   DEFAULT_POLICY,
   type PermissionPolicy,
 } from "@/lib/chat/tool-permissions";
@@ -85,6 +86,8 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
   };
   const toolMap = new Map(options.tools.map((tool) => [tool.name, tool]));
   const toolCallCounts = new Map<string, number>();
+  // Flipped once any tool that reads external content runs; see checkPermission.
+  let untrustedContentSeen = false;
   const llmMessages: LLMMessage[] = [
     { role: "system", content: options.systemPrompt },
     ...options.messages,
@@ -278,7 +281,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           const planTool = toolMap.get(call.name);
           const planRiskLevel = planTool?.riskLevel ?? "medium";
           const planCount = toolCallCounts.get(call.name) ?? 0;
-          const planDecision = checkPermission(policy, call.name, planRiskLevel, planCount);
+          const planDecision = checkPermission(policy, call.name, planRiskLevel, planCount, { untrustedContentSeen });
 
           markProgress();
           yield { type: "tool_call", name: call.name, args: call.arguments, callId: call.id };
@@ -317,7 +320,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           const tool = toolMap.get(call.name);
           const riskLevel = tool?.riskLevel ?? "medium";
           const count = toolCallCounts.get(call.name) ?? 0;
-          const decision = checkPermission(policy, call.name, riskLevel, count);
+          const decision = checkPermission(policy, call.name, riskLevel, count, { untrustedContentSeen });
 
           if (decision === "deny") {
             deniedCalls.push({
@@ -364,7 +367,13 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           const { sanitized, durationMs, truncated } = outcome.value;
           markProgress();
           yield { type: "tool_result", name: call.name, result: sanitized, callId: call.id, durationMs, truncated };
-          llmMessages.push({ role: "tool", name: call.name, tool_call_id: call.id, content: sanitized });
+          if (UNTRUSTED_OUTPUT_TOOLS.has(call.name)) untrustedContentSeen = true;
+          llmMessages.push({
+            role: "tool",
+            name: call.name,
+            tool_call_id: call.id,
+            content: wrapUntrustedToolResult(call.name, sanitized),
+          });
 
           if (!activePlan) continue;
           const matchedStep = findStepForToolCall(activePlan, currentStepIndex, call.name);
@@ -855,6 +864,16 @@ async function runTool(
     }
     return error instanceof Error ? `Tool error: ${error.message}` : "Tool error.";
   }
+}
+
+/**
+ * Wrap output from tools that read external sources so the model treats any
+ * instructions inside as data. The system prompt explains the envelope.
+ */
+function wrapUntrustedToolResult(toolName: string, content: string): string {
+  if (!UNTRUSTED_OUTPUT_TOOLS.has(toolName)) return content;
+  const body = content.replace(/<\/?untrusted_content[^>]*>/gi, "");
+  return `<untrusted_content source="${toolName}">\n${body}\n</untrusted_content>`;
 }
 
 function sanitizeToolResult(result: string): string {

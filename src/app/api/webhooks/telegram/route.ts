@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processMessage } from "@/lib/chat/process-message";
+import { verifySharedSecret } from "@/lib/auth/shared-secret";
 import { createAdminClient } from "@/lib/supabase/server";
 import { editMessageText, sendMessage } from "@/lib/telegram/client";
 import { markdownToTelegramMarkdownV2 } from "@/lib/telegram/format";
@@ -12,10 +13,15 @@ import type { AgentEvent } from "@/lib/types/database";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export async function POST(request: NextRequest) {
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  const headerSecret = request.headers.get("x-telegram-bot-api-secret-token");
-
-  if (secret && headerSecret !== secret) {
+  const verdict = verifySharedSecret(
+    process.env.TELEGRAM_WEBHOOK_SECRET,
+    request.headers.get("x-telegram-bot-api-secret-token"),
+  );
+  if (verdict === "not_configured") {
+    console.error("TELEGRAM_WEBHOOK_SECRET is not set; refusing webhook request");
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
+  }
+  if (verdict === "unauthorized") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
