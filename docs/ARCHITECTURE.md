@@ -149,7 +149,10 @@ Key behaviors:
 Default policy:
 
 - Risk defaults: `low=allow`, `medium=allow`, `high=confirm`
-- Rate limit: `delegate_task` max 3 calls/run
+- Tool overrides: `gmail_draft=confirm`, and `mcp_call` is registered as `high`
+- Per-run cap: `delegate_task` max 3 calls/run
+- Untrusted-content tripwire: results from `web_fetch`, `web_search`, `gmail_search`/`gmail_read`, `drive_search`/`drive_read`, and `mcp_call` (`UNTRUSTED_OUTPUT_TOOLS`) are wrapped in `<untrusted_content source="…">` before reaching the model, and `prompts/system.md` instructs it to treat that text as data. Once any of them has run in a turn, `schedule_task`, `create_calendar_event`, and `update_calendar_event` escalate from `allow` to `confirm`.
+- Per-source policy (`policyForSource`): the confirm flow only exists on the web UI, so on `telegram` and `scheduled` runs every `confirm` becomes `deny` — the model receives a reason string and the run continues instead of stalling.
 - `confirm` pauses the run (human-in-the-loop): the loop emits a `permission_request`, ends the turn, and persists the proposed action to `messages.metadata.confirmation`. The UI renders an approval card; on approval `POST /api/chat/confirm-action` executes the tool server-side and appends the outcome. High-risk tools (`delete_*`, `gmail_send`) flow through this path.
 
 Per-space tool allowlist:
@@ -165,7 +168,7 @@ Current registered tools:
 - Scheduling/system: `schedule_task`, `plan_task`, `delegate_task`
 - Documents & Wiki: `list_documents`, `read_document`, `create_document`, `update_document`, `search_documents`, `delete_document`
 - Structured output: `render_card`
-- Integration bridge: `mcp_call`
+- Integration bridge: `mcp_call` (`high` risk → always confirmed; HTTPS only, public hosts only, no redirects)
 - Google Calendar: `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`
 - Gmail: `gmail_search`, `gmail_read`, `gmail_draft`, `gmail_send` (`gmail_send` is `high` risk → routes through the approval flow)
 - Google Drive (read-only): `drive_search`, `drive_read`
@@ -330,11 +333,19 @@ Live-only state (not relationally normalized):
 
 ## Security Model
 
+See `docs/SECURITY-REVIEW.md` for the full review, rationale, and known limitations.
+
 - Supabase Auth for user identity/session.
-- RLS on user-owned tables (`auth.uid() = user_id` semantics).
+- RLS on user-owned tables (`auth.uid() = user_id` semantics). Routes that use the service-role client re-check ownership explicitly before acting.
 - Service-role client is used in trusted server contexts (cron/webhook/background processing).
-- Telegram webhook optionally protected with shared secret header.
-- Cron endpoint requires the `CRON_SECRET` header (fails closed when unset).
+- Telegram webhook and cron endpoint require their shared-secret headers (`TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`), compared in constant time via `src/lib/auth/shared-secret.ts`; both return 500 when the secret is unset.
+- Outbound requests chosen by the model (`web_fetch`, `mcp_call`) go through `src/lib/net/safe-url.ts`: HTTP(S) only, no embedded credentials, DNS-resolved rejection of loopback/private/link-local/CGNAT/ULA addresses, and per-hop re-validation of redirects (max 5).
+- Google OAuth tokens are encrypted at rest with AES-256-GCM (`src/lib/crypto/secrets.ts`, key `INTEGRATION_ENCRYPTION_KEY`). Legacy plaintext rows are re-encrypted on first read; connecting Google is refused when the key is missing.
+- Prompt-injection defenses: untrusted tool output is delimited, and side-effecting tools escalate to confirmation after untrusted content is seen (see Tool System above).
+- Rate limiting: per-user fixed windows via the `check_rate_limit` RPC (`src/lib/rate-limit.ts`) on chat (40/10 min), confirm-action, attachment extraction (15/10 min), and Telegram link minting (10/10 min). Chat messages are capped at 32 000 characters.
+- Share links: UUID-validated, optional `expires_at`, served with `Cache-Control: no-store` and `X-Robots-Tag: noindex`.
+- HTTP headers (`next.config.ts`): CSP (`connect-src` limited to self + Supabase, `frame-ancestors 'none'`), HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`.
+- Mermaid renders with `securityLevel: "strict"` pinned.
 
 ## Current Constraints / Intentional Gaps
 

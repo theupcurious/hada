@@ -55,7 +55,7 @@ Notes:
 - Embeddings: `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`
 - Search: `SEARCH_PROVIDER`, `SEARCH_API_KEY` (or `TAVILY_API_KEY`, `BRAVE_API_KEY`, `SERPAPI_API_KEY`)
 - Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`
+- Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` (required when the bot is enabled — the webhook returns 500 if unset)
 - Cron auth: `CRON_SECRET` (required — the endpoint refuses requests when unset)
 - Token encryption: `INTEGRATION_ENCRYPTION_KEY` (required for Google; `openssl rand -base64 32`)
 
@@ -95,6 +95,8 @@ If you are upgrading an existing database, apply SQL files from `supabase/migrat
 12. `012_conversation_segments.sql`
 13. `013_memory_classes.sql`
 14. `014_segment_artifacts.sql`
+15. … through `023_workflow_execution_claims.sql` (see `docs/DATABASE.md` for the full annotated chain)
+24. `024_rate_limits_and_share_expiry.sql` — `rate_limits` table + `check_rate_limit` RPC, `document_shares.expires_at`. Until applied, rate limiting logs an error and allows requests.
 
 Notes:
 
@@ -156,7 +158,7 @@ Main routes:
 
 Scheduled tasks and queued background jobs are processed by `/api/cron`.
 
-`CRON_SECRET` must be set; include header:
+`CRON_SECRET` must be set (the endpoint returns 500 when it is not), and every scheduler that calls `/api/cron` must send the header:
 
 - `x-cron-secret: <CRON_SECRET>`
 

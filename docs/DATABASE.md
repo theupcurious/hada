@@ -35,6 +35,7 @@ Current migration chain:
 21. `021_space_tool_allowlist.sql` — `projects.tool_allowlist`
 22. `022_scheduled_task_spaces.sql` — `scheduled_tasks.project_id` (Space-scoped tasks/workflows)
 23. `023_workflow_execution_claims.sql` — `scheduled_tasks.execution_token`/`execution_started_at` + `claim_workflow_execution` RPC (atomic claim so manual "Run now" and cron can't double-run a workflow)
+24. `024_rate_limits_and_share_expiry.sql` — `rate_limits` table + `check_rate_limit` RPC (per-user fixed-window limiter), `document_shares.expires_at`
 
 ## High-Level Relationships
 
@@ -250,6 +251,16 @@ Share links for read-only document access.
 - `user_id`
 - `share_id` (UUID, unique)
 - `created_at`
+- `expires_at` (nullable; `null` = no expiry — added in 024, enforced by `GET /api/shared/documents/[shareId]`, which returns 410 once passed)
+
+### `rate_limits`
+
+Fixed-window request counters (migration 024). Service-role only — RLS is enabled with no policies, and rows are written exclusively through `check_rate_limit`.
+
+- `key` (text, `"<rule>:<user_id>"`)
+- `window_start` (timestamptz)
+- `count`
+- primary key `(key, window_start)`
 
 ### `projects`
 
@@ -354,6 +365,10 @@ Added in `023_workflow_execution_claims.sql`. `SECURITY DEFINER`, granted to `se
 
 Atomically claims a `scheduled_tasks` row: sets `execution_token`/`execution_started_at` and returns `true` only if the caller owns the task, `last_run_at` still matches `expected_last_run` (optimistic concurrency), and no live claim exists (`execution_token IS NULL` or the claim is older than 10 minutes). Returns `false` when another worker already holds it. `executeWorkflow` treats an RPC error as "migration 023 not applied" and surfaces an actionable message.
 
+### `check_rate_limit(p_key, p_limit, p_window_seconds)`
+
+Added in `024_rate_limits_and_share_expiry.sql`. `SECURITY DEFINER`, executable by `service_role` only. Atomically increments the counter for `p_key` in the current fixed window and returns `(allowed, remaining, reset_at)`. Occasionally deletes windows older than a day. Used by `src/lib/rate-limit.ts` on `/api/chat`, `/api/chat/confirm-action`, `/api/attachments/extract`, and `/api/integrations/telegram/link`; the app fails open (with a logged error) if the function is missing.
+
 RLS is enabled on:
 
 - `users`
@@ -371,6 +386,7 @@ RLS is enabled on:
 - `documents`
 - `document_shares`
 - `projects`
+- `rate_limits` (no policies — service role only)
 
 Service-role server paths (cron/webhooks/background processing) bypass user RLS where appropriate.
 
