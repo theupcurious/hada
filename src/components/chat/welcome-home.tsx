@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { WelcomeStarterActions, type WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
 import { WelcomeContinueRow, type WelcomeContinueRowProps } from "@/components/chat/welcome-continue-row";
 import { WelcomeStatusLine, type WelcomeStatusLineProps } from "@/components/chat/welcome-status-line";
+import { WelcomeRecentDocs, type WelcomeRecentDocsProps } from "@/components/chat/welcome-recent-docs";
 
 /** Visual identity of the active space, shown in the eyebrow when inside one. */
 export interface WelcomeSpaceIdentity {
@@ -19,7 +20,10 @@ export interface WelcomeHomeProps {
   subtitle: string;
   starterActions: readonly WelcomeStarterAction[];
   continueRow: WelcomeContinueRowProps;
-  statusLine: WelcomeStatusLineProps;
+  /** Recent doc titles, rendered under the continue row when present. */
+  recentDocs?: WelcomeRecentDocsProps;
+  /** Omit when nothing worth reporting — avoids a filler line under real content. */
+  statusLine?: WelcomeStatusLineProps;
   /** When set, the eyebrow shows this space's identity instead of "Hada". */
   spaceIdentity?: WelcomeSpaceIdentity | null;
   /** Optional "Your Spaces" strip, rendered under the starter actions (General only). */
@@ -34,6 +38,7 @@ export function WelcomeHome({
   subtitle,
   starterActions,
   continueRow,
+  recentDocs,
   statusLine,
   spaceIdentity,
   spacesStrip,
@@ -100,7 +105,8 @@ export function WelcomeHome({
         {/* Tertiary utilities — quiet rows, visually separated from the cards above. */}
         <div className="mt-5 w-full border-t border-zinc-200/70 pt-3 dark:border-zinc-800/70 sm:mt-6">
           <WelcomeContinueRow {...continueRow} />
-          <WelcomeStatusLine {...statusLine} />
+          {recentDocs ? <WelcomeRecentDocs {...recentDocs} className="mt-2" /> : null}
+          {statusLine ? <WelcomeStatusLine {...statusLine} /> : null}
         </div>
       </div>
     </motion.section>

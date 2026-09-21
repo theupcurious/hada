@@ -23,6 +23,7 @@ import { WelcomeSpacesStrip } from "@/components/chat/welcome-spaces-strip";
 import { SpacesRail } from "@/components/chat/spaces-rail";
 import { CommandPalette, type CommandItem } from "@/components/chat/command-palette";
 import type { WelcomeStarterAction } from "@/components/chat/welcome-starter-actions";
+import type { WelcomeRecentDocItem } from "@/components/chat/welcome-recent-docs";
 import { ThreadStarters } from "@/components/chat/thread-starters";
 import type { TaskPlan, UserSettings } from "@/lib/types/database";
 import type { ChatCard } from "@/lib/types/cards";
@@ -174,6 +175,10 @@ interface ChatLocaleCopy {
   welcomeContinueLastWorkspace: string;
   welcomeYourSpaces: string;
   welcomeSpaceSubtitleFallback: string;
+  welcomeRecentDocs: string;
+  starterSpaceAskLabel: string;
+  starterSpaceAskPrompt: string;
+  starterSpaceAddPromptsLabel: string;
   actionContinue: string;
   actionOpenChat: string;
   actionOpen: string;
@@ -259,6 +264,11 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     welcomeContinueLastWorkspace: "Pick up where you left off",
     welcomeYourSpaces: "Your Spaces",
     welcomeSpaceSubtitleFallback: "A focused space with its own memory and instructions.",
+    welcomeRecentDocs: "Recent docs",
+    starterSpaceAskLabel: "What can you help with here?",
+    starterSpaceAskPrompt:
+      "Based on this Space's instructions and memory, briefly tell me what you can help with here and suggest three concrete things we could start on.",
+    starterSpaceAddPromptsLabel: "Add starter prompts",
     actionContinue: "Continue",
     actionOpenChat: "Open chat",
     actionOpen: "Open",
@@ -347,6 +357,11 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     welcomeContinueLastWorkspace: "이어서 계속하기",
     welcomeYourSpaces: "내 스페이스",
     welcomeSpaceSubtitleFallback: "고유한 메모리와 지침을 갖춘 전용 스페이스입니다.",
+    welcomeRecentDocs: "최근 문서",
+    starterSpaceAskLabel: "여기서 무엇을 도와줄 수 있나요?",
+    starterSpaceAskPrompt:
+      "이 스페이스의 지침과 메모리를 바탕으로, 여기서 어떤 도움을 줄 수 있는지 간단히 알려주고 바로 시작할 수 있는 구체적인 일 세 가지를 제안해 주세요.",
+    starterSpaceAddPromptsLabel: "시작 프롬프트 추가",
     actionContinue: "계속",
     actionOpenChat: "채팅 열기",
     actionOpen: "열기",
@@ -435,6 +450,11 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     welcomeContinueLastWorkspace: "続きから始める",
     welcomeYourSpaces: "あなたのスペース",
     welcomeSpaceSubtitleFallback: "独自のメモリと指示を持つ専用スペースです。",
+    welcomeRecentDocs: "最近のドキュメント",
+    starterSpaceAskLabel: "ここでは何を手伝えますか？",
+    starterSpaceAskPrompt:
+      "このスペースの指示とメモリをもとに、ここで手伝えることを簡潔に説明し、すぐに始められる具体的なことを3つ提案してください。",
+    starterSpaceAddPromptsLabel: "スタータープロンプトを追加",
     actionContinue: "続ける",
     actionOpenChat: "チャットを開く",
     actionOpen: "開く",
@@ -523,6 +543,11 @@ const CHAT_COPY: Record<AppLocale, ChatLocaleCopy> = {
     welcomeContinueLastWorkspace: "从上次的地方继续",
     welcomeYourSpaces: "你的空间",
     welcomeSpaceSubtitleFallback: "拥有独立记忆和指令的专属空间。",
+    welcomeRecentDocs: "最近的文档",
+    starterSpaceAskLabel: "在这里你能帮我做什么？",
+    starterSpaceAskPrompt:
+      "根据这个空间的指令和记忆，简要说明你在这里能帮上什么忙，并提出三件可以马上开始的具体事情。",
+    starterSpaceAddPromptsLabel: "添加起始提示",
     actionContinue: "继续",
     actionOpenChat: "打开聊天",
     actionOpen: "打开",
@@ -2513,8 +2538,25 @@ function ChatPageContent() {
         }
       : null;
   const latestDocument = recentDocuments[0];
+  // Real content beats the placeholder: last meaningful chat message, else the
+  // latest run's input (Telegram/cron runs don't populate `messages`), else the
+  // newest doc. Only a truly empty workspace shows the generic label.
+  const chatContinueLabel =
+    continueTitle(messages, "") ||
+    (recentRuns[0]?.input_preview ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
   const dueTodayCount = upcomingTasks.filter((task) => isTaskDueToday(task.next_run_at)).length;
-  const welcomeStatusText = buildWelcomeStatusText(recentDocuments.length, dueTodayCount, locale, copy);
+  const welcomeStatusText = buildWelcomeStatusText(0, dueTodayCount, locale, copy);
+  // Recent docs get real titles instead of a bare count; skip the one already in
+  // the continue row so the two never duplicate.
+  const welcomeRecentDocs: WelcomeRecentDocItem[] = recentDocuments
+    .filter((document) => !(latestDocument && !chatContinueLabel && document.id === latestDocument.id))
+    .slice(0, 3)
+    .map((document) => ({
+      id: document.id,
+      title: document.title,
+      meta: `${copy.updatedPrefix} ${formatShortDate(document.updated_at, localeTag)}`,
+      onOpen: () => handleOpenDocumentWorkspace(document),
+    }));
   // General starter cards — also the fallback for a blank/legacy Space with no
   // stored suggestions.
   const generalStarterActions: WelcomeStarterAction[] = [
@@ -2562,10 +2604,23 @@ function ChatPageContent() {
           onClick: () => handleStarterAction(prompt),
         }))
       : inSpace
-      ? // A specialized Space with no starters of its own shows none — the General
-        // starters ("Summarize my email", …) read wrong here. Add them per Space
-        // in Spaces → Customize → Starter prompts.
-        []
+      ? // A specialized Space with no starters of its own: the General starters
+        // ("Summarize my email", …) read wrong here, but an empty card block reads
+        // broken. Offer one neutral prompt plus a shortcut to add real ones.
+        [
+          {
+            id: "space-ask",
+            label: copy.starterSpaceAskLabel,
+            icon: <Sparkles className="h-4 w-4" />,
+            onClick: () => handleStarterAction(copy.starterSpaceAskPrompt),
+          },
+          {
+            id: "space-add-prompts",
+            label: copy.starterSpaceAddPromptsLabel,
+            icon: <Settings2 className="h-4 w-4" />,
+            onClick: () => router.push("/projects"),
+          },
+        ]
       : generalStarterActions;
   const welcomeSpacesStrip =
     !inSpace && spaces.length > 0 ? (
@@ -2577,7 +2632,7 @@ function ChatPageContent() {
         onNew={() => router.push("/projects?new=1")}
       />
     ) : null;
-  const welcomeContinueRow = latestDocument && !hasLastChat
+  const welcomeContinueRow = latestDocument && !chatContinueLabel
     ? {
         label: latestDocument.title,
         description: `${copy.updatedPrefix} ${formatShortDate(latestDocument.updated_at, localeTag)}`,
@@ -2585,8 +2640,7 @@ function ChatPageContent() {
         onContinue: () => handleOpenDocumentWorkspace(latestDocument),
       }
     : {
-        label:
-          continueTitle(messages, copy.welcomeContinueLastWorkspace),
+        label: chatContinueLabel || copy.welcomeContinueLastWorkspace,
         actionLabel: hasLastChat ? copy.actionContinue : copy.actionOpenChat,
         onContinue: () => {
           if (hasLastChat) {
@@ -2922,20 +2976,26 @@ function ChatPageContent() {
                         spacesStrip={welcomeSpacesStrip}
                         starterActions={welcomeStarterActions}
                         continueRow={welcomeContinueRow}
-                        statusLine={{
-                          text: welcomeStatusText,
-                          actionLabel:
-                            recentDocuments.length > 0
-                              ? copy.viewDocs
-                              : dueTodayCount > 0
-                              ? copy.viewTasks
-                              : undefined,
-                          onAction: recentDocuments.length > 0
-                            ? () => router.push(spaceHref("/docs"))
-                            : dueTodayCount > 0
-                            ? () => router.push(spaceHref("/workflows"))
-                            : undefined,
-                        }}
+                        recentDocs={
+                          welcomeRecentDocs.length > 0
+                            ? {
+                                heading: copy.welcomeRecentDocs,
+                                items: welcomeRecentDocs,
+                                actionLabel: copy.viewDocs,
+                                onViewAll: () => router.push(spaceHref("/docs")),
+                              }
+                            : undefined
+                        }
+                        statusLine={
+                          // "Your workspace is ready." is filler once real content is on screen.
+                          dueTodayCount > 0 || welcomeRecentDocs.length === 0
+                            ? {
+                                text: welcomeStatusText,
+                                actionLabel: dueTodayCount > 0 ? copy.viewTasks : undefined,
+                                onAction: dueTodayCount > 0 ? () => router.push(spaceHref("/workflows")) : undefined,
+                              }
+                            : undefined
+                        }
                       />
                     </div>
                   )}

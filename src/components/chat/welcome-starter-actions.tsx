@@ -23,7 +23,7 @@ export function WelcomeStarterActions({ actions, className }: WelcomeStarterActi
   }
 
   return (
-    <div className={cn("grid w-full grid-cols-2 gap-3", className)}>
+    <div className={cn("grid w-full grid-cols-1 gap-3 sm:grid-cols-2", className)}>
       {actions.map((action) => (
         <Button
           key={action.id}
@@ -33,7 +33,7 @@ export function WelcomeStarterActions({ actions, className }: WelcomeStarterActi
           disabled={action.disabled}
           aria-label={action.label}
           className={cn(
-            "flex h-full min-h-20 w-full items-center justify-start gap-3 rounded-2xl border border-border/50 bg-transparent px-4 py-4 backdrop-blur-sm",
+            "flex h-full min-h-14 w-full items-center sm:min-h-20 justify-start gap-3 rounded-2xl border border-border/50 bg-transparent px-4 py-4 backdrop-blur-sm",
             "transition-[transform,background-color,border-color,box-shadow] duration-300 ease-spring hover:-translate-y-0.5 hover:border-teal-500/40 hover:bg-teal-500/5 hover:shadow-lg hover:shadow-teal-500/10",
             "active:translate-y-0 active:scale-[0.98]",
             "dark:bg-transparent dark:hover:bg-teal-500/10",
