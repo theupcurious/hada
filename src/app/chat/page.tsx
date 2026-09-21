@@ -2537,7 +2537,7 @@ function ChatPageContent() {
           color: activeProject?.color ?? null,
         }
       : null;
-  const latestDocument = recentDocuments[0];
+  const latestDocument = recentDocuments.find((document) => !isWikiBookkeepingDoc(document));
   // Real content beats the placeholder: last meaningful chat message, else the
   // latest run's input (Telegram/cron runs don't populate `messages`), else the
   // newest doc. Only a truly empty workspace shows the generic label.
@@ -2549,6 +2549,7 @@ function ChatPageContent() {
   // Recent docs get real titles instead of a bare count; skip the one already in
   // the continue row so the two never duplicate.
   const welcomeRecentDocs: WelcomeRecentDocItem[] = recentDocuments
+    .filter((document) => !isWikiBookkeepingDoc(document))
     .filter((document) => !(latestDocument && !chatContinueLabel && document.id === latestDocument.id))
     .slice(0, 3)
     .map((document) => ({
@@ -3226,6 +3227,14 @@ function buildWelcomeSubtitle(settings: UserSettings | null, copy: ChatLocaleCop
   }
 
   return `${copy.welcomeReadyPrefix} ${parts.join(", ")}.`;
+}
+
+/**
+ * `wiki/index` and `wiki/log` are maintained by the agent on every wiki edit, so
+ * they'd permanently top any "recent" list without being something to resume.
+ */
+function isWikiBookkeepingDoc(document: Pick<HomeDocumentSummary, "title" | "folder">): boolean {
+  return document.folder === "wiki" && /^(index|log)$/i.test(document.title.trim());
 }
 
 function buildWelcomeStatusText(
