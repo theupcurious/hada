@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { DM_Sans, Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { LocaleProvider } from "@/components/i18n/locale-provider";
 import { MotionProvider } from "@/components/motion/motion-provider";
@@ -17,6 +17,12 @@ const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-display",
+});
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-serif-display",
 });
 
 export const metadata: Metadata = {
@@ -38,7 +44,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} className="dark">
       <body
-        className={`${dmSans.variable} ${plusJakarta.variable} font-sans antialiased`}
+        className={`${dmSans.variable} ${plusJakarta.variable} ${fraunces.variable} font-sans antialiased`}
       >
         <ThemeBootstrap />
         <MotionProvider>

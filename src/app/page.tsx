@@ -426,11 +426,6 @@ const stepIcons: LucideIcon[] = [Search, FileText, CalendarClock];
 const builtInIcons: LucideIcon[] = [Search, BookOpen, Clock3, Database, FolderKanban];
 const integrationIcons: LucideIcon[] = [CalendarClock, Mail, FileSearch, MessageCircle];
 
-// Locale-independent identity for the Spaces showcase cards. Names/roles are
-// localized in copy; the emoji + accent are shared, mirroring the app's own
-// per-space palette.
-const spaceEmojis = ["📈", "💪", "✍️", "📚"];
-const spaceAccents = ["#6366f1", "#ec4899", "#8b5cf6", "#14b8a6"];
 const facetIcons: LucideIcon[] = [PenLine, Database, SlidersHorizontal];
 
 function isCjkLocale(locale: AppLocale): boolean {
@@ -444,15 +439,15 @@ export default function Home() {
 
   // Latin display tracking is far too tight for CJK, whose glyphs are already
   // fixed-width and carry their own side bearings.
-  const headingTracking = isCjkLocale(locale) ? "tracking-normal" : "tracking-[-0.045em]";
-  const labelTracking = isCjkLocale(locale) ? "tracking-[0.05em]" : "tracking-[0.18em]";
+  const headingTracking = isCjkLocale(locale) ? "tracking-normal" : "tracking-[-0.03em]";
+  const labelTracking = isCjkLocale(locale) ? "tracking-[0.05em]" : "tracking-[0.12em]";
 
   return (
     <div className="min-h-screen bg-[#f7f6f2] text-zinc-950">
       <header className="border-b border-zinc-900/10 bg-[#f7f6f2]/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5" aria-label="Hada home">
-            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg shadow-sm">
+            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-sm shadow-sm">
               <Image
                 src="/hada-logo.png"
                 alt=""
@@ -462,14 +457,14 @@ export default function Home() {
                 className="h-8 w-8 object-cover"
               />
             </span>
-            <span className="font-display text-xl font-semibold tracking-tight">Hada</span>
+            <span className="font-serif text-xl font-semibold tracking-tight">Hada</span>
           </Link>
 
           <nav className="flex items-center gap-2" aria-label="Account">
-            <Button asChild variant="ghost" className="rounded-full px-3 sm:px-4">
+            <Button asChild variant="ghost" className="rounded-sm px-3 sm:px-4">
               <Link href="/auth/login">{copy.login}</Link>
             </Button>
-            <Button asChild className="h-9 rounded-lg bg-teal-700 px-4 text-white shadow-sm hover:bg-teal-800">
+            <Button asChild className="h-9 rounded-sm bg-vermilion px-4 text-white hover:bg-vermilion-deep">
               <Link href="/auth/signup">{copy.getStarted}</Link>
             </Button>
           </nav>
@@ -485,11 +480,11 @@ export default function Home() {
               transition={{ duration: 0.45, ease: "easeOut" }}
               className="max-w-xl"
             >
-              <p className={`text-[11px] font-semibold uppercase text-teal-700 ${labelTracking}`}>
+              <p className={`font-mono text-[11px] uppercase text-vermilion ${labelTracking}`}>
                 {copy.eyebrow}
               </p>
               <h1
-                className={`mt-6 font-display text-4xl font-medium leading-[1.06] sm:text-6xl sm:leading-[1.03] lg:text-[3.4rem] xl:text-[4.3rem] ${headingTracking}`}
+                className={`mt-6 font-serif text-4xl font-normal leading-[1.06] sm:text-6xl sm:leading-[1.03] lg:text-[3.4rem] xl:text-[4.3rem] ${headingTracking}`}
               >
                 {copy.heroTitle}
               </h1>
@@ -498,19 +493,19 @@ export default function Home() {
               {/* Trust note deferred to sm+ so the smallest screens reach the
                   CTAs and product preview sooner (shorter mobile hero). */}
               <div className="mt-5 hidden max-w-lg items-start gap-3 text-sm leading-6 text-zinc-600 sm:flex">
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-700/10 text-teal-700">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-vermilion/10 text-vermilion">
                   <ShieldCheck className="h-4 w-4" />
                 </span>
                 <p>{copy.integrationBoundary}</p>
               </div>
 
               <div className="mt-8 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-                <Button asChild size="lg" className="group h-12 rounded-lg bg-teal-700 px-8 text-white shadow-[0_10px_30px_-12px_rgba(15,118,110,0.7)] transition-all hover:bg-teal-800 hover:shadow-[0_14px_36px_-12px_rgba(15,118,110,0.75)] motion-reduce:transition-none">
+                <Button asChild size="lg" className="group h-12 rounded-sm bg-vermilion px-8 text-white transition-all hover:bg-vermilion-deep motion-reduce:transition-none">
                   <Link href="/auth/signup">{copy.startFree}</Link>
                 </Button>
                 <Link
                   href="#capabilities"
-                  className="group inline-flex items-center gap-1.5 border-b border-teal-700/50 pb-1 text-sm font-medium text-teal-800 transition-colors hover:border-teal-800 motion-reduce:transition-none"
+                  className="group inline-flex items-center gap-1.5 border-b border-vermilion/50 pb-1 text-sm font-medium text-vermilion-deep transition-colors hover:border-vermilion-deep motion-reduce:transition-none"
                 >
                   {copy.seeFeatures}
                   <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0" />
@@ -535,17 +530,17 @@ export default function Home() {
                 <div className="flex items-baseline gap-3">
                   <span
                     aria-hidden="true"
-                    className="font-display text-5xl font-medium leading-none text-teal-700/20 transition-colors group-hover:text-teal-700/35 motion-reduce:transition-none"
+                    className="font-serif text-5xl font-medium leading-none text-vermilion/20 transition-colors group-hover:text-vermilion/35 motion-reduce:transition-none"
                   >
                     {String(index + 1).padStart(2, "0")}
                   </span>
                   {(() => {
                     const Icon = stepIcons[index];
-                    return <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-teal-700" />;
+                    return <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-vermilion" />;
                   })()}
                 </div>
                 {/* h2: these are top-level page points with no section heading above them. */}
-                <h2 className={`mt-4 font-display text-lg font-medium ${headingTracking}`}>
+                <h2 className={`mt-4 font-serif text-lg font-medium ${headingTracking}`}>
                   {step.title}
                 </h2>
                 <p className="mt-1.5 max-w-sm text-sm leading-6 text-zinc-600">{step.description}</p>
@@ -564,7 +559,7 @@ export default function Home() {
         <section id="capabilities" className="scroll-mt-8 px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
           <Reveal reduceMotion={reduceMotion} className="mx-auto max-w-7xl">
             <h2
-              className={`max-w-2xl font-display text-3xl font-medium leading-[1.15] sm:text-4xl lg:text-[2.75rem] ${headingTracking}`}
+              className={`max-w-2xl font-serif text-3xl font-medium leading-[1.15] sm:text-4xl lg:text-[2.75rem] ${headingTracking}`}
             >
               {copy.capabilitiesHeading}
             </h2>
@@ -592,10 +587,10 @@ export default function Home() {
         </section>
 
         {/* The one full-bleed moment: the trust claim is the differentiator, so it gets the page's peak. */}
-        <section className="relative overflow-hidden bg-zinc-950 px-4 py-20 text-white sm:px-6 sm:py-28 lg:px-8">
+        <section className="relative overflow-hidden bg-[#1a1714] px-4 py-20 text-[#f7f6f2] sm:px-6 sm:py-28 lg:px-8">
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute right-8 top-1/2 hidden -translate-y-1/2 select-none font-display text-[10rem] font-medium leading-none text-white/[0.06] lg:block xl:right-16 xl:text-[13rem]"
+            className="pointer-events-none absolute right-8 top-1/2 hidden -translate-y-1/2 select-none font-serif text-[10rem] font-normal leading-none text-white/[0.06] lg:block xl:right-16 xl:text-[13rem]"
           >
             하다
           </span>
@@ -603,7 +598,7 @@ export default function Home() {
           <div className="relative z-10 mx-auto max-w-7xl">
             <Reveal reduceMotion={reduceMotion}>
               <h2
-                className={`max-w-3xl font-display text-3xl font-medium leading-[1.12] sm:text-5xl lg:text-[3.5rem] ${headingTracking}`}
+                className={`max-w-3xl font-serif text-3xl font-medium leading-[1.12] sm:text-5xl lg:text-[3.5rem] ${headingTracking}`}
               >
                 {copy.trustHeading}
               </h2>
@@ -630,7 +625,7 @@ export default function Home() {
         <section className="px-4 py-20 text-center sm:px-6 sm:py-28 lg:px-8">
           <Reveal reduceMotion={reduceMotion} className="mx-auto max-w-2xl">
             <h2
-              className={`font-display text-3xl font-medium leading-[1.15] sm:text-5xl ${headingTracking}`}
+              className={`font-serif text-3xl font-medium leading-[1.15] sm:text-5xl ${headingTracking}`}
             >
               {copy.ctaTitle}
             </h2>
@@ -640,7 +635,7 @@ export default function Home() {
             <Button
               asChild
               size="lg"
-              className="group mt-9 h-14 rounded-lg bg-teal-700 px-10 text-base text-white shadow-[0_14px_40px_-14px_rgba(15,118,110,0.8)] transition-all hover:bg-teal-800 hover:shadow-[0_18px_48px_-14px_rgba(15,118,110,0.85)] motion-reduce:transition-none"
+              className="group mt-9 h-14 rounded-sm bg-vermilion px-10 text-base text-white transition-all hover:bg-vermilion-deep motion-reduce:transition-none"
             >
               <Link href="/auth/signup">
                 {copy.startFree}
@@ -714,11 +709,11 @@ function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: 
         variants={reduceMotion ? undefined : container}
         initial={reduceMotion ? false : "hidden"}
         animate="shown"
-        className="flex min-w-0 flex-col rounded-xl border border-zinc-900/10 bg-white p-4 shadow-[0_18px_55px_-35px_rgba(24,24,27,0.45)]"
+        className="flex min-w-0 flex-col rounded-sm border border-zinc-900 bg-white p-4 shadow-[4px_4px_0_0_rgba(24,24,27,0.9)]"
       >
         <motion.div variants={step}>
           <ChatIdentity label={copy.userLabel} muted />
-          <div className="ml-8 mt-2 rounded-lg bg-zinc-100 px-3 py-2.5 text-xs leading-5">
+          <div className="ml-8 mt-2 rounded-sm bg-zinc-100 px-3 py-2.5 text-xs leading-5">
             {copy.userPrompt}
           </div>
         </motion.div>
@@ -738,19 +733,19 @@ function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: 
         </div>
 
         <motion.div variants={step} className="mt-auto pt-5">
-          <div className="flex items-center justify-between rounded-lg border border-zinc-900/10 px-3 py-2.5 text-xs text-zinc-400">
+          <div className="flex items-center justify-between rounded-sm border border-zinc-900/10 px-3 py-2.5 text-xs text-zinc-400">
             <span>{copy.askPlaceholder}</span>
             <Send className="h-3.5 w-3.5 text-zinc-500" />
           </div>
         </motion.div>
       </motion.div>
 
-      <div className="min-w-0 rounded-xl border border-zinc-900/10 bg-white shadow-[0_18px_55px_-35px_rgba(24,24,27,0.45)]">
+      <div className="min-w-0 rounded-sm border border-zinc-900 bg-white shadow-[4px_4px_0_0_rgba(24,24,27,0.9)]">
         <div className="flex items-center justify-between border-b border-zinc-900/10 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
             <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
             <span className="truncate text-xs font-semibold">{copy.documentTitle}</span>
-            <span className="hidden items-center gap-1 text-[10px] text-teal-700 sm:inline-flex">
+            <span className="hidden items-center gap-1 text-[10px] text-vermilion sm:inline-flex">
               <Check className="h-3 w-3" />
               {copy.saved}
             </span>
@@ -762,7 +757,7 @@ function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: 
 
         {/* Plain elements, not headings — this is a mockup and must stay out of the page outline. */}
         <div className="p-4 sm:p-5">
-          <p className="font-display text-xl font-medium">{copy.documentTitle}</p>
+          <p className="font-serif text-xl font-normal">{copy.documentTitle}</p>
           <p className="mt-4 text-[11px] font-semibold">{copy.executiveSummary}</p>
           <p className="mt-1 text-[11px] leading-[1.55] text-zinc-600">{copy.summaryText}</p>
 
@@ -777,7 +772,7 @@ function ProductPreview({ copy, reduceMotion }: { copy: HomeCopy; reduceMotion: 
           </ul>
 
           <p className="mt-4 text-[11px] font-semibold">{copy.sources}</p>
-          <div className="mt-1.5 space-y-1 text-[10px] text-teal-700">
+          <div className="mt-1.5 space-y-1 text-[10px] text-vermilion">
             <SourceLine index="1" domain="microsoft.com/worklab" />
             <SourceLine index="2" domain="weforum.org/future-of-work" />
             <SourceLine index="3" domain="owllabs.com/hybrid-work" />
@@ -794,7 +789,7 @@ function ChatIdentity({ label, muted = false }: { label: string; muted?: boolean
     <div className="flex items-center gap-2">
       <span
         className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${
-          muted ? "bg-zinc-200 text-zinc-600" : "bg-teal-700 text-white"
+          muted ? "bg-zinc-200 text-zinc-600" : "bg-vermilion text-white"
         }`}
       >
         {muted ? label.slice(0, 1) : "H"}
@@ -806,9 +801,9 @@ function ChatIdentity({ label, muted = false }: { label: string; muted?: boolean
 
 function ToolResult({ icon: Icon, title, detail }: { icon: LucideIcon; title: string; detail: string }) {
   return (
-    <div className="rounded-lg border border-zinc-900/10 bg-zinc-50 px-3 py-2.5">
+    <div className="rounded-sm border border-zinc-900/10 bg-zinc-50 px-3 py-2.5">
       <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5 text-teal-700" />
+        <Icon className="h-3.5 w-3.5 text-vermilion" />
         <span className="text-[10px] font-semibold text-zinc-800 xl:text-[11px]">{title}</span>
       </div>
       <div className="mt-1 flex items-center gap-1 pl-5 text-[10px] text-zinc-500">
@@ -858,11 +853,11 @@ function CapabilityColumn({
       className={divided ? "lg:border-l lg:border-zinc-900/10 lg:pl-10" : "lg:pr-10"}
     >
       <div className="flex flex-wrap items-center gap-3">
-        <h3 className={`text-[11px] font-semibold uppercase text-zinc-500 ${labelTracking}`}>
+        <h3 className={`font-mono text-[11px] uppercase text-zinc-500 ${labelTracking}`}>
           {title}
         </h3>
         {badge ? (
-          <span className="rounded-full border border-teal-700/25 px-2.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-teal-800">
+          <span className="rounded-sm border border-vermilion/40 px-2.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-vermilion-deep">
             {badge}
           </span>
         ) : null}
@@ -878,7 +873,7 @@ function CapabilityColumn({
               <dt className="flex items-center gap-3">
                 <Icon
                   aria-hidden="true"
-                  className="h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-teal-700 motion-reduce:transition-none"
+                  className="h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-vermilion motion-reduce:transition-none"
                 />
                 <span className="text-sm font-semibold">{item.title}</span>
               </dt>
@@ -909,58 +904,42 @@ function SpacesShowcase({
   labelTracking: string;
 }) {
   return (
-    <section className="border-y border-zinc-900/10 bg-white/60 px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+    <section className="border-y border-zinc-900/10 bg-[#efede6] px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
       <Reveal reduceMotion={reduceMotion} className="mx-auto max-w-7xl">
-        <p className={`text-[11px] font-semibold uppercase text-teal-700 ${labelTracking}`}>
+        <p className={`font-mono text-[11px] uppercase text-vermilion ${labelTracking}`}>
           {copy.spacesEyebrow}
         </p>
         <h2
-          className={`mt-4 max-w-2xl font-display text-3xl font-medium leading-[1.15] sm:text-4xl lg:text-[2.75rem] ${headingTracking}`}
+          className={`mt-4 max-w-2xl font-serif text-3xl font-medium leading-[1.15] sm:text-4xl lg:text-[2.75rem] ${headingTracking}`}
         >
           {copy.spacesHeading}
         </h2>
         <p className="mt-4 max-w-xl text-base leading-7 text-zinc-600">{copy.spacesLead}</p>
       </Reveal>
 
-      <div className="mx-auto mt-12 grid max-w-7xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {copy.spacesItems.map((item, index) => {
-          const accent = spaceAccents[index % spaceAccents.length];
-          return (
-            <Reveal
-              key={item.name}
-              reduceMotion={reduceMotion}
-              delay={index * 0.06}
-              className="group flex flex-col rounded-xl border border-zinc-900/10 bg-white p-4 shadow-[0_18px_55px_-40px_rgba(24,24,27,0.5)] transition-colors hover:border-zinc-900/20 motion-reduce:transition-none"
-            >
-              <div className="flex items-center gap-2.5">
-                <span
-                  aria-hidden="true"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base"
-                  style={{ backgroundColor: `${accent}1a` }}
-                >
-                  {spaceEmojis[index % spaceEmojis.length]}
-                </span>
-                <span className="flex items-center gap-1.5 text-sm font-semibold">
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: accent }}
-                  />
-                  {item.name}
-                </span>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-zinc-600">{item.role}</p>
-            </Reveal>
-          );
-        })}
-      </div>
+      <ol className="mx-auto mt-12 max-w-7xl border-t border-zinc-900">
+        {copy.spacesItems.map((item, index) => (
+          <Reveal
+            key={item.name}
+            reduceMotion={reduceMotion}
+            delay={index * 0.05}
+            className="group grid items-baseline gap-1 border-b border-zinc-900/15 py-5 transition-colors hover:bg-vermilion/[0.04] sm:grid-cols-[3rem_1fr_1.6fr] sm:gap-6 motion-reduce:transition-none"
+          >
+            <span aria-hidden="true" className="font-mono text-xs text-zinc-400 group-hover:text-vermilion">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+            <span className="font-serif text-2xl font-normal sm:text-3xl">{item.name}</span>
+            <span className="text-sm leading-6 text-zinc-600">{item.role}</span>
+          </Reveal>
+        ))}
+      </ol>
 
       <div className="mx-auto mt-10 grid max-w-7xl gap-8 border-t border-zinc-900/10 pt-10 sm:grid-cols-3 sm:gap-10">
         {copy.spacesFacets.map((facet, index) => {
           const Icon = facetIcons[index];
           return (
             <Reveal key={facet.title} reduceMotion={reduceMotion} delay={index * 0.06}>
-              <Icon aria-hidden="true" className="h-5 w-5 text-teal-700" />
+              <Icon aria-hidden="true" className="h-5 w-5 text-vermilion" />
               <h3 className="mt-4 text-sm font-semibold">{facet.title}</h3>
               <p className="mt-1.5 text-sm leading-6 text-zinc-600">{facet.description}</p>
             </Reveal>
@@ -986,7 +965,7 @@ function TrustPoint({
 }) {
   return (
     <Reveal reduceMotion={reduceMotion} delay={delay} className="max-w-md">
-      <Icon aria-hidden="true" className="h-7 w-7 text-teal-400" />
+      <Icon aria-hidden="true" className="h-7 w-7 text-vermilion-soft" />
       <h3 className="mt-5 text-xl font-semibold leading-snug">{title}</h3>
       <p className="mt-3 text-base leading-7 text-zinc-400">{description}</p>
     </Reveal>
