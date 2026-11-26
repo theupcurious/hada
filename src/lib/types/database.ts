@@ -1,6 +1,35 @@
 import type { AppLocale } from "@/lib/i18n";
 
 export type UserTier = "free" | "paid" | "pro";
+export type UsageKind = "run" | "llm" | "embedding" | "web_search";
+export type UsagePurpose =
+  | "chat"
+  | "compaction"
+  | "segment_summary"
+  | "memory_extraction"
+  | "follow_up"
+  | "embedding"
+  | "web_search"
+  | "other";
+
+export interface UsageEvent {
+  id: string;
+  user_id: string | null;
+  agent_run_id: string | null;
+  kind: UsageKind;
+  purpose: UsagePurpose;
+  provider: string | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  cost_usd: number | null;
+  estimated: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export type UsageEventInsert = Omit<UsageEvent, "id" | "created_at"> & { id?: string; created_at?: string };
 export type PermissionMode = "direct" | "confirm";
 export type MessageRole = "user" | "assistant" | "system";
 export type MessageSource = "web" | "telegram" | "scheduled";
@@ -563,6 +592,12 @@ export type Database = {
         Update: Partial<Omit<AgentRun, "id" | "user_id" | "created_at">>;
         Relationships: [];
       };
+      usage_events: {
+        Row: UsageEvent;
+        Insert: UsageEventInsert;
+        Update: Partial<Omit<UsageEvent, "id" | "created_at">>;
+        Relationships: [];
+      };
       segment_artifacts: {
         Row: SegmentArtifact;
         Insert: {
@@ -600,6 +635,18 @@ export type Database = {
           content: string;
           updated_at: string;
           similarity: number;
+        }>;
+      };
+      get_usage_summary: {
+        Args: {
+          p_user_id: string;
+          p_since: string;
+        };
+        Returns: Array<{
+          runs: number;
+          input_tokens: number;
+          output_tokens: number;
+          cost_usd: number | string;
         }>;
       };
     };

@@ -30,6 +30,7 @@ export async function generateFollowUpSuggestions(options: {
   }
 
   const result = await callLLM({
+    purpose: "follow_up",
     selection: options.provider,
     signal: AbortSignal.timeout(8_000),
     messages: [

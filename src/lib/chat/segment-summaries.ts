@@ -255,6 +255,7 @@ export async function refreshSegmentSummary(options: {
   let summaryText = "";
   try {
     const result = await callLLM({
+      purpose: "segment_summary",
       selection: options.provider,
       tools: [],
       messages: prompt,

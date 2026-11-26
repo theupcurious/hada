@@ -1,3 +1,4 @@
+import { checkWorkflowCap } from "@/lib/usage/quota";
 import type { AgentTool } from "@/lib/chat/agent-loop";
 import type { ToolContext } from "@/lib/chat/tools/types";
 
@@ -60,6 +61,11 @@ export function createScheduleTaskTool(context: ToolContext): AgentTool {
 
       if (type === "recurring" && !cronExpression) {
         return JSON.stringify({ success: false, error: "cron_expression is required for recurring tasks" });
+      }
+
+      const cap = await checkWorkflowCap(context.userId);
+      if (!cap.allowed) {
+        return JSON.stringify({ success: false, error: cap.message });
       }
 
       // Tag the task with the current Space so it later runs as that assistant.

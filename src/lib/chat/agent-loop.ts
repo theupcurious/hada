@@ -158,6 +158,7 @@ export async function* agentLoop(options: AgentLoopOptions): AsyncGenerator<Agen
           signal: timeoutController.signal,
           systemPromptParts: options.systemPromptParts,
           reasoning: options.reasoning,
+          purpose: "chat",
         })) {
           markProgress();
           if (streamEvent.type === "text") {

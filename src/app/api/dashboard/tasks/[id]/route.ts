@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { checkWorkflowCap } from "@/lib/usage/quota";
 
 export async function PATCH(
   request: NextRequest,
@@ -48,6 +49,13 @@ export async function PATCH(
         { error: "At least one field is required" },
         { status: 400 },
       );
+    }
+
+    if (updates.enabled === true) {
+      const cap = await checkWorkflowCap(user.id, { excludeTaskId: id });
+      if (!cap.allowed) {
+        return NextResponse.json({ error: cap.message, code: "workflow_limit" }, { status: 402 });
+      }
     }
 
     const { data, error } = await supabase

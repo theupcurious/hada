@@ -36,6 +36,7 @@ Current migration chain:
 22. `022_scheduled_task_spaces.sql` — `scheduled_tasks.project_id` (Space-scoped tasks/workflows)
 23. `023_workflow_execution_claims.sql` — `scheduled_tasks.execution_token`/`execution_started_at` + `claim_workflow_execution` RPC (atomic claim so manual "Run now" and cron can't double-run a workflow)
 24. `024_rate_limits_and_share_expiry.sql` — `rate_limits` table + `check_rate_limit` RPC (per-user fixed-window limiter), `document_shares.expires_at`
+25. `025_usage_events.sql` — `usage_events` ledger (one `run` row per assistant run, plus tokens/cost per LLM call, embedding, and web search), `get_usage_summary` RPC for quota checks, `guard_user_tier_change` trigger (only the service role can change `users.tier`)
 
 ## High-Level Relationships
 
@@ -312,6 +313,22 @@ Per-run telemetry used by dashboard/activity.
 - `metadata` — JSONB; carries `project_id` (the Space this run belongs to) and, for a workflow run, `scheduled_task_id`. No schema change: Activity filters by Space and builds per-workflow history from these.
 - `created_at`
 
+### `usage_events`
+
+Usage ledger: one row per call that spends platform money. Written by `recordUsage` (`src/lib/usage/meter.ts`) via the service role; users can select their own rows. Attribution comes from an AsyncLocalStorage context opened by `processMessage`, so fire-and-forget work (memory extraction, segment summaries, follow-ups) is attributed too.
+
+- `id`
+- `user_id` (nullable — a call made outside a user context is still recorded, with a warning log)
+- `agent_run_id` (nullable, `on delete set null`)
+- `kind` (`run`, `llm`, `embedding`, `web_search`) — `run` rows are what the monthly message quota counts (users can delete `agent_runs`, so it can't be the counter)
+- `purpose` (`chat`, `compaction`, `segment_summary`, `memory_extraction`, `follow_up`, `embedding`, `web_search`, `other`)
+- `provider`, `model` (the model that actually answered, including fallbacks)
+- `input_tokens`, `output_tokens`, `cached_tokens`
+- `cost_usd` (provider-reported, currently OpenRouter only; null otherwise)
+- `estimated` (true when the provider reported no usage, e.g. a stream stopped by the user — ~4 chars/token)
+- `metadata jsonb` (`source`, `streamed`, `result_count`, …)
+- `created_at`
+
 ### `background_jobs`
 
 Queue records for long-form requests.
@@ -342,6 +359,14 @@ Replayable event log for queued runs.
 - `created_at`
 
 ## Database Functions
+
+### `get_usage_summary(p_user_id uuid, p_since timestamptz)`
+
+Added in `025_usage_events.sql`. Returns `runs`, `input_tokens`, `output_tokens`, `cost_usd` totals from `usage_events` since `p_since`. Executable by `service_role` only. Used by `src/lib/usage/quota.ts` (limits in `src/lib/usage/plans.ts`); quota checks fail closed if it errors, with admins (`ADMIN_USER_EMAILS`) exempt.
+
+### `guard_user_tier_change()` (trigger on `users`)
+
+Added in `025_usage_events.sql`. The `users` update policy covers every column, so this `before update` trigger rejects a `tier` change when the caller's role is `authenticated` or `anon`. Service-role writes (future billing webhook) and direct SQL may change it.
 
 ### `match_user_memories(...)`
 
@@ -387,6 +412,7 @@ RLS is enabled on:
 - `document_shares`
 - `projects`
 - `rate_limits` (no policies — service role only)
+- `usage_events` (select own rows; inserts via service role only)
 
 Service-role server paths (cron/webhooks/background processing) bypass user RLS where appropriate.
 
@@ -420,6 +446,9 @@ create index idx_scheduled_tasks_due_recurring
 
 create index idx_agent_runs_user on public.agent_runs(user_id, started_at desc);
 create index idx_agent_runs_status on public.agent_runs(user_id, status) where status = 'running';
+
+create index idx_usage_events_user_created on public.usage_events(user_id, created_at desc);
+create index idx_usage_events_agent_run on public.usage_events(agent_run_id) where agent_run_id is not null;
 
 create index idx_background_jobs_user_created on public.background_jobs(user_id, created_at desc);
 create index idx_background_jobs_queue

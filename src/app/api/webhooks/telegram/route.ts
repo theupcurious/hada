@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processMessage } from "@/lib/chat/process-message";
+import { isQuotaExceededError } from "@/lib/usage/quota";
+import { stripQuotaPrefix } from "@/lib/usage/plans";
 import { verifySharedSecret } from "@/lib/auth/shared-secret";
 import { createAdminClient } from "@/lib/supabase/server";
 import { editMessageText, sendMessage } from "@/lib/telegram/client";
@@ -70,13 +72,26 @@ export async function POST(request: NextRequest) {
 
     const live = createLiveEditor(chatId);
 
-    const result = await processMessage({
-      userId,
-      message: text,
-      source: "telegram",
-      supabase: admin,
-      onEvent: (event) => live.onEvent(event),
-    });
+    let result;
+    try {
+      result = await processMessage({
+        userId,
+        message: text,
+        source: "telegram",
+        supabase: admin,
+        onEvent: (event) => live.onEvent(event),
+      });
+    } catch (error) {
+      if (!isQuotaExceededError(error)) throw error;
+      await sendMessage({
+        chatId,
+        text: markdownToTelegramMarkdownV2(
+          stripQuotaPrefix(error.message),
+        ),
+        parseMode: "MarkdownV2",
+      });
+      return NextResponse.json({ ok: true });
+    }
 
     await live.finalize(result.response);
 

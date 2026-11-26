@@ -8,6 +8,7 @@ import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import type { AgentEvent } from "@/lib/types/database";
+import { checkQuota } from "@/lib/usage/quota";
 
 export const maxDuration = 300;
 
@@ -29,6 +30,19 @@ export async function POST(request: NextRequest) {
   const limit = await checkRateLimit(RATE_LIMITS.chat, user.id);
   if (!limit.allowed) {
     return rateLimitedResponse(limit);
+  }
+
+  // Pre-check the plan quota so the client gets a clean 402 before the stream
+  // opens. processMessage enforces it again (authoritatively) for every path.
+  const quota = await checkQuota(user.id);
+  if (!quota.allowed) {
+    return new Response(
+      JSON.stringify({ error: quota.message, code: "quota_exceeded", reason: quota.reason }),
+      {
+        status: quota.reason === "unavailable" ? 503 : 402,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   const body = await request.json().catch(() => ({}));

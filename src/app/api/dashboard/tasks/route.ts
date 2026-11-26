@@ -1,3 +1,4 @@
+import { checkWorkflowCap } from "@/lib/usage/quota";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -89,6 +90,11 @@ export async function POST(request: NextRequest) {
     }
     if (type === "once" && !runAt) {
       return NextResponse.json({ error: "run_at is required for one-time tasks" }, { status: 400 });
+    }
+
+    const cap = await checkWorkflowCap(user.id);
+    if (!cap.allowed) {
+      return NextResponse.json({ error: cap.message, code: "workflow_limit" }, { status: 402 });
     }
 
     const { data, error } = await supabase

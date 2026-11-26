@@ -37,6 +37,7 @@ export async function extractMemoriesFromTurn(options: {
   let extraction = "";
   try {
     const result = await callLLM({
+      purpose: "memory_extraction",
       selection: options.provider,
       tools: [],
       messages: [

@@ -205,6 +205,7 @@ export async function maybeCompactConversation(options: {
   let summary = "";
   try {
     const result = await callLLM({
+      purpose: "compaction",
       selection: options.provider,
       tools: [],
       messages: [
@@ -349,6 +350,7 @@ async function flushMemoriesBeforeCompaction(options: {
   let extraction = "";
   try {
     const result = await callLLM({
+      purpose: "memory_extraction",
       selection: options.provider,
       tools: [],
       messages: [

@@ -1,5 +1,6 @@
 import { getOpenRouterReasoningCapabilities } from "@/lib/openrouter/reasoning";
-import type { LLMProviderName, OpenRouterReasoningEffort, UserSettings } from "@/lib/types/database";
+import type { LLMProviderName, OpenRouterReasoningEffort, UsagePurpose, UserSettings } from "@/lib/types/database";
+import { estimateTokens, parseTokenUsage, recordUsage, type ParsedTokenUsage } from "@/lib/usage/meter";
 
 export const DEFAULT_PROVIDER: LLMProviderName = "openrouter";
 
@@ -62,6 +63,7 @@ export interface LLMResult {
   toolCalls: LLMToolCall[];
   reasoning?: string;
   reasoning_details?: unknown[];
+  usage?: ParsedTokenUsage;
 }
 
 export type LLMStreamEvent =
@@ -172,6 +174,8 @@ export async function callLLM(options: {
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
   reasoning?: OpenRouterReasoningConfig;
+  /** What this call is for, for usage metering. Defaults to "chat". */
+  purpose?: UsagePurpose;
 }): Promise<LLMResult> {
   const { selection } = options;
   if (selection.config.native) {
@@ -200,6 +204,7 @@ export async function* callLLMStream(options: {
   signal?: AbortSignal;
   systemPromptParts?: { stable: string; dynamic: string };
   reasoning?: OpenRouterReasoningConfig;
+  purpose?: UsagePurpose;
 }): AsyncGenerator<LLMStreamEvent> {
   if (options.selection.config.native) {
     // Anthropic: no streaming yet — emit full response as single chunk
@@ -262,6 +267,7 @@ async function* streamOpenAICompatibleBody(options: {
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
   reasoning?: OpenRouterReasoningConfig;
+  purpose?: UsagePurpose;
 }): AsyncGenerator<LLMStreamEvent> {
   const { selection, messages, tools = [], signal } = options;
   const url = `${selection.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -319,6 +325,7 @@ async function* streamOpenAICompatibleBody(options: {
   >();
   let reasoningText = "";
   let reasoningDetails: unknown[] = [];
+  let streamUsage: ParsedTokenUsage | null = null;
 
   try {
     outer: while (true) {
@@ -360,6 +367,11 @@ async function* streamOpenAICompatibleBody(options: {
             };
           }>;
         };
+
+        // The usage chunk arrives last with `choices: []`, so read it before
+        // the delta guard below skips the chunk.
+        const chunkUsage = parseTokenUsage((parsed as { usage?: unknown }).usage);
+        if (chunkUsage) streamUsage = chunkUsage;
 
         const delta = (parsed as SSEChunk).choices?.[0]?.delta;
         if (!delta) continue;
@@ -404,6 +416,20 @@ async function* streamOpenAICompatibleBody(options: {
     }
   } finally {
     reader.releaseLock();
+    // Runs on normal completion, errors, and when the consumer stops early
+    // (user hit stop): tokens were spent either way, so always record. Without
+    // a usage chunk, fall back to an estimate.
+    let streamedOutput = fullContent + reasoningText;
+    for (const [, acc] of toolCallAcc) streamedOutput += acc.name + acc.args;
+    void recordLLMUsage({
+      selection,
+      purpose: options.purpose,
+      usage: streamUsage,
+      messages,
+      tools,
+      outputText: streamedOutput,
+      streamed: true,
+    });
   }
 
   const toolCalls: LLMToolCall[] = [];
@@ -467,6 +493,7 @@ async function callOpenAICompatible(options: {
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
   reasoning?: OpenRouterReasoningConfig;
+  purpose?: UsagePurpose;
 }): Promise<LLMResult> {
   const { selection, messages, tools = [], signal } = options;
   const url = `${selection.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -507,12 +534,25 @@ async function callOpenAICompatible(options: {
     : [];
   const reasoning = normalizeReasoningText(message?.reasoning) || normalizeReasoningText(message?.reasoning_content);
   const reasoningDetails = normalizeReasoningDetails(message?.reasoning_details);
+  const usage = parseTokenUsage(data?.usage);
+
+  // `selection.model` is the model that actually answered (fallback paths pass
+  // the fallback model in here), so usage is attributed correctly.
+  void recordLLMUsage({
+    selection,
+    purpose: options.purpose,
+    usage,
+    messages,
+    tools,
+    outputText: content + (reasoning ?? "") + JSON.stringify(message?.tool_calls ?? ""),
+  });
 
   return {
     content,
     toolCalls,
     reasoning,
     reasoning_details: reasoningDetails?.length ? reasoningDetails : undefined,
+    usage: usage ?? undefined,
   };
 }
 
@@ -522,6 +562,7 @@ async function callAnthropic(options: {
   tools?: LLMToolDefinition[];
   signal?: AbortSignal;
   systemPromptParts?: { stable: string; dynamic: string };
+  purpose?: UsagePurpose;
 }): Promise<LLMResult> {
   const { selection, messages, tools = [], signal, systemPromptParts } = options;
 
@@ -590,7 +631,66 @@ async function callAnthropic(options: {
       arguments: toObject(block.input),
     }));
 
-  return { content: textContent, toolCalls };
+  const usage = parseTokenUsage(data?.usage);
+  void recordLLMUsage({
+    selection,
+    purpose: options.purpose,
+    usage,
+    messages,
+    tools,
+    outputText: textContent + JSON.stringify(toolCalls),
+  });
+
+  return { content: textContent, toolCalls, usage: usage ?? undefined };
+}
+
+function recordLLMUsage(options: {
+  selection: ProviderSelection;
+  purpose?: UsagePurpose;
+  usage: ParsedTokenUsage | null;
+  messages: LLMMessage[];
+  tools: LLMToolDefinition[];
+  outputText: string;
+  streamed?: boolean;
+}): Promise<void> {
+  const { selection, usage } = options;
+  const metadata: Record<string, unknown> = options.streamed ? { streamed: true } : {};
+
+  if (usage) {
+    return recordUsage({
+      kind: "llm",
+      purpose: options.purpose ?? "chat",
+      provider: selection.provider,
+      model: selection.model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cachedTokens: usage.cachedTokens,
+      costUsd: usage.costUsd,
+      metadata,
+    });
+  }
+
+  // Estimating must never throw: this runs inside the streaming generator's
+  // `finally`, where a throw would replace the turn's result.
+  let inputChars = 0;
+  try {
+    inputChars = JSON.stringify(options.tools ?? []).length;
+    for (const message of options.messages) {
+      if (typeof message.content === "string") inputChars += message.content.length;
+    }
+  } catch {
+    // keep whatever was counted
+  }
+  return recordUsage({
+    kind: "llm",
+    purpose: options.purpose ?? "chat",
+    provider: selection.provider,
+    model: selection.model,
+    inputTokens: Math.ceil(inputChars / 4),
+    outputTokens: estimateTokens(options.outputText),
+    estimated: true,
+    metadata,
+  });
 }
 
 function parseOpenAIToolCall(toolCall: {
@@ -649,6 +749,11 @@ function buildOpenAICompatibleRequestBody(options: {
     tool_choice: tools.length ? "auto" : undefined,
     temperature,
     ...(stream ? { stream: true } : {}),
+    // Ask for a final usage chunk. Only sent to providers known to accept it;
+    // others may still include usage unprompted, which the parser picks up.
+    ...(stream && STREAM_USAGE_PROVIDERS.has(selection.provider)
+      ? { stream_options: { include_usage: true } }
+      : {}),
   };
 
   if (selection.provider === "openrouter" && reasoning?.enabled) {
@@ -669,6 +774,8 @@ function buildOpenAICompatibleRequestBody(options: {
 
   return body;
 }
+
+const STREAM_USAGE_PROVIDERS = new Set<LLMProviderName>(["openrouter", "openai"]);
 
 function normalizeReasoningText(value: unknown): string | undefined {
   if (typeof value !== "string") {

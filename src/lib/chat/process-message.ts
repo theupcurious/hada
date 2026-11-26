@@ -10,6 +10,8 @@ import { buildSystemPrompt } from "@/lib/chat/build-system-prompt";
 import { assembleConversationContext, maybeCompactConversation } from "@/lib/chat/context-manager";
 import { generateFollowUpSuggestions } from "@/lib/chat/follow-up-suggestions";
 import { extractMemoriesFromTurn } from "@/lib/chat/memory-extraction";
+import { recordUsage, runWithUsageContext, setUsageAgentRunId } from "@/lib/usage/meter";
+import { assertWithinQuota } from "@/lib/usage/quota";
 import { resolveProviderSelection, type OpenRouterReasoningConfig } from "@/lib/chat/providers";
 import { resolveRunBudget } from "@/lib/chat/runtime-budgets";
 import { policyForSource } from "@/lib/chat/tool-permissions";
@@ -64,6 +66,23 @@ export interface ProcessMessageResult {
 }
 
 export async function processMessage(options: ProcessMessageOptions): Promise<ProcessMessageResult> {
+  // Open a usage-metering context for the whole run. Everything spawned from
+  // here, including fire-and-forget work (memory extraction, segment summaries,
+  // follow-ups), records usage against this user.
+  return runWithUsageContext(
+    { userId: options.userId, agentRunId: null, source: options.source },
+    async () => {
+      // Plan quota gate: runs before anything is saved or any model is called.
+      // Throws QuotaExceededError (fails closed if usage can't be read).
+      await assertWithinQuota(options.userId);
+      // The `run` row is what the monthly message quota counts.
+      await recordUsage({ kind: "run", purpose: "chat" });
+      return processMessageInRun(options);
+    },
+  );
+}
+
+async function processMessageInRun(options: ProcessMessageOptions): Promise<ProcessMessageResult> {
   const supabase = options.supabase || createAdminClient();
   const runId = crypto.randomUUID();
   const agentRunStartedAt = Date.now();
@@ -117,6 +136,9 @@ export async function processMessage(options: ProcessMessageOptions): Promise<Pr
       runId,
       projectId: options.projectId ?? null,
       scheduledTaskId: options.scheduledTaskId ?? null,
+    }).then((id) => {
+      setUsageAgentRunId(id);
+      return id;
     }),
     options.userMessageId
       ? Promise.resolve({ id: options.userMessageId })

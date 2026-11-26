@@ -1,3 +1,5 @@
+import { estimateTokens, parseTokenUsage, recordUsage } from "@/lib/usage/meter";
+
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const DEFAULT_EMBEDDING_DIMENSIONS = 1536;
 const DEFAULT_EMBEDDING_BASE_URL = "https://api.openai.com/v1";
@@ -37,12 +39,32 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
 
     const data = (await response.json()) as {
       data?: Array<{ embedding?: number[] }>;
+      usage?: unknown;
     };
+
+    const usage = parseTokenUsage(data.usage);
+    void recordUsage({
+      kind: "embedding",
+      purpose: "embedding",
+      provider: hostOf(baseUrl),
+      model,
+      inputTokens: usage?.inputTokens ?? estimateTokens(input),
+      costUsd: usage?.costUsd ?? null,
+      estimated: !usage,
+    });
 
     const embedding = data.data?.[0]?.embedding;
     return Array.isArray(embedding) ? embedding : null;
   } catch (error) {
     console.error("Failed to generate embedding:", error);
     return null;
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
   }
 }

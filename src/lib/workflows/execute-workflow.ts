@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { processMessage } from "@/lib/chat/process-message";
 import { sendTelegramToUser } from "@/lib/telegram/send";
 import type { ScheduledTask } from "@/lib/types/database";
+import { isQuotaExceededError } from "@/lib/usage/quota";
+import { stripQuotaPrefix } from "@/lib/usage/plans";
 
 export class WorkflowBusyError extends Error {
   constructor() { super("This workflow is already running or was just run. Refresh before trying again."); }
@@ -17,11 +19,21 @@ export async function executeWorkflow(supabase: SupabaseClient, task: ScheduledT
   if (!claimed) throw new WorkflowBusyError();
 
   try {
-    const result = await processMessage({
-      userId: task.user_id, message: task.description, source: "scheduled", supabase,
-      projectId: task.project_id ?? undefined,
-      scheduledTaskId: task.id,
-    });
+    let result;
+    try {
+      result = await processMessage({
+        userId: task.user_id, message: task.description, source: "scheduled", supabase,
+        projectId: task.project_id ?? undefined,
+        scheduledTaskId: task.id,
+      });
+    } catch (error) {
+      // Over quota: nothing ran and nothing was saved. Report it instead of
+      // throwing so Run now shows the reason and cron just skips this tick.
+      if (isQuotaExceededError(error)) {
+        return { success: false, quotaExceeded: true, error: stripQuotaPrefix(error.message) };
+      }
+      throw error;
+    }
     const resultUrl = `/chat?${new URLSearchParams({
       ...(task.project_id ? { project: task.project_id } : {}),
       message: result.assistantMessageId,

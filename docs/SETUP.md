@@ -29,6 +29,7 @@ cp .env.local.example .env.local
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `LLM_PROVIDER`
 - `LLM_API_KEY` (or provider-specific `<PROVIDER>_API_KEY`)
+- `ADMIN_USER_EMAILS` — comma-separated operator emails. Admins are exempt from plan quotas. Quotas fail closed (a request is refused if usage can't be read), so without this an operator can be locked out too.
 
 ### Provider options
 
@@ -97,6 +98,7 @@ If you are upgrading an existing database, apply SQL files from `supabase/migrat
 14. `014_segment_artifacts.sql`
 15. … through `023_workflow_execution_claims.sql` (see `docs/DATABASE.md` for the full annotated chain)
 24. `024_rate_limits_and_share_expiry.sql` — `rate_limits` table + `check_rate_limit` RPC, `document_shares.expires_at`. Until applied, rate limiting logs an error and allows requests.
+25. `025_usage_events.sql` — usage ledger, `get_usage_summary` RPC, and a trigger that stops users changing their own `tier`. **Apply before deploying the quota code:** plan quotas fail closed, so until it's applied every non-admin chat, Telegram message, and workflow run is refused.
 
 Notes:
 

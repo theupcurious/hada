@@ -38,7 +38,7 @@ export async function POST(
     }
 
     const result = await executeWorkflow(createAdminClient(), task as ScheduledTask, "manual");
-    return NextResponse.json(result, { status: result.success ? 200 : 502 });
+    return NextResponse.json(result, { status: result.success ? 200 : "quotaExceeded" in result && result.quotaExceeded ? 402 : 502 });
   } catch (error) {
     if (error instanceof WorkflowBusyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error("Dashboard task run API error:", error);

@@ -13,6 +13,7 @@ export function MessageError({ details, busy, onRetry, onDelete }: {
     <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{error.message}</p>
     <div className="mt-3 flex flex-wrap gap-2">
       <Button size="sm" variant="outline" disabled={busy} onClick={() => void onRetry()}>Try again</Button>
+      {error.plan && <Link href="/settings?tab=account" className="rounded-md px-3 py-2 text-sm text-teal-700 underline dark:text-teal-300">View plan and usage</Link>}
       {error.settings && <Link href="/settings?tab=status" className="rounded-md px-3 py-2 text-sm text-teal-700 underline dark:text-teal-300">Check service status</Link>}
       <Button size="sm" variant="ghost" disabled={busy} onClick={onDelete}>Delete message</Button>
     </div>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PlanUsageCard } from "@/components/settings/plan-usage-card";
 import { createClient } from "@/lib/supabase/client";
 import { PERSONAS } from "@/lib/chat/personas";
 import {
@@ -454,14 +455,6 @@ export function AccountTab() {
     setResettingOnboarding(false);
   }
 
-  const tierConfig = {
-    free: { label: "Free", color: "secondary" as const },
-    paid: { label: "Paid", color: "default" as const },
-    pro: { label: "Pro", color: "default" as const },
-  };
-
-  const tier = tierConfig[profile?.tier as keyof typeof tierConfig] || tierConfig.free;
-
   return (
     <div className="space-y-6">
       <div>
@@ -494,24 +487,7 @@ export function AccountTab() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-base">Subscription</CardTitle>
-              <CardDescription>Your current plan.</CardDescription>
-            </div>
-            <Badge variant={tier.color}>{tier.label}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            {profile?.tier === "free"
-              ? "You're on the free plan."
-              : "You have full paid plan access."}
-          </p>
-        </CardContent>
-      </Card>
+      <PlanUsageCard />
 
       <Card>
         <CardHeader>

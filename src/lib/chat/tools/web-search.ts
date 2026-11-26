@@ -1,3 +1,4 @@
+import { recordUsage } from "@/lib/usage/meter";
 import type { AgentTool } from "@/lib/chat/agent-loop";
 
 import type { ToolManifest } from "@/lib/chat/tools/tool-registry";
@@ -81,6 +82,13 @@ export function createWebSearchTool(context?: Pick<ToolContext, "timezone">): Ag
         } else {
           results = await searchTavily(searchContext, maxResults, apiKey, options?.signal);
         }
+
+        void recordUsage({
+          kind: "web_search",
+          purpose: "web_search",
+          provider,
+          metadata: { result_count: results.length },
+        });
 
         return JSON.stringify({
           success: true,
