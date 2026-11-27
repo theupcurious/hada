@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { isBillingEnabled } from "@/lib/billing/stripe";
 import { getUsageStatus } from "@/lib/usage/quota";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,8 @@ export async function GET() {
 
   try {
     const status = await getUsageStatus(user.id);
-    return NextResponse.json(status);
+    // billingEnabled lets the UI show Upgrade only when checkout actually works.
+    return NextResponse.json({ ...status, billingEnabled: isBillingEnabled() });
   } catch (error) {
     console.error("Usage status failed:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Couldn’t load usage" }, { status: 500 });

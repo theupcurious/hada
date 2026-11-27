@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatResetDate, type PlanLimits, type UsageTotals } from "@/lib/usage/plans";
+import { PLAN_LIMITS, formatResetDate, type PlanLimits, type UsageTotals } from "@/lib/usage/plans";
 
 interface UsageStatusResponse {
   tier: string;
@@ -12,7 +13,10 @@ interface UsageStatusResponse {
   exempt: boolean;
   usage: UsageTotals | null;
   resetsAt: string;
+  billingEnabled?: boolean;
 }
+
+type BillingAction = "paid" | "pro" | "portal";
 
 type LoadState =
   | { kind: "loading" }
@@ -21,24 +25,55 @@ type LoadState =
 
 export function PlanUsageCard() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [busy, setBusy] = useState<BillingAction | null>(null);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/usage", { cache: "no-store" });
+      if (!response.ok) throw new Error(String(response.status));
+      setState({ kind: "ready", status: (await response.json()) as UsageStatusResponse });
+    } catch {
+      setState({ kind: "error" });
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/usage", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(String(response.status));
-        return (await response.json()) as UsageStatusResponse;
-      })
-      .then((status) => {
-        if (!cancelled) setState({ kind: "ready", status });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ kind: "error" });
+    const result = new URLSearchParams(window.location.search).get("billing");
+    let timer: number | undefined;
+    if (result === "success") {
+      // The webhook usually lands within seconds of the redirect; reload once more.
+      queueMicrotask(() => setNotice("Thanks! Your plan will update in a few seconds."));
+      timer = window.setTimeout(() => void load(), 4000);
+    } else if (result === "cancelled") {
+      queueMicrotask(() => setNotice("Checkout was cancelled. You haven’t been charged."));
+    }
+    void load();
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  const startBilling = async (action: BillingAction) => {
+    setBusy(action);
+    setBillingError(null);
+    try {
+      const response = await fetch(action === "portal" ? "/api/billing/portal" : "/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: action === "portal" ? undefined : JSON.stringify({ plan: action }),
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      const payload = (await response.json().catch(() => ({}))) as { url?: string; error?: string; portal?: boolean };
+      if (response.status === 409 && payload.portal) {
+        await startBilling("portal");
+        return;
+      }
+      if (!response.ok || !payload.url) throw new Error(payload.error || "Billing is unavailable right now.");
+      window.location.assign(payload.url);
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Billing is unavailable right now.");
+      setBusy(null);
+    }
+  };
 
   const status = state.kind === "ready" ? state.status : null;
 
@@ -60,6 +95,7 @@ export function PlanUsageCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {notice && <p role="status" className="text-sm text-zinc-600 dark:text-zinc-400">{notice}</p>}
         {state.kind === "loading" && <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading usage…</p>}
         {state.kind === "error" && (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">Usage couldn’t be loaded. Refresh to try again.</p>
@@ -95,6 +131,30 @@ export function PlanUsageCard() {
             </p>
           </>
         )}
+        {status?.billingEnabled && !status.exempt && (
+          <div className="flex flex-wrap gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            {status.tier === "free" ? (
+              (["paid", "pro"] as const).map((plan) => (
+                <Button
+                  key={plan}
+                  size="sm"
+                  variant={plan === "paid" ? "default" : "outline"}
+                  disabled={busy !== null}
+                  onClick={() => void startBilling(plan)}
+                >
+                  {busy === plan
+                    ? "Opening checkout…"
+                    : `Upgrade to ${PLAN_LIMITS[plan].label} · ${PLAN_LIMITS[plan].monthlyMessages.toLocaleString("en-US")} messages`}
+                </Button>
+              ))
+            ) : (
+              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => void startBilling("portal")}>
+                {busy === "portal" ? "Opening billing…" : "Manage billing"}
+              </Button>
+            )}
+          </div>
+        )}
+        {billingError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{billingError}</p>}
       </CardContent>
     </Card>
   );

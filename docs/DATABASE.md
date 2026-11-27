@@ -37,6 +37,7 @@ Current migration chain:
 23. `023_workflow_execution_claims.sql` — `scheduled_tasks.execution_token`/`execution_started_at` + `claim_workflow_execution` RPC (atomic claim so manual "Run now" and cron can't double-run a workflow)
 24. `024_rate_limits_and_share_expiry.sql` — `rate_limits` table + `check_rate_limit` RPC (per-user fixed-window limiter), `document_shares.expires_at`
 25. `025_usage_events.sql` — `usage_events` ledger (one `run` row per assistant run, plus tokens/cost per LLM call, embedding, and web search), `get_usage_summary` RPC for quota checks, `guard_user_tier_change` trigger (only the service role can change `users.tier`)
+26. `026_billing.sql` — Stripe billing columns on `users` (written only by the Stripe webhook) and `guard_user_tier_change` widened to block user edits to them
 
 ## High-Level Relationships
 
@@ -69,7 +70,8 @@ Key columns:
 - `email text not null`
 - `name text`
 - `avatar_url text`
-- `tier text check (free|paid|pro)`
+- `tier text check (free|paid|pro)` — set by the Stripe webhook; `paid` is shown as "Plus"
+- `stripe_customer_id` (unique when set), `stripe_subscription_id`, `subscription_status`, `current_period_end` — billing state (026), written only by the Stripe webhook
 - `permissions jsonb`
 - `settings jsonb`
 - `created_at`, `updated_at`
@@ -366,7 +368,7 @@ Added in `025_usage_events.sql`. Returns `runs`, `input_tokens`, `output_tokens`
 
 ### `guard_user_tier_change()` (trigger on `users`)
 
-Added in `025_usage_events.sql`. The `users` update policy covers every column, so this `before update` trigger rejects a `tier` change when the caller's role is `authenticated` or `anon`. Service-role writes (future billing webhook) and direct SQL may change it.
+Added in `025_usage_events.sql`, widened in `026_billing.sql`. The `users` update policy covers every column, so this `before update` trigger rejects changes to `tier`, `stripe_customer_id`, `stripe_subscription_id`, `subscription_status` or `current_period_end` when the caller's role is `authenticated` or `anon` (a user pointing their row at another customer id could otherwise open that customer's billing portal). The Stripe webhook (service role) and direct SQL may change them.
 
 ### `match_user_memories(...)`
 

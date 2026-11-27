@@ -99,6 +99,7 @@ If you are upgrading an existing database, apply SQL files from `supabase/migrat
 15. … through `023_workflow_execution_claims.sql` (see `docs/DATABASE.md` for the full annotated chain)
 24. `024_rate_limits_and_share_expiry.sql` — `rate_limits` table + `check_rate_limit` RPC, `document_shares.expires_at`. Until applied, rate limiting logs an error and allows requests.
 25. `025_usage_events.sql` — usage ledger, `get_usage_summary` RPC, and a trigger that stops users changing their own `tier`. **Apply before deploying the quota code:** plan quotas fail closed, so until it's applied every non-admin chat, Telegram message, and workflow run is refused.
+26. `026_billing.sql` — Stripe billing columns on `users` (`stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`) and a wider guard trigger so users can't edit them. Apply before turning billing on.
 
 Notes:
 
@@ -142,6 +143,21 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
 ```
 
 Users then link Telegram from Settings via `/api/integrations/telegram/link`.
+
+### Stripe billing (paid plans)
+
+Optional. Without it, everyone stays on Free and no Upgrade buttons are shown.
+
+1. In the Stripe dashboard (test mode first), create one product per paid plan with a recurring monthly price: **Plus** and **Pro**. Prices are set here, not in code.
+2. Set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_PLUS` and `STRIPE_PRICE_PRO` (the `price_…` ids). Limits per plan live in `src/lib/usage/plans.ts`.
+3. Add a webhook endpoint at `<NEXT_PUBLIC_APP_URL>/api/webhooks/stripe` subscribed to `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`. Put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+4. Configure the **Customer Portal** (Settings → Billing → Customer portal) and allow plan switching between the two prices. "Manage billing" fails until the portal is saved once.
+5. `NEXT_PUBLIC_APP_URL` must be set: checkout and portal redirects are built from it.
+6. Apply `026_billing.sql`.
+
+Admins (`ADMIN_USER_EMAILS`) are exempt from quotas, so they don't see Upgrade buttons. Test checkout with a separate non-admin account and Stripe's `4242 4242 4242 4242` test card, then check that Settings → Account shows "Plus".
+
+Locally, forward events with the Stripe CLI (`stripe listen --forward-to localhost:3000/api/webhooks/stripe`) and use the `whsec_…` it prints. The webhook re-fetches each subscription from Stripe and sets `users.tier`, so retries and out-of-order events are safe.
 
 ## 5. Run Locally
 
